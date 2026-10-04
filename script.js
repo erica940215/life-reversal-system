@@ -1,6 +1,11 @@
 // ==========================================
 // 神級人生逆襲系統
-// Supabase 連線診斷版
+// V0.7
+// Supabase Auth + Profiles
+// ==========================================
+
+// ==========================================
+// Supabase 設定
 // ==========================================
 
 const SUPABASE_URL =
@@ -9,12 +14,12 @@ const SUPABASE_URL =
 const SUPABASE_PUBLISHABLE_KEY =
   "sb_publishable_2uJS9Kex4YSTQh1Bbh3H-w_4cPPW25j";
 
-// ==========================================
-// 基本變數
-// ==========================================
-
 let supabaseClient = null;
 let currentUser = null;
+
+// ==========================================
+// RPG 遊戲資料
+// ==========================================
 
 let gameData = {
   level: 1,
@@ -26,7 +31,7 @@ let gameData = {
 let currentFilter = "all";
 
 // ==========================================
-// 顯示診斷訊息
+// Supabase 診斷訊息
 // ==========================================
 
 function showDiagnostic(message, type = "info") {
@@ -42,7 +47,8 @@ function showDiagnostic(message, type = "info") {
     box.style.fontSize = "14px";
     box.style.lineHeight = "1.6";
 
-    const authSection = document.getElementById("auth-section");
+    const authSection =
+      document.getElementById("auth-section");
 
     if (authSection) {
       authSection.appendChild(box);
@@ -81,10 +87,11 @@ function initializeSupabase() {
       return false;
     }
 
-    supabaseClient = window.supabase.createClient(
-      SUPABASE_URL,
-      SUPABASE_PUBLISHABLE_KEY
-    );
+    supabaseClient =
+      window.supabase.createClient(
+        SUPABASE_URL,
+        SUPABASE_PUBLISHABLE_KEY
+      );
 
     showDiagnostic(
       "🟢 <strong>Supabase 程式庫載入成功</strong><br>" +
@@ -95,8 +102,10 @@ function initializeSupabase() {
     return true;
 
   } catch (error) {
-
-    console.error("Supabase 初始化失敗：", error);
+    console.error(
+      "Supabase 初始化失敗：",
+      error
+    );
 
     showDiagnostic(
       "🔴 <strong>Supabase 初始化失敗</strong><br>" +
@@ -109,18 +118,28 @@ function initializeSupabase() {
 }
 
 // ==========================================
-// LocalStorage
+// 日期
 // ==========================================
 
 function getToday() {
   const date = new Date();
 
   const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
+
+  const month =
+    String(date.getMonth() + 1)
+      .padStart(2, "0");
+
+  const day =
+    String(date.getDate())
+      .padStart(2, "0");
 
   return `${year}-${month}-${day}`;
 }
+
+// ==========================================
+// LocalStorage
+// ==========================================
 
 function saveGame() {
   localStorage.setItem(
@@ -130,24 +149,28 @@ function saveGame() {
 }
 
 function loadGame() {
-  const saved = localStorage.getItem(
-    "life-reversal-game"
-  );
+  const saved =
+    localStorage.getItem(
+      "life-reversal-game"
+    );
 
-  if (saved) {
-    try {
-      gameData = JSON.parse(saved);
-    } catch (error) {
-      console.error(
-        "讀取 LocalStorage 失敗：",
-        error
-      );
-    }
+  if (!saved) {
+    return;
+  }
+
+  try {
+    gameData =
+      JSON.parse(saved);
+  } catch (error) {
+    console.error(
+      "讀取 LocalStorage 失敗：",
+      error
+    );
   }
 }
 
 // ==========================================
-// EXP
+// EXP 計算
 // ==========================================
 
 function getRequiredExp(level) {
@@ -158,20 +181,29 @@ function getRequiredExp(level) {
 // 任務完成
 // ==========================================
 
-function toggleTask(element, expReward, goldReward) {
-
-  if (!element) return;
+function toggleTask(
+  element,
+  expReward,
+  goldReward
+) {
+  if (!element) {
+    return;
+  }
 
   const taskId =
     element.dataset.taskId ||
     element.innerText.trim();
 
   const alreadyCompleted =
-    element.classList.contains("completed");
+    element.classList.contains(
+      "completed"
+    );
 
   if (alreadyCompleted) {
 
-    element.classList.remove("completed");
+    element.classList.remove(
+      "completed"
+    );
 
     gameData.completedTasks =
       gameData.completedTasks.filter(
@@ -179,6 +211,7 @@ function toggleTask(element, expReward, goldReward) {
       );
 
     gameData.exp -= expReward;
+
     gameData.gold -= goldReward;
 
     if (gameData.exp < 0) {
@@ -191,9 +224,19 @@ function toggleTask(element, expReward, goldReward) {
 
   } else {
 
-    element.classList.add("completed");
+    element.classList.add(
+      "completed"
+    );
 
-    gameData.completedTasks.push(taskId);
+    if (
+      !gameData.completedTasks.includes(
+        taskId
+      )
+    ) {
+      gameData.completedTasks.push(
+        taskId
+      );
+    }
 
     gameData.exp += expReward;
     gameData.gold += goldReward;
@@ -212,21 +255,30 @@ function toggleTask(element, expReward, goldReward) {
 function checkLevelUp() {
 
   let requiredExp =
-    getRequiredExp(gameData.level);
+    getRequiredExp(
+      gameData.level
+    );
 
-  while (gameData.exp >= requiredExp) {
+  while (
+    gameData.exp >= requiredExp
+  ) {
 
     gameData.exp -= requiredExp;
+
     gameData.level += 1;
 
     gameData.gold += 100;
 
     alert(
-      `🎉 升級成功！\n\n目前等級：Lv.${gameData.level}\n獎勵：+100 金幣`
+      `🎉 升級成功！\n\n` +
+      `目前等級：Lv.${gameData.level}\n` +
+      `獎勵：+100 金幣`
     );
 
     requiredExp =
-      getRequiredExp(gameData.level);
+      getRequiredExp(
+        gameData.level
+      );
   }
 }
 
@@ -252,7 +304,9 @@ function restoreTasks() {
         taskId
       )
     ) {
-      task.classList.add("completed");
+      task.classList.add(
+        "completed"
+      );
     }
   });
 }
@@ -317,7 +371,8 @@ function updateUI() {
 
     const percentage =
       Math.min(
-        (gameData.exp / required) * 100,
+        (gameData.exp / required) *
+          100,
         100
       );
 
@@ -350,7 +405,8 @@ function updateUI() {
     total === 0
       ? 0
       : Math.round(
-          completed / total * 100
+          (completed / total) *
+            100
         );
 
   const completedCount =
@@ -398,9 +454,13 @@ function updateUI() {
 // 任務分類
 // ==========================================
 
-function filterTasks(category, button) {
+function filterTasks(
+  category,
+  button
+) {
 
-  currentFilter = category;
+  currentFilter =
+    category;
 
   const tasks =
     document.querySelectorAll(
@@ -418,7 +478,8 @@ function filterTasks(category, button) {
     ) {
       task.style.display = "";
     } else {
-      task.style.display = "none";
+      task.style.display =
+        "none";
     }
   });
 
@@ -428,6 +489,7 @@ function filterTasks(category, button) {
     );
 
   buttons.forEach(btn => {
+
     btn.classList.remove(
       "active"
     );
@@ -441,7 +503,7 @@ function filterTasks(category, button) {
 }
 
 // ==========================================
-// 顯示登入訊息
+// Auth 訊息
 // ==========================================
 
 function setAuthMessage(message) {
@@ -458,7 +520,7 @@ function setAuthMessage(message) {
 }
 
 // ==========================================
-// 更新登入 UI
+// Auth UI
 // ==========================================
 
 function updateAuthUI(user) {
@@ -518,52 +580,83 @@ function updateAuthUI(user) {
 }
 
 // ==========================================
-// 建立玩家資料
+// 讀取自己的玩家資料
 // ==========================================
 
-async function createProfileIfNeeded(user) {
+async function loadProfile(user) {
 
   if (!supabaseClient) {
-    throw new Error(
-      "Supabase 尚未初始化"
-    );
+    return;
   }
 
-  const {
-    data,
-    error
-  } = await supabaseClient
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  if (!data) {
-
-    const username =
-      user.email
-        ? user.email.split("@")[0]
-        : "玩家";
+  try {
 
     const {
-      error: insertError
-    } = await supabaseClient
-      .from("profiles")
-      .insert({
-        id: user.id,
-        username: username,
-        level: 1,
-        exp: 50,
-        gold: 100
-      });
+      data,
+      error
+    } =
+      await supabaseClient
+        .from("profiles")
+        .select(
+          "id, username, level, exp, gold"
+        )
+        .eq(
+          "id",
+          user.id
+        )
+        .maybeSingle();
 
-    if (insertError) {
-      throw insertError;
+    if (error) {
+      throw error;
     }
+
+    if (!data) {
+
+      console.warn(
+        "找不到 profiles 玩家資料"
+      );
+
+      showDiagnostic(
+        "🟡 <strong>Auth 登入成功</strong><br>" +
+        "但目前找不到對應的 profiles 資料。",
+        "info"
+      );
+
+      return;
+    }
+
+    // 把雲端玩家資料載入遊戲
+    gameData.level =
+      data.level ?? 1;
+
+    gameData.exp =
+      data.exp ?? 50;
+
+    gameData.gold =
+      data.gold ?? 100;
+
+    saveGame();
+
+    updateUI();
+
+    showDiagnostic(
+      "🟢 <strong>Supabase 玩家資料載入成功</strong><br>" +
+      `玩家：${data.username || "玩家"}<br>` +
+      `Lv.${data.level}　EXP：${data.exp}　金幣：${data.gold}`,
+      "success"
+    );
+
+  } catch (error) {
+
+    console.error(
+      "讀取 profiles 失敗：",
+      error
+    );
+
+    showDiagnostic(
+      `🔴 <strong>讀取玩家資料失敗</strong><br>${error.message}`,
+      "error"
+    );
   }
 }
 
@@ -573,7 +666,9 @@ async function createProfileIfNeeded(user) {
 
 async function registerUser() {
 
-  console.log("registerUser 被執行");
+  console.log(
+    "registerUser 被執行"
+  );
 
   if (!supabaseClient) {
 
@@ -584,15 +679,25 @@ async function registerUser() {
     return;
   }
 
-  const email =
+  const emailInput =
     document.getElementById(
       "auth-email"
-    )?.value.trim();
+    );
 
-  const password =
+  const passwordInput =
     document.getElementById(
       "auth-password"
-    )?.value;
+    );
+
+  const email =
+    emailInput
+      ? emailInput.value.trim()
+      : "";
+
+  const password =
+    passwordInput
+      ? passwordInput.value
+      : "";
 
   if (!email || !password) {
 
@@ -621,25 +726,43 @@ async function registerUser() {
     const {
       data,
       error
-    } = await supabaseClient.auth.signUp({
-      email,
-      password
-    });
+    } =
+      await supabaseClient.auth.signUp({
+        email,
+        password
+      });
 
     if (error) {
       throw error;
     }
 
-    if (data.user) {
+    if (!data.user) {
 
-      currentUser =
-        data.user;
-
-      await createProfileIfNeeded(
-        data.user
+      setAuthMessage(
+        "📧 註冊已送出，請檢查 Email。"
       );
 
-      updateAuthUI(
+      return;
+    }
+
+    currentUser =
+      data.user;
+
+    /*
+      注意：
+      這裡不再 INSERT profiles。
+
+      profiles 會由 Supabase Database Trigger
+      自動建立。
+    */
+
+    updateAuthUI(
+      data.user
+    );
+
+    if (data.session) {
+
+      await loadProfile(
         data.user
       );
 
@@ -650,7 +773,7 @@ async function registerUser() {
     } else {
 
       setAuthMessage(
-        "📧 註冊已送出，請檢查 Email 是否需要驗證。"
+        "📧 帳號已建立，請完成 Email 驗證後登入。"
       );
     }
 
@@ -673,7 +796,9 @@ async function registerUser() {
 
 async function loginUser() {
 
-  console.log("loginUser 被執行");
+  console.log(
+    "loginUser 被執行"
+  );
 
   if (!supabaseClient) {
 
@@ -684,15 +809,25 @@ async function loginUser() {
     return;
   }
 
-  const email =
+  const emailInput =
     document.getElementById(
       "auth-email"
-    )?.value.trim();
+    );
 
-  const password =
+  const passwordInput =
     document.getElementById(
       "auth-password"
-    )?.value;
+    );
+
+  const email =
+    emailInput
+      ? emailInput.value.trim()
+      : "";
+
+  const password =
+    passwordInput
+      ? passwordInput.value
+      : "";
 
   if (!email || !password) {
 
@@ -712,10 +847,12 @@ async function loginUser() {
     const {
       data,
       error
-    } = await supabaseClient.auth.signInWithPassword({
-      email,
-      password
-    });
+    } =
+      await supabaseClient.auth
+        .signInWithPassword({
+          email,
+          password
+        });
 
     if (error) {
       throw error;
@@ -724,11 +861,11 @@ async function loginUser() {
     currentUser =
       data.user;
 
-    await createProfileIfNeeded(
+    updateAuthUI(
       data.user
     );
 
-    updateAuthUI(
+    await loadProfile(
       data.user
     );
 
@@ -759,31 +896,44 @@ async function logoutUser() {
     return;
   }
 
-  const {
-    error
-  } =
-    await supabaseClient.auth.signOut();
+  try {
 
-  if (error) {
+    const {
+      error
+    } =
+      await supabaseClient.auth
+        .signOut();
+
+    if (error) {
+      throw error;
+    }
+
+    currentUser =
+      null;
+
+    updateAuthUI(
+      null
+    );
+
+    setAuthMessage(
+      "已登出"
+    );
+
+  } catch (error) {
+
+    console.error(
+      "登出錯誤：",
+      error
+    );
 
     setAuthMessage(
       `🔴 登出失敗：${error.message}`
     );
-
-    return;
   }
-
-  currentUser = null;
-
-  updateAuthUI(null);
-
-  setAuthMessage(
-    "已登出"
-  );
 }
 
 // ==========================================
-// 檢查登入狀態
+// 檢查目前登入狀態
 // ==========================================
 
 async function checkAuth() {
@@ -798,7 +948,8 @@ async function checkAuth() {
       data,
       error
     } =
-      await supabaseClient.auth.getSession();
+      await supabaseClient.auth
+        .getSession();
 
     if (error) {
       throw error;
@@ -813,22 +964,44 @@ async function checkAuth() {
         currentUser
       );
 
+      await loadProfile(
+        currentUser
+      );
+
     } else {
 
-      updateAuthUI(null);
+      currentUser =
+        null;
+
+      updateAuthUI(
+        null
+      );
     }
 
-    supabaseClient.auth.onAuthStateChange(
-      async (_event, session) => {
+    supabaseClient.auth
+      .onAuthStateChange(
+        async (
+          event,
+          session
+        ) => {
 
-        currentUser =
-          session?.user || null;
+          currentUser =
+            session?.user || null;
 
-        updateAuthUI(
-          currentUser
-        );
-      }
-    );
+          updateAuthUI(
+            currentUser
+          );
+
+          if (
+            currentUser &&
+            event !== "INITIAL_SESSION"
+          ) {
+            await loadProfile(
+              currentUser
+            );
+          }
+        }
+      );
 
   } catch (error) {
 
@@ -838,7 +1011,7 @@ async function checkAuth() {
     );
 
     showDiagnostic(
-      `🔴 <strong>Supabase 連線錯誤</strong><br>${error.message}`,
+      `🔴 <strong>Supabase 登入狀態檢查失敗</strong><br>${error.message}`,
       "error"
     );
   }
@@ -868,6 +1041,5 @@ document.addEventListener(
     if (connected) {
       await checkAuth();
     }
-
   }
 );
