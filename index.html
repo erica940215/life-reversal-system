@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>神級人生逆襲系統</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="card header-card">
+      <div class="system-title">⚔️ 神級人生逆襲系統</div>
+      <div class="stats-row">
+        <span class="badge" id="player-level">Lv.1</span>
+        <span class="gold-text">💰 金幣: <span id="player-gold">100</span></span>
+      </div>
+      <div class="exp-container">
+        <div class="exp-bar" id="exp-bar" style="width: 50%;"></div>
+      </div>
+      <div class="exp-text"><span id="current-exp">50</span> / 100 EXP</div>
+    </header>
+
+    <section class="card task-card">
+      <h2>📜 今日任務</h2>
+      <ul class="task-list">
+        <li class="task-item" onclick="toggleTask(this, 30, 20)">
+          <span class="task-checkbox">☐</span>
+          <span class="task-name">多益單字 20 個</span>
+          <span class="reward">+30 EXP</span>
+        </li>
+        <li class="task-item" onclick="toggleTask(this, 40, 30)">
+          <span class="task-checkbox">☐</span>
+          <span class="task-name">計概複習 60 分鐘</span>
+          <span class="reward">+40 EXP</span>
+        </li>
+        <li class="task-item" onclick="toggleTask(this, 20, 10)">
+          <span class="task-checkbox">☐</span>
+          <span class="task-name">深度專注 30 分鐘</span>
+          <span class="reward">+20 EXP</span>
+        </li>
+      </ul>
+    </section>
+
+    <footer class="card rate-card">
+      <div class="rate-title">今日完成率：<span id="rate-text">0%</span></div>
+      <div class="rate-container">
+        <div class="rate-bar" id="rate-bar" style="width: 0%;"></div>
+      </div>
+    </footer>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
