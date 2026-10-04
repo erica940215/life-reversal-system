@@ -1,19 +1,33 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
+
 <head>
+
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
 
   <title>神級人生逆襲系統</title>
 
-  <link rel="stylesheet" href="style.css">
+  <link
+    rel="stylesheet"
+    href="style.css"
+  >
+
 </head>
+
 
 <body>
 
   <div class="container">
 
-    <!-- ==================== 玩家資訊 ==================== -->
+
+    <!-- =========================
+         玩家資訊
+    ========================== -->
 
     <header class="card header-card">
 
@@ -21,18 +35,29 @@
         ⚔️ 神級人生逆襲系統
       </div>
 
+
       <div class="stats-row">
 
-        <span class="badge" id="player-level">
+        <span
+          class="badge"
+          id="player-level"
+        >
           Lv.1
         </span>
 
+
         <span class="gold-text">
+
           💰 金幣：
-          <span id="player-gold">100</span>
+
+          <span id="player-gold">
+            100
+          </span>
+
         </span>
 
       </div>
+
 
       <!-- EXP -->
 
@@ -46,26 +71,115 @@
 
       </div>
 
+
       <div class="exp-text">
-        <span id="current-exp">50</span>
+
+        <span id="current-exp">
+          50
+        </span>
+
         /
-        <span id="required-exp">100</span>
+
+        <span id="required-exp">
+          100
+        </span>
+
         EXP
+
       </div>
 
     </header>
 
 
-    <!-- ==================== 今日任務 ==================== -->
+
+    <!-- =========================
+         今日總覽
+    ========================== -->
+
+    <section class="card daily-summary">
+
+      <h2>
+        📊 今日進度
+      </h2>
+
+
+      <div class="summary-grid">
+
+
+        <div class="summary-item">
+
+          <span class="summary-label">
+            任務完成
+          </span>
+
+          <strong id="completed-count">
+            0 / 4
+          </strong>
+
+        </div>
+
+
+        <div class="summary-item">
+
+          <span class="summary-label">
+            完成率
+          </span>
+
+          <strong id="summary-rate">
+            0%
+          </strong>
+
+        </div>
+
+
+        <div class="summary-item">
+
+          <span class="summary-label">
+            今日 EXP
+          </span>
+
+          <strong id="today-exp">
+            +0
+          </strong>
+
+        </div>
+
+
+        <div class="summary-item">
+
+          <span class="summary-label">
+            今日金幣
+          </span>
+
+          <strong id="today-gold">
+            +0
+          </strong>
+
+        </div>
+
+
+      </div>
+
+    </section>
+
+
+
+    <!-- =========================
+         今日任務
+    ========================== -->
 
     <section class="card task-card">
 
-      <h2>📜 今日任務</h2>
+
+      <h2>
+        📜 今日任務
+      </h2>
 
 
       <!-- 任務分類 -->
 
       <div class="task-filter">
+
 
         <button
           class="filter-btn active"
@@ -74,12 +188,14 @@
           全部
         </button>
 
+
         <button
           class="filter-btn"
           onclick="filterTasks('study', this)"
         >
           📚 學習
         </button>
+
 
         <button
           class="filter-btn"
@@ -88,12 +204,14 @@
           🇬🇧 多益
         </button>
 
+
         <button
           class="filter-btn"
           onclick="filterTasks('focus', this)"
         >
           🎯 專注
         </button>
+
 
         <button
           class="filter-btn"
@@ -102,10 +220,14 @@
           ❤️ 健康
         </button>
 
+
       </div>
 
 
-      <!-- 任務列表 -->
+
+      <!-- =========================
+           任務列表
+      ========================== -->
 
       <ul class="task-list">
 
@@ -115,6 +237,7 @@
         <li
           class="task-item"
           data-category="toeic"
+          data-difficulty="normal"
           onclick="toggleTask(this, 30, 20)"
         >
 
@@ -122,50 +245,89 @@
             ☐
           </span>
 
-          <span class="task-name">
+
+          <div class="task-info">
 
             <small>
               🇬🇧 多益
             </small>
 
-            多益單字 20 個
 
-          </span>
+            <span class="task-name">
+              多益單字 20 個
+            </span>
 
-          <span class="reward">
-            +30 EXP
-          </span>
+
+            <span class="difficulty normal">
+              🔵 普通
+            </span>
+
+          </div>
+
+
+          <div class="reward">
+
+            <span>
+              +30 EXP
+            </span>
+
+            <span class="gold-reward">
+              +20 💰
+            </span>
+
+          </div>
 
         </li>
 
 
-        <!-- 學習 -->
+
+        <!-- 計概 -->
 
         <li
           class="task-item"
           data-category="study"
-          onclick="toggleTask(this, 40, 30)"
+          data-difficulty="hard"
+          onclick="toggleTask(this, 50, 35)"
         >
 
           <span class="task-checkbox">
             ☐
           </span>
 
-          <span class="task-name">
+
+          <div class="task-info">
 
             <small>
               📚 學習
             </small>
 
-            計概複習 60 分鐘
 
-          </span>
+            <span class="task-name">
+              計概複習 60 分鐘
+            </span>
 
-          <span class="reward">
-            +40 EXP
-          </span>
+
+            <span class="difficulty hard">
+              🟣 困難
+            </span>
+
+          </div>
+
+
+          <div class="reward">
+
+            <span>
+              +50 EXP
+            </span>
+
+            <span class="gold-reward">
+              +35 💰
+            </span>
+
+          </div>
 
         </li>
+
 
 
         <!-- 專注 -->
@@ -173,6 +335,7 @@
         <li
           class="task-item"
           data-category="focus"
+          data-difficulty="normal"
           onclick="toggleTask(this, 20, 10)"
         >
 
@@ -180,21 +343,40 @@
             ☐
           </span>
 
-          <span class="task-name">
+
+          <div class="task-info">
 
             <small>
               🎯 專注
             </small>
 
-            深度專注 30 分鐘
 
-          </span>
+            <span class="task-name">
+              深度專注 30 分鐘
+            </span>
 
-          <span class="reward">
-            +20 EXP
-          </span>
+
+            <span class="difficulty normal">
+              🔵 普通
+            </span>
+
+          </div>
+
+
+          <div class="reward">
+
+            <span>
+              +20 EXP
+            </span>
+
+            <span class="gold-reward">
+              +10 💰
+            </span>
+
+          </div>
 
         </li>
+
 
 
         <!-- 健康 -->
@@ -202,6 +384,7 @@
         <li
           class="task-item"
           data-category="health"
+          data-difficulty="easy"
           onclick="toggleTask(this, 20, 15)"
         >
 
@@ -209,19 +392,37 @@
             ☐
           </span>
 
-          <span class="task-name">
+
+          <div class="task-info">
 
             <small>
               ❤️ 健康
             </small>
 
-            喝水與休息
 
-          </span>
+            <span class="task-name">
+              喝水與休息
+            </span>
 
-          <span class="reward">
-            +20 EXP
-          </span>
+
+            <span class="difficulty easy">
+              🟢 簡單
+            </span>
+
+          </div>
+
+
+          <div class="reward">
+
+            <span>
+              +20 EXP
+            </span>
+
+            <span class="gold-reward">
+              +15 💰
+            </span>
+
+          </div>
 
         </li>
 
@@ -231,18 +432,24 @@
     </section>
 
 
-    <!-- ==================== 今日完成率 ==================== -->
+
+    <!-- =========================
+         完成率
+    ========================== -->
 
     <footer class="card rate-card">
+
 
       <div class="rate-title">
 
         今日完成率：
+
         <span id="rate-text">
           0%
         </span>
 
       </div>
+
 
       <div class="rate-container">
 
@@ -254,15 +461,19 @@
 
       </div>
 
+
     </footer>
 
 
   </div>
 
 
+
   <!-- JavaScript -->
 
   <script src="script.js"></script>
 
+
 </body>
+
 </html>
