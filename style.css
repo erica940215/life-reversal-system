@@ -1,0 +1,155 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+body {
+  background-color: #0f111a;
+  color: #e6edf3;
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+  min-height: 100vh;
+}
+
+.container {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  padding: 18px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.system-title {
+  font-size: 1.25rem;
+  font-weight: bold;
+  text-align: center;
+  color: #58a6ff;
+  margin-bottom: 12px;
+}
+
+.stats-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.badge {
+  background: #238636;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.gold-text {
+  color: #f1e05a;
+  font-weight: bold;
+}
+
+.exp-container, .rate-container {
+  width: 100%;
+  height: 10px;
+  background-color: #21262d;
+  border-radius: 5px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.exp-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #1f6feb, #58a6ff);
+  transition: width 0.3s ease;
+}
+
+.exp-text {
+  text-align: right;
+  font-size: 0.75rem;
+  color: #8b949e;
+  margin-top: 4px;
+}
+
+.task-card h2 {
+  font-size: 1.1rem;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #30363d;
+  padding-bottom: 6px;
+}
+
+.task-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.task-item {
+  display: flex;
+  align-items: center;
+  background: #21262d;
+  padding: 10px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  user-select: none;
+}
+
+.task-item:active {
+  border-color: #58a6ff;
+}
+
+.task-checkbox {
+  margin-right: 12px;
+  font-size: 1.1rem;
+}
+
+.task-name {
+  flex-grow: 1;
+}
+
+.reward {
+  font-size: 0.8rem;
+  color: #7ee787;
+}
+
+.task-item.completed {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.task-item.completed .task-checkbox::before {
+  content: "☑";
+}
+
+.task-item.completed .task-checkbox {
+  visibility: hidden;
+  position: relative;
+}
+
+.task-item.completed .task-checkbox::before {
+  visibility: visible;
+  position: absolute;
+  left: 0;
+}
+
+.rate-title {
+  font-size: 0.9rem;
+  color: #8b949e;
+}
+
+.rate-bar {
+  height: 100%;
+  background: #238636;
+  transition: width 0.3s ease;
+}
