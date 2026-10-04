@@ -1,47 +1,194 @@
 // ========================================
 // ⚔️ 神級人生逆襲系統
-// RPG 核心系統 V0.4
+// V0.5 - 本機資料保存系統
 // ========================================
 
 
 // ========================================
-// 玩家資料
+// 資料保存設定
+// ========================================
+
+const SAVE_KEY = "life-reversal-system-v05";
+
+
+// ========================================
+// 預設玩家資料
 // ========================================
 
 let currentLevel = 1;
-
 let currentExp = 50;
-
 let currentGold = 100;
 
-
-// ========================================
-// 今日任務資料
-// ========================================
-
 let completedTasks = 0;
-
 let todayExp = 0;
-
 let todayGold = 0;
 
-
-// 目前任務總數
 const totalTasks = 4;
 
 
 // ========================================
-// 計算目前等級需要多少 EXP
-//
-// Lv.1 → 100 EXP
-// Lv.2 → 150 EXP
-// Lv.3 → 200 EXP
-// Lv.4 → 250 EXP
+// 今日日期
+// ========================================
+
+function getToday() {
+
+  const now = new Date();
+
+  return now.getFullYear() + "-" +
+    String(now.getMonth() + 1).padStart(2, "0") + "-" +
+    String(now.getDate()).padStart(2, "0");
+
+}
+
+
+// ========================================
+// 任務保存狀態
+// ========================================
+
+let taskStates = {};
+
+
+// ========================================
+// 讀取資料
+// ========================================
+
+function loadGame() {
+
+  const savedData =
+    localStorage.getItem(SAVE_KEY);
+
+
+  // 沒有舊資料
+  if (!savedData) {
+
+    return;
+
+  }
+
+
+  try {
+
+    const data =
+      JSON.parse(savedData);
+
+
+    currentLevel =
+      data.currentLevel ?? 1;
+
+    currentExp =
+      data.currentExp ?? 50;
+
+    currentGold =
+      data.currentGold ?? 100;
+
+    completedTasks =
+      data.completedTasks ?? 0;
+
+    todayExp =
+      data.todayExp ?? 0;
+
+    todayGold =
+      data.todayGold ?? 0;
+
+    taskStates =
+      data.taskStates ?? {};
+
+
+    // ====================================
+    // 檢查是不是新的一天
+    // ====================================
+
+    const savedDate =
+      data.date;
+
+
+    if (savedDate !== getToday()) {
+
+      resetToday();
+
+    }
+
+
+  } catch (error) {
+
+    console.error(
+      "讀取遊戲資料失敗：",
+      error
+    );
+
+  }
+
+}
+
+
+// ========================================
+// 保存資料
+// ========================================
+
+function saveGame() {
+
+  const gameData = {
+
+    currentLevel:
+      currentLevel,
+
+    currentExp:
+      currentExp,
+
+    currentGold:
+      currentGold,
+
+    completedTasks:
+      completedTasks,
+
+    todayExp:
+      todayExp,
+
+    todayGold:
+      todayGold,
+
+    taskStates:
+      taskStates,
+
+    date:
+      getToday()
+
+  };
+
+
+  localStorage.setItem(
+    SAVE_KEY,
+    JSON.stringify(gameData)
+  );
+
+}
+
+
+// ========================================
+// 新的一天
+// ========================================
+
+function resetToday() {
+
+  completedTasks = 0;
+
+  todayExp = 0;
+
+  todayGold = 0;
+
+  taskStates = {};
+
+}
+
+
+// ========================================
+// 計算升級所需 EXP
 // ========================================
 
 function getRequiredExp() {
 
-  return 100 + (currentLevel - 1) * 50;
+  return 100 +
+    (currentLevel - 1) * 50;
 
 }
 
@@ -50,32 +197,53 @@ function getRequiredExp() {
 // 完成 / 取消任務
 // ========================================
 
-function toggleTask(element, expReward, goldReward) {
+function toggleTask(
+  element,
+  expReward,
+  goldReward
+) {
 
-  // 判斷任務目前是不是完成狀態
+
   const isCompleted =
-    element.classList.toggle("completed");
+    element.classList.toggle(
+      "completed"
+    );
 
 
-  // 找到 checkbox
   const checkbox =
-    element.querySelector(".task-checkbox");
+    element.querySelector(
+      ".task-checkbox"
+    );
 
 
-  // ========================================
+  // ======================================
+  // 找到任務的唯一識別
+  // ======================================
+
+  const taskName =
+    element.querySelector(
+      ".task-name"
+    );
+
+
+  const taskId =
+    taskName
+      ? taskName.textContent.trim()
+      : String(
+          Math.random()
+        );
+
+
+  // ======================================
   // 完成任務
-  // ========================================
+  // ======================================
 
   if (isCompleted) {
 
-    // 玩家 EXP
     currentExp += expReward;
 
-    // 玩家金幣
     currentGold += goldReward;
 
-
-    // 今日統計
     todayExp += expReward;
 
     todayGold += goldReward;
@@ -83,7 +251,9 @@ function toggleTask(element, expReward, goldReward) {
     completedTasks++;
 
 
-    // checkbox
+    taskStates[taskId] = true;
+
+
     if (checkbox) {
 
       checkbox.textContent = "☑";
@@ -91,26 +261,21 @@ function toggleTask(element, expReward, goldReward) {
     }
 
 
-    // 檢查是否升級
     checkLevelUp();
 
   }
 
 
-  // ========================================
+  // ======================================
   // 取消任務
-  // ========================================
+  // ======================================
 
   else {
 
-    // 玩家 EXP
     currentExp -= expReward;
 
-    // 玩家金幣
     currentGold -= goldReward;
 
-
-    // 今日統計
     todayExp -= expReward;
 
     todayGold -= goldReward;
@@ -118,7 +283,9 @@ function toggleTask(element, expReward, goldReward) {
     completedTasks--;
 
 
-    // 防止負數
+    taskStates[taskId] = false;
+
+
     if (currentExp < 0) {
 
       currentExp = 0;
@@ -147,7 +314,6 @@ function toggleTask(element, expReward, goldReward) {
     }
 
 
-    // checkbox
     if (checkbox) {
 
       checkbox.textContent = "☐";
@@ -157,7 +323,8 @@ function toggleTask(element, expReward, goldReward) {
   }
 
 
-  // 更新畫面
+  saveGame();
+
   updateUI();
 
 }
@@ -173,36 +340,33 @@ function checkLevelUp() {
     getRequiredExp();
 
 
-  // EXP 足夠就升級
-  while (currentExp >= requiredExp) {
+  while (
+    currentExp >= requiredExp
+  ) {
 
 
-    // 扣除升級所需要的 EXP
     currentExp -= requiredExp;
 
 
-    // 等級 +1
     currentLevel++;
 
 
-    // 升級獎勵
     currentGold += 50;
 
 
-    // 下一級 EXP
+    todayGold += 50;
+
+
     requiredExp =
       getRequiredExp();
 
 
-    // 升級提示
     alert(
 
       "✨ LEVEL UP！\n\n" +
-
       "你已經升到 Lv." +
       currentLevel +
       "！\n\n" +
-
       "🎁 升級獎勵：+50 金幣"
 
     );
@@ -213,18 +377,80 @@ function checkLevelUp() {
 
 
 // ========================================
-// 更新整個畫面
+// 恢復任務畫面
+// ========================================
+
+function restoreTasks() {
+
+  const tasks =
+    document.querySelectorAll(
+      ".task-item"
+    );
+
+
+  tasks.forEach(function(task) {
+
+
+    const taskName =
+      task.querySelector(
+        ".task-name"
+      );
+
+
+    const checkbox =
+      task.querySelector(
+        ".task-checkbox"
+      );
+
+
+    if (!taskName) {
+
+      return;
+
+    }
+
+
+    const taskId =
+      taskName.textContent.trim();
+
+
+    if (
+      taskStates[taskId] === true
+    ) {
+
+      task.classList.add(
+        "completed"
+      );
+
+
+      if (checkbox) {
+
+        checkbox.textContent = "☑";
+
+      }
+
+    }
+
+  });
+
+}
+
+
+// ========================================
+// 更新畫面
 // ========================================
 
 function updateUI() {
 
 
   // ======================================
-  // 玩家等級
+  // 等級
   // ======================================
 
   const levelElement =
-    document.getElementById("player-level");
+    document.getElementById(
+      "player-level"
+    );
 
 
   if (levelElement) {
@@ -240,7 +466,9 @@ function updateUI() {
   // ======================================
 
   const goldElement =
-    document.getElementById("player-gold");
+    document.getElementById(
+      "player-gold"
+    );
 
 
   if (goldElement) {
@@ -252,11 +480,13 @@ function updateUI() {
 
 
   // ======================================
-  // 目前 EXP
+  // EXP
   // ======================================
 
   const expElement =
-    document.getElementById("current-exp");
+    document.getElementById(
+      "current-exp"
+    );
 
 
   if (expElement) {
@@ -268,7 +498,7 @@ function updateUI() {
 
 
   // ======================================
-  // 升級所需 EXP
+  // 所需 EXP
   // ======================================
 
   const requiredExp =
@@ -276,7 +506,9 @@ function updateUI() {
 
 
   const requiredExpElement =
-    document.getElementById("required-exp");
+    document.getElementById(
+      "required-exp"
+    );
 
 
   if (requiredExpElement) {
@@ -292,7 +524,9 @@ function updateUI() {
   // ======================================
 
   const expBar =
-    document.getElementById("exp-bar");
+    document.getElementById(
+      "exp-bar"
+    );
 
 
   if (expBar) {
@@ -311,7 +545,7 @@ function updateUI() {
 
 
   // ======================================
-  // 今日完成數
+  // 任務完成數
   // ======================================
 
   const completedCount =
@@ -340,7 +574,6 @@ function updateUI() {
     );
 
 
-  // 頁面下方完成率
   const rateText =
     document.getElementById(
       "rate-text"
@@ -350,6 +583,20 @@ function updateUI() {
   if (rateText) {
 
     rateText.textContent =
+      ratePercent + "%";
+
+  }
+
+
+  const summaryRate =
+    document.getElementById(
+      "summary-rate"
+    );
+
+
+  if (summaryRate) {
+
+    summaryRate.textContent =
       ratePercent + "%";
 
   }
@@ -368,24 +615,6 @@ function updateUI() {
   if (rateBar) {
 
     rateBar.style.width =
-      ratePercent + "%";
-
-  }
-
-
-  // ======================================
-  // 今日摘要完成率
-  // ======================================
-
-  const summaryRate =
-    document.getElementById(
-      "summary-rate"
-    );
-
-
-  if (summaryRate) {
-
-    summaryRate.textContent =
       ratePercent + "%";
 
   }
@@ -433,12 +662,11 @@ function updateUI() {
 // 任務分類篩選
 // ========================================
 
-function filterTasks(category, button) {
+function filterTasks(
+  category,
+  button
+) {
 
-
-  // ======================================
-  // 更新分類按鈕
-  // ======================================
 
   const buttons =
     document.querySelectorAll(
@@ -446,13 +674,15 @@ function filterTasks(category, button) {
     );
 
 
-  buttons.forEach(function(btn) {
+  buttons.forEach(
+    function(btn) {
 
-    btn.classList.remove(
-      "active"
-    );
+      btn.classList.remove(
+        "active"
+      );
 
-  });
+    }
+  );
 
 
   button.classList.add(
@@ -460,59 +690,63 @@ function filterTasks(category, button) {
   );
 
 
-  // ======================================
-  // 篩選任務
-  // ======================================
-
   const tasks =
     document.querySelectorAll(
       ".task-item"
     );
 
 
-  tasks.forEach(function(task) {
+  tasks.forEach(
+    function(task) {
 
 
-    const taskCategory =
-      task.getAttribute(
-        "data-category"
-      );
+      const taskCategory =
+        task.getAttribute(
+          "data-category"
+        );
 
 
-    // 顯示全部
-    if (
-      category === "all" ||
-      taskCategory === category
-    ) {
+      if (
+        category === "all" ||
+        taskCategory === category
+      ) {
 
-      task.style.display =
-        "flex";
+        task.style.display =
+          "flex";
 
-    }
+      } else {
 
+        task.style.display =
+          "none";
 
-    // 隱藏其他分類
-    else {
-
-      task.style.display =
-        "none";
+      }
 
     }
-
-  });
+  );
 
 }
 
 
 // ========================================
-// 網頁載入完成
+// 網頁啟動
 // ========================================
 
 document.addEventListener(
   "DOMContentLoaded",
   function() {
 
+
+    // ① 讀取保存資料
+    loadGame();
+
+
+    // ② 恢復任務
+    restoreTasks();
+
+
+    // ③ 更新畫面
     updateUI();
+
 
   }
 );
