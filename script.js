@@ -1,12 +1,7 @@
-// ========================================
-// ⚔️ 神級人生逆襲系統
-// V0.6 - Supabase 帳號登入版
-// ========================================
-
-
-// ========================================
-// 🔐 Supabase 設定
-// ========================================
+// ==========================================
+// 神級人生逆襲系統
+// Supabase 連線診斷版
+// ==========================================
 
 const SUPABASE_URL =
   "https://smlaokhqhgzjhnxeqfen.supabase.co";
@@ -14,1049 +9,459 @@ const SUPABASE_URL =
 const SUPABASE_PUBLISHABLE_KEY =
   "sb_publishable_2uJS9Kex4YSTQh1Bbh3H-w_4cPPW25j";
 
-const supabaseClient =
-  window.supabase.createClient(
-    SUPABASE_URL,
-    SUPABASE_PUBLISHABLE_KEY
-  );
+// ==========================================
+// 基本變數
+// ==========================================
 
-
-// ========================================
-// 🎮 RPG 遊戲資料
-// ========================================
-
-const SAVE_KEY =
-  "life-reversal-system-save";
-
-let currentLevel = 1;
-let currentExp = 50;
-let currentGold = 100;
-
-let completedTasks = 0;
-let todayExp = 0;
-let todayGold = 0;
-
-const totalTasks = 4;
-
-let taskStates = {};
-
-
-// ========================================
-// 👤 目前登入玩家
-// ========================================
-
+let supabaseClient = null;
 let currentUser = null;
 
+let gameData = {
+  level: 1,
+  exp: 50,
+  gold: 100,
+  completedTasks: []
+};
 
-// ========================================
-// 📅 取得今天日期
-// ========================================
+let currentFilter = "all";
+
+// ==========================================
+// 顯示診斷訊息
+// ==========================================
+
+function showDiagnostic(message, type = "info") {
+  let box = document.getElementById("supabase-diagnostic");
+
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "supabase-diagnostic";
+
+    box.style.margin = "15px 0";
+    box.style.padding = "14px";
+    box.style.borderRadius = "10px";
+    box.style.fontSize = "14px";
+    box.style.lineHeight = "1.6";
+
+    const authSection = document.getElementById("auth-section");
+
+    if (authSection) {
+      authSection.appendChild(box);
+    } else {
+      document.body.prepend(box);
+    }
+  }
+
+  if (type === "success") {
+    box.style.background = "#163d27";
+    box.style.border = "1px solid #39d98a";
+  } else if (type === "error") {
+    box.style.background = "#421d1d";
+    box.style.border = "1px solid #ff6b6b";
+  } else {
+    box.style.background = "#1d2d42";
+    box.style.border = "1px solid #6ea8fe";
+  }
+
+  box.innerHTML = message;
+}
+
+// ==========================================
+// 初始化 Supabase
+// ==========================================
+
+function initializeSupabase() {
+  try {
+    if (!window.supabase) {
+      showDiagnostic(
+        "🔴 <strong>Supabase JS 沒有成功載入</strong><br>" +
+        "網站找不到 Supabase 程式庫。",
+        "error"
+      );
+
+      return false;
+    }
+
+    supabaseClient = window.supabase.createClient(
+      SUPABASE_URL,
+      SUPABASE_PUBLISHABLE_KEY
+    );
+
+    showDiagnostic(
+      "🟢 <strong>Supabase 程式庫載入成功</strong><br>" +
+      "網站已成功建立 Supabase Client。",
+      "success"
+    );
+
+    return true;
+
+  } catch (error) {
+
+    console.error("Supabase 初始化失敗：", error);
+
+    showDiagnostic(
+      "🔴 <strong>Supabase 初始化失敗</strong><br>" +
+      error.message,
+      "error"
+    );
+
+    return false;
+  }
+}
+
+// ==========================================
+// LocalStorage
+// ==========================================
 
 function getToday() {
+  const date = new Date();
 
-  const now = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
 
-  return (
-    now.getFullYear() +
-    "-" +
-    String(now.getMonth() + 1).padStart(2, "0") +
-    "-" +
-    String(now.getDate()).padStart(2, "0")
-  );
-
+  return `${year}-${month}-${day}`;
 }
-
-
-// ========================================
-// 💾 LocalStorage 儲存遊戲
-// ========================================
 
 function saveGame() {
-
-  const saveData = {
-
-    version: 1,
-
-    date: getToday(),
-
-    currentLevel: currentLevel,
-
-    currentExp: currentExp,
-
-    currentGold: currentGold,
-
-    completedTasks: completedTasks,
-
-    todayExp: todayExp,
-
-    todayGold: todayGold,
-
-    taskStates: taskStates
-
-  };
-
-  try {
-
-    localStorage.setItem(
-      SAVE_KEY,
-      JSON.stringify(saveData)
-    );
-
-    console.log(
-      "💾 遊戲已保存",
-      saveData
-    );
-
-  } catch (error) {
-
-    console.error(
-      "❌ 保存失敗",
-      error
-    );
-
-  }
-
+  localStorage.setItem(
+    "life-reversal-game",
+    JSON.stringify(gameData)
+  );
 }
-
-
-// ========================================
-// 📂 LocalStorage 載入遊戲
-// ========================================
 
 function loadGame() {
+  const saved = localStorage.getItem(
+    "life-reversal-game"
+  );
 
-  try {
-
-    const savedData =
-      localStorage.getItem(SAVE_KEY);
-
-    if (!savedData) {
-
-      console.log(
-        "目前沒有舊存檔，使用初始資料"
+  if (saved) {
+    try {
+      gameData = JSON.parse(saved);
+    } catch (error) {
+      console.error(
+        "讀取 LocalStorage 失敗：",
+        error
       );
-
-      return;
-
     }
-
-    const data =
-      JSON.parse(savedData);
-
-
-    // ====================================
-    // 📅 新的一天
-    // ====================================
-
-    if (
-      data.date &&
-      data.date !== getToday()
-    ) {
-
-      console.log(
-        "📅 新的一天，建立新的每日資料"
-      );
-
-      currentLevel =
-        data.currentLevel ?? 1;
-
-      currentExp =
-        data.currentExp ?? 50;
-
-      currentGold =
-        data.currentGold ?? 100;
-
-      completedTasks = 0;
-
-      todayExp = 0;
-
-      todayGold = 0;
-
-      taskStates = {};
-
-      saveGame();
-
-      return;
-
-    }
-
-
-    // ====================================
-    // 恢復玩家資料
-    // ====================================
-
-    currentLevel =
-      Number(data.currentLevel ?? 1);
-
-    currentExp =
-      Number(data.currentExp ?? 50);
-
-    currentGold =
-      Number(data.currentGold ?? 100);
-
-    completedTasks =
-      Number(data.completedTasks ?? 0);
-
-    todayExp =
-      Number(data.todayExp ?? 0);
-
-    todayGold =
-      Number(data.todayGold ?? 0);
-
-    taskStates =
-      data.taskStates ?? {};
-
-    console.log(
-      "✅ 存檔載入成功",
-      data
-    );
-
-  } catch (error) {
-
-    console.error(
-      "❌ 載入存檔失敗",
-      error
-    );
-
   }
-
 }
 
+// ==========================================
+// EXP
+// ==========================================
 
-// ========================================
-// 📈 升級所需 EXP
-// ========================================
-
-function getRequiredExp() {
-
-  return 100 +
-    (currentLevel - 1) * 50;
-
+function getRequiredExp(level) {
+  return 100 + (level - 1) * 50;
 }
 
+// ==========================================
+// 任務完成
+// ==========================================
 
-// ========================================
-// 🎯 完成 / 取消任務
-// ========================================
+function toggleTask(element, expReward, goldReward) {
 
-function toggleTask(
-  element,
-  expReward,
-  goldReward
-) {
-
-  const isCompleted =
-    element.classList.toggle("completed");
-
-  const checkbox =
-    element.querySelector(
-      ".task-checkbox"
-    );
-
-  const taskName =
-    element.querySelector(
-      ".task-name"
-    );
-
-  if (!taskName) {
-    return;
-  }
+  if (!element) return;
 
   const taskId =
-    taskName.textContent.trim();
+    element.dataset.taskId ||
+    element.innerText.trim();
 
+  const alreadyCompleted =
+    element.classList.contains("completed");
 
-  // ====================================
-  // 完成任務
-  // ====================================
+  if (alreadyCompleted) {
 
-  if (isCompleted) {
+    element.classList.remove("completed");
 
-    currentExp += expReward;
+    gameData.completedTasks =
+      gameData.completedTasks.filter(
+        id => id !== taskId
+      );
 
-    currentGold += goldReward;
+    gameData.exp -= expReward;
+    gameData.gold -= goldReward;
 
-    todayExp += expReward;
-
-    todayGold += goldReward;
-
-    completedTasks++;
-
-    taskStates[taskId] = true;
-
-
-    if (checkbox) {
-      checkbox.textContent = "☑";
+    if (gameData.exp < 0) {
+      gameData.exp = 0;
     }
+
+    if (gameData.gold < 0) {
+      gameData.gold = 0;
+    }
+
+  } else {
+
+    element.classList.add("completed");
+
+    gameData.completedTasks.push(taskId);
+
+    gameData.exp += expReward;
+    gameData.gold += goldReward;
 
     checkLevelUp();
-
   }
-
-
-  // ====================================
-  // 取消任務
-  // ====================================
-
-  else {
-
-    currentExp -= expReward;
-
-    currentGold -= goldReward;
-
-    todayExp -= expReward;
-
-    todayGold -= goldReward;
-
-    completedTasks--;
-
-    taskStates[taskId] = false;
-
-
-    if (currentExp < 0) {
-      currentExp = 0;
-    }
-
-    if (currentGold < 0) {
-      currentGold = 0;
-    }
-
-    if (todayExp < 0) {
-      todayExp = 0;
-    }
-
-    if (todayGold < 0) {
-      todayGold = 0;
-    }
-
-
-    if (checkbox) {
-      checkbox.textContent = "☐";
-    }
-
-  }
-
 
   saveGame();
-
   updateUI();
-
 }
 
-
-// ========================================
-// ✨ 升級
-// ========================================
+// ==========================================
+// 升級
+// ==========================================
 
 function checkLevelUp() {
 
   let requiredExp =
-    getRequiredExp();
+    getRequiredExp(gameData.level);
 
-  while (
-    currentExp >= requiredExp
-  ) {
+  while (gameData.exp >= requiredExp) {
 
-    currentExp -= requiredExp;
+    gameData.exp -= requiredExp;
+    gameData.level += 1;
 
-    currentLevel++;
-
-    currentGold += 50;
-
-    todayGold += 50;
-
-    requiredExp =
-      getRequiredExp();
+    gameData.gold += 100;
 
     alert(
-      "✨ LEVEL UP！\n\n" +
-      "你已經升到 Lv." +
-      currentLevel +
-      "！\n\n" +
-      "🎁 升級獎勵：+50 金幣"
+      `🎉 升級成功！\n\n目前等級：Lv.${gameData.level}\n獎勵：+100 金幣`
     );
 
+    requiredExp =
+      getRequiredExp(gameData.level);
   }
-
 }
 
-
-// ========================================
-// 🔄 恢復任務
-// ========================================
+// ==========================================
+// 還原任務
+// ==========================================
 
 function restoreTasks() {
 
   const tasks =
     document.querySelectorAll(
-      ".task-item"
+      ".task"
     );
 
-  tasks.forEach(function(task) {
-
-    const taskName =
-      task.querySelector(
-        ".task-name"
-      );
-
-    const checkbox =
-      task.querySelector(
-        ".task-checkbox"
-      );
-
-    if (!taskName) {
-      return;
-    }
+  tasks.forEach(task => {
 
     const taskId =
-      taskName.textContent.trim();
-
+      task.dataset.taskId ||
+      task.innerText.trim();
 
     if (
-      taskStates[taskId] === true
+      gameData.completedTasks.includes(
+        taskId
+      )
     ) {
-
-      task.classList.add(
-        "completed"
-      );
-
-      if (checkbox) {
-        checkbox.textContent = "☑";
-      }
-
+      task.classList.add("completed");
     }
-
   });
-
 }
 
-
-// ========================================
-// 🖥️ 更新畫面
-// ========================================
+// ==========================================
+// 更新 UI
+// ==========================================
 
 function updateUI() {
 
-  const levelElement =
+  const level =
     document.getElementById(
       "player-level"
     );
 
-  if (levelElement) {
-
-    levelElement.textContent =
-      "Lv." + currentLevel;
-
-  }
-
-
-  const goldElement =
+  const gold =
     document.getElementById(
       "player-gold"
     );
 
-  if (goldElement) {
-
-    goldElement.textContent =
-      currentGold;
-
-  }
-
-
-  const expElement =
+  const currentExp =
     document.getElementById(
       "current-exp"
     );
 
-  if (expElement) {
-
-    expElement.textContent =
-      currentExp;
-
-  }
-
-
   const requiredExp =
-    getRequiredExp();
-
-
-  const requiredExpElement =
     document.getElementById(
       "required-exp"
     );
-
-  if (requiredExpElement) {
-
-    requiredExpElement.textContent =
-      requiredExp;
-
-  }
-
 
   const expBar =
     document.getElementById(
       "exp-bar"
     );
 
+  if (level) {
+    level.textContent =
+      gameData.level;
+  }
+
+  if (gold) {
+    gold.textContent =
+      gameData.gold;
+  }
+
+  const required =
+    getRequiredExp(
+      gameData.level
+    );
+
+  if (currentExp) {
+    currentExp.textContent =
+      gameData.exp;
+  }
+
+  if (requiredExp) {
+    requiredExp.textContent =
+      required;
+  }
+
   if (expBar) {
 
-    const percent =
+    const percentage =
       Math.min(
-        (currentExp / requiredExp) * 100,
+        (gameData.exp / required) * 100,
         100
       );
 
     expBar.style.width =
-      percent + "%";
-
+      `${percentage}%`;
   }
 
+  const tasks =
+    document.querySelectorAll(
+      ".task"
+    );
+
+  let completed = 0;
+
+  tasks.forEach(task => {
+
+    if (
+      task.classList.contains(
+        "completed"
+      )
+    ) {
+      completed++;
+    }
+  });
+
+  const total =
+    tasks.length;
+
+  const rate =
+    total === 0
+      ? 0
+      : Math.round(
+          completed / total * 100
+        );
 
   const completedCount =
     document.getElementById(
       "completed-count"
     );
 
-  if (completedCount) {
-
-    completedCount.textContent =
-      completedTasks +
-      " / " +
-      totalTasks;
-
-  }
-
-
-  const rate =
-    Math.round(
-      (completedTasks / totalTasks) * 100
+  const summaryRate =
+    document.getElementById(
+      "summary-rate"
     );
-
 
   const rateText =
     document.getElementById(
       "rate-text"
     );
 
-  if (rateText) {
-
-    rateText.textContent =
-      rate + "%";
-
-  }
-
-
-  const summaryRate =
-    document.getElementById(
-      "summary-rate"
-    );
-
-  if (summaryRate) {
-
-    summaryRate.textContent =
-      rate + "%";
-
-  }
-
-
   const rateBar =
     document.getElementById(
       "rate-bar"
     );
 
+  if (completedCount) {
+    completedCount.textContent =
+      `${completed} / ${total}`;
+  }
+
+  if (summaryRate) {
+    summaryRate.textContent =
+      `${rate}%`;
+  }
+
+  if (rateText) {
+    rateText.textContent =
+      `${rate}%`;
+  }
+
   if (rateBar) {
-
     rateBar.style.width =
-      rate + "%";
-
+      `${rate}%`;
   }
-
-
-  const todayExpElement =
-    document.getElementById(
-      "today-exp"
-    );
-
-  if (todayExpElement) {
-
-    todayExpElement.textContent =
-      "+" + todayExp;
-
-  }
-
-
-  const todayGoldElement =
-    document.getElementById(
-      "today-gold"
-    );
-
-  if (todayGoldElement) {
-
-    todayGoldElement.textContent =
-      "+" + todayGold;
-
-  }
-
 }
 
+// ==========================================
+// 任務分類
+// ==========================================
 
-// ========================================
-// 🗂️ 分類篩選
-// ========================================
+function filterTasks(category, button) {
 
-function filterTasks(
-  category,
-  button
-) {
+  currentFilter = category;
+
+  const tasks =
+    document.querySelectorAll(
+      ".task"
+    );
+
+  tasks.forEach(task => {
+
+    const taskCategory =
+      task.dataset.category;
+
+    if (
+      category === "all" ||
+      taskCategory === category
+    ) {
+      task.style.display = "";
+    } else {
+      task.style.display = "none";
+    }
+  });
 
   const buttons =
     document.querySelectorAll(
       ".filter-btn"
     );
 
-  buttons.forEach(function(btn) {
-
+  buttons.forEach(btn => {
     btn.classList.remove(
       "active"
     );
-
   });
 
-
   if (button) {
-
     button.classList.add(
       "active"
     );
-
   }
-
-
-  const tasks =
-    document.querySelectorAll(
-      ".task-item"
-    );
-
-
-  tasks.forEach(function(task) {
-
-    const taskCategory =
-      task.getAttribute(
-        "data-category"
-      );
-
-
-    if (
-      category === "all" ||
-      taskCategory === category
-    ) {
-
-      task.style.display =
-        "flex";
-
-    } else {
-
-      task.style.display =
-        "none";
-
-    }
-
-  });
-
 }
 
+// ==========================================
+// 顯示登入訊息
+// ==========================================
 
-// ========================================
-// 📝 註冊
-// ========================================
+function setAuthMessage(message) {
 
-async function registerUser() {
-
-  const email =
+  const box =
     document.getElementById(
-      "auth-email"
-    ).value.trim();
-
-  const password =
-    document.getElementById(
-      "auth-password"
-    ).value;
-
-
-  if (!email || !password) {
-
-    setAuthMessage(
-      "⚠️ 請輸入 Email 和密碼"
+      "auth-message"
     );
 
-    return;
-
+  if (box) {
+    box.textContent =
+      message;
   }
-
-
-  if (password.length < 6) {
-
-    setAuthMessage(
-      "⚠️ 密碼至少需要 6 碼"
-    );
-
-    return;
-
-  }
-
-
-  setAuthMessage(
-    "⏳ 正在建立帳號..."
-  );
-
-
-  try {
-
-    const {
-      data,
-      error
-    } =
-      await supabaseClient.auth.signUp({
-
-        email: email,
-
-        password: password
-
-      });
-
-
-    if (error) {
-
-      console.error(
-        "註冊錯誤",
-        error
-      );
-
-      setAuthMessage(
-        "❌ 註冊失敗：" +
-        error.message
-      );
-
-      return;
-
-    }
-
-
-    console.log(
-      "✅ 註冊成功",
-      data
-    );
-
-
-    if (data.session) {
-
-      setAuthMessage(
-        "✅ 註冊成功，已登入！"
-      );
-
-      await handleLoggedInUser(
-        data.user
-      );
-
-    } else {
-
-      setAuthMessage(
-        "✅ 註冊成功！請到 Email 收取驗證信，完成驗證後再登入。"
-      );
-
-    }
-
-  } catch (error) {
-
-    console.error(
-      error
-    );
-
-    setAuthMessage(
-      "❌ 發生錯誤，請稍後再試"
-    );
-
-  }
-
 }
 
-
-// ========================================
-// 🔑 登入
-// ========================================
-
-async function loginUser() {
-
-  const email =
-    document.getElementById(
-      "auth-email"
-    ).value.trim();
-
-  const password =
-    document.getElementById(
-      "auth-password"
-    ).value;
-
-
-  if (!email || !password) {
-
-    setAuthMessage(
-      "⚠️ 請輸入 Email 和密碼"
-    );
-
-    return;
-
-  }
-
-
-  setAuthMessage(
-    "⏳ 登入中..."
-  );
-
-
-  try {
-
-    const {
-      data,
-      error
-    } =
-      await supabaseClient.auth.signInWithPassword({
-
-        email: email,
-
-        password: password
-
-      });
-
-
-    if (error) {
-
-      console.error(
-        "登入錯誤",
-        error
-      );
-
-      setAuthMessage(
-        "❌ 登入失敗：" +
-        error.message
-      );
-
-      return;
-
-    }
-
-
-    console.log(
-      "✅ 登入成功",
-      data
-    );
-
-
-    await handleLoggedInUser(
-      data.user
-    );
-
-  } catch (error) {
-
-    console.error(
-      error
-    );
-
-    setAuthMessage(
-      "❌ 發生錯誤，請稍後再試"
-    );
-
-  }
-
-}
-
-
-// ========================================
-// 🚪 登出
-// ========================================
-
-async function logoutUser() {
-
-  const {
-    error
-  } =
-    await supabaseClient.auth.signOut();
-
-
-  if (error) {
-
-    console.error(
-      "登出錯誤",
-      error
-    );
-
-    setAuthMessage(
-      "❌ 登出失敗：" +
-      error.message
-    );
-
-    return;
-
-  }
-
-
-  currentUser = null;
-
-  setAuthMessage(
-    "👋 已登出"
-  );
-
-  updateAuthUI(
-    null
-  );
-
-}
-
-
-// ========================================
-// 👤 處理登入玩家
-// ========================================
-
-async function handleLoggedInUser(
-  user
-) {
-
-  if (!user) {
-    return;
-  }
-
-
-  currentUser = user;
-
-
-  console.log(
-    "👤 目前玩家：",
-    user.id
-  );
-
-
-  updateAuthUI(
-    user
-  );
-
-
-  await createProfileIfNeeded(
-    user
-  );
-
-}
-
-
-// ========================================
-// 🧙 建立玩家 Profile
-// ========================================
-
-async function createProfileIfNeeded(
-  user
-) {
-
-  try {
-
-    const {
-      data: profile,
-      error: selectError
-    } =
-      await supabaseClient
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .maybeSingle();
-
-
-    if (selectError) {
-
-      console.error(
-        "讀取 Profile 失敗",
-        selectError
-      );
-
-      return;
-
-    }
-
-
-    // 已經有角色
-    if (profile) {
-
-      console.log(
-        "✅ 找到現有角色",
-        profile
-      );
-
-      return;
-
-    }
-
-
-    // 沒有角色 → 建立
-    const {
-      error: insertError
-    } =
-      await supabaseClient
-        .from("profiles")
-        .insert({
-
-          id: user.id,
-
-          username:
-            user.email
-              ? user.email.split("@")[0]
-              : "玩家",
-
-          level: 1,
-
-          exp: 50,
-
-          gold: 100
-
-        });
-
-
-    if (insertError) {
-
-      console.error(
-        "建立 Profile 失敗",
-        insertError
-      );
-
-      setAuthMessage(
-        "⚠️ 登入成功，但建立角色失敗：" +
-        insertError.message
-      );
-
-      return;
-
-    }
-
-
-    console.log(
-      "🎮 玩家角色建立成功"
-    );
-
-  } catch (error) {
-
-    console.error(
-      "Profile 錯誤",
-      error
-    );
-
-  }
-
-}
-
-
-// ========================================
-// 🔐 更新登入畫面
-// ========================================
-
-function updateAuthUI(
-  user
-) {
+// ==========================================
+// 更新登入 UI
+// ==========================================
+
+function updateAuthUI(user) {
 
   const authForm =
     document.getElementById(
@@ -1073,70 +478,319 @@ function updateAuthUI(
       "user-email"
     );
 
-
-  if (!authForm || !loggedInArea) {
-    return;
-  }
-
-
   if (user) {
 
-    authForm.style.display =
-      "none";
+    if (authForm) {
+      authForm.style.display =
+        "none";
+    }
 
-    loggedInArea.style.display =
-      "block";
-
+    if (loggedInArea) {
+      loggedInArea.style.display =
+        "block";
+    }
 
     if (userEmail) {
-
       userEmail.textContent =
-        "👤 已登入：" +
-        (user.email || "玩家");
-
+        `目前登入：${user.email}`;
     }
+
+    setAuthMessage(
+      "🟢 已登入"
+    );
 
   } else {
 
-    authForm.style.display =
-      "block";
+    if (authForm) {
+      authForm.style.display =
+        "block";
+    }
 
-    loggedInArea.style.display =
-      "none";
+    if (loggedInArea) {
+      loggedInArea.style.display =
+        "none";
+    }
 
+    setAuthMessage(
+      "尚未登入"
+    );
   }
-
 }
 
+// ==========================================
+// 建立玩家資料
+// ==========================================
 
-// ========================================
-// 💬 顯示登入訊息
-// ========================================
+async function createProfileIfNeeded(user) {
 
-function setAuthMessage(
-  message
-) {
+  if (!supabaseClient) {
+    throw new Error(
+      "Supabase 尚未初始化"
+    );
+  }
 
-  const element =
-    document.getElementById(
-      "auth-message"
+  const {
+    data,
+    error
+  } = await supabaseClient
+    .from("profiles")
+    .select("*")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data) {
+
+    const username =
+      user.email
+        ? user.email.split("@")[0]
+        : "玩家";
+
+    const {
+      error: insertError
+    } = await supabaseClient
+      .from("profiles")
+      .insert({
+        id: user.id,
+        username: username,
+        level: 1,
+        exp: 50,
+        gold: 100
+      });
+
+    if (insertError) {
+      throw insertError;
+    }
+  }
+}
+
+// ==========================================
+// 註冊
+// ==========================================
+
+async function registerUser() {
+
+  console.log("registerUser 被執行");
+
+  if (!supabaseClient) {
+
+    setAuthMessage(
+      "🔴 Supabase 尚未連線"
     );
 
-  if (element) {
-
-    element.textContent =
-      message;
-
+    return;
   }
 
+  const email =
+    document.getElementById(
+      "auth-email"
+    )?.value.trim();
+
+  const password =
+    document.getElementById(
+      "auth-password"
+    )?.value;
+
+  if (!email || !password) {
+
+    setAuthMessage(
+      "⚠️ 請輸入 Email 和密碼"
+    );
+
+    return;
+  }
+
+  if (password.length < 6) {
+
+    setAuthMessage(
+      "⚠️ 密碼至少需要 6 碼"
+    );
+
+    return;
+  }
+
+  setAuthMessage(
+    "⏳ 正在註冊..."
+  );
+
+  try {
+
+    const {
+      data,
+      error
+    } = await supabaseClient.auth.signUp({
+      email,
+      password
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    if (data.user) {
+
+      currentUser =
+        data.user;
+
+      await createProfileIfNeeded(
+        data.user
+      );
+
+      updateAuthUI(
+        data.user
+      );
+
+      setAuthMessage(
+        "🟢 註冊成功！"
+      );
+
+    } else {
+
+      setAuthMessage(
+        "📧 註冊已送出，請檢查 Email 是否需要驗證。"
+      );
+    }
+
+  } catch (error) {
+
+    console.error(
+      "註冊錯誤：",
+      error
+    );
+
+    setAuthMessage(
+      `🔴 註冊失敗：${error.message}`
+    );
+  }
 }
 
+// ==========================================
+// 登入
+// ==========================================
 
-// ========================================
-// 🔎 檢查目前登入狀態
-// ========================================
+async function loginUser() {
+
+  console.log("loginUser 被執行");
+
+  if (!supabaseClient) {
+
+    setAuthMessage(
+      "🔴 Supabase 尚未連線"
+    );
+
+    return;
+  }
+
+  const email =
+    document.getElementById(
+      "auth-email"
+    )?.value.trim();
+
+  const password =
+    document.getElementById(
+      "auth-password"
+    )?.value;
+
+  if (!email || !password) {
+
+    setAuthMessage(
+      "⚠️ 請輸入 Email 和密碼"
+    );
+
+    return;
+  }
+
+  setAuthMessage(
+    "⏳ 正在登入..."
+  );
+
+  try {
+
+    const {
+      data,
+      error
+    } = await supabaseClient.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    currentUser =
+      data.user;
+
+    await createProfileIfNeeded(
+      data.user
+    );
+
+    updateAuthUI(
+      data.user
+    );
+
+    setAuthMessage(
+      "🟢 登入成功！"
+    );
+
+  } catch (error) {
+
+    console.error(
+      "登入錯誤：",
+      error
+    );
+
+    setAuthMessage(
+      `🔴 登入失敗：${error.message}`
+    );
+  }
+}
+
+// ==========================================
+// 登出
+// ==========================================
+
+async function logoutUser() {
+
+  if (!supabaseClient) {
+    return;
+  }
+
+  const {
+    error
+  } =
+    await supabaseClient.auth.signOut();
+
+  if (error) {
+
+    setAuthMessage(
+      `🔴 登出失敗：${error.message}`
+    );
+
+    return;
+  }
+
+  currentUser = null;
+
+  updateAuthUI(null);
+
+  setAuthMessage(
+    "已登出"
+  );
+}
+
+// ==========================================
+// 檢查登入狀態
+// ==========================================
 
 async function checkAuth() {
+
+  if (!supabaseClient) {
+    return;
+  }
 
   try {
 
@@ -1146,109 +800,74 @@ async function checkAuth() {
     } =
       await supabaseClient.auth.getSession();
 
-
     if (error) {
-
-      console.error(
-        "取得登入狀態失敗",
-        error
-      );
-
-      return;
-
+      throw error;
     }
 
+    if (data.session) {
 
-    const session =
-      data.session;
+      currentUser =
+        data.session.user;
 
-
-    if (session && session.user) {
-
-      await handleLoggedInUser(
-        session.user
+      updateAuthUI(
+        currentUser
       );
 
     } else {
 
-      updateAuthUI(
-        null
-      );
-
+      updateAuthUI(null);
     }
 
-
-    // 監聽登入狀態變化
-
     supabaseClient.auth.onAuthStateChange(
-      async function(
-        event,
-        session
-      ) {
+      async (_event, session) => {
 
-        console.log(
-          "Auth 狀態：",
-          event
+        currentUser =
+          session?.user || null;
+
+        updateAuthUI(
+          currentUser
         );
-
-
-        if (
-          session &&
-          session.user
-        ) {
-
-          await handleLoggedInUser(
-            session.user
-          );
-
-        } else {
-
-          currentUser = null;
-
-          updateAuthUI(
-            null
-          );
-
-        }
-
       }
     );
 
   } catch (error) {
 
     console.error(
-      "Auth 檢查錯誤",
+      "登入狀態檢查失敗：",
       error
     );
 
+    showDiagnostic(
+      `🔴 <strong>Supabase 連線錯誤</strong><br>${error.message}`,
+      "error"
+    );
   }
-
 }
 
-
-// ========================================
-// 🚀 網頁啟動
-// ========================================
+// ==========================================
+// 網頁啟動
+// ==========================================
 
 document.addEventListener(
   "DOMContentLoaded",
-  async function() {
+  async () => {
 
     console.log(
-      "⚔️ 神級人生逆襲系統 V0.6 啟動"
+      "神級人生逆襲系統啟動"
     );
 
-
-    // 原本的 RPG 存檔
     loadGame();
 
     restoreTasks();
 
     updateUI();
 
+    const connected =
+      initializeSupabase();
 
-    // Supabase 登入
-    await checkAuth();
+    if (connected) {
+      await checkAuth();
+    }
 
   }
 );
