@@ -24,10 +24,6 @@ body {
   margin: 0 auto;
 }
 
-/* =========================
-   卡片
-========================= */
-
 .card {
   background: rgba(24, 28, 40, 0.94);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -38,7 +34,7 @@ body {
 }
 
 /* =========================
-   系統標題
+   玩家資訊
 ========================= */
 
 .header-card {
@@ -102,6 +98,40 @@ body {
 }
 
 /* =========================
+   今日進度
+========================= */
+
+.daily-summary h2 {
+  font-size: 20px;
+  margin-bottom: 15px;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.summary-item {
+  background: #151925;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  padding: 14px;
+  text-align: center;
+}
+
+.summary-label {
+  display: block;
+  color: #9ca5bd;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.summary-item strong {
+  font-size: 19px;
+}
+
+/* =========================
    任務區
 ========================= */
 
@@ -111,7 +141,7 @@ body {
 }
 
 /* =========================
-   任務分類按鈕
+   任務分類
 ========================= */
 
 .task-filter {
@@ -188,29 +218,73 @@ body {
   flex-shrink: 0;
 }
 
-.task-name {
+.task-info {
   flex: 1;
-  font-weight: 600;
-  line-height: 1.5;
+  min-width: 0;
 }
 
-.task-name small {
+.task-info small {
   display: block;
   color: #9ca5bd;
   font-size: 11px;
-  font-weight: 500;
-  margin-bottom: 2px;
+  margin-bottom: 3px;
 }
 
+.task-name {
+  display: block;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+/* =========================
+   任務難度
+========================= */
+
+.difficulty {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.difficulty.easy {
+  color: #72e6a8;
+}
+
+.difficulty.normal {
+  color: #79aaff;
+}
+
+.difficulty.hard {
+  color: #b18cff;
+}
+
+.difficulty.challenge {
+  color: #ff7777;
+}
+
+/* =========================
+   任務獎勵
+========================= */
+
 .reward {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
   color: #a98cff;
   font-size: 13px;
   font-weight: 700;
   white-space: nowrap;
 }
 
+.gold-reward {
+  color: #ffd76a;
+  font-size: 12px;
+}
+
 /* =========================
-   已完成任務
+   已完成
 ========================= */
 
 .task-item.completed {
@@ -276,6 +350,18 @@ body {
     gap: 10px;
   }
 
+  .summary-grid {
+    gap: 8px;
+  }
+
+  .summary-item {
+    padding: 12px 8px;
+  }
+
+  .summary-item strong {
+    font-size: 17px;
+  }
+
   .task-item {
     padding: 13px;
   }
@@ -285,7 +371,11 @@ body {
   }
 
   .reward {
-    font-size: 12px;
+    font-size: 11px;
+  }
+
+  .gold-reward {
+    font-size: 10px;
   }
 
   .filter-btn {
