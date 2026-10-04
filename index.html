@@ -26,6 +26,109 @@
 
 
     <!-- =========================
+         🔐 帳號登入
+    ========================== -->
+
+    <section
+      class="card"
+      id="auth-section"
+      style="margin-bottom: 20px;"
+    >
+
+      <h2>🔐 玩家登入</h2>
+
+      <div
+        id="auth-message"
+        style="margin-bottom: 12px;"
+      >
+        尚未登入
+      </div>
+
+
+      <!-- 登入 / 註冊表單 -->
+
+      <div id="auth-form">
+
+        <input
+          type="email"
+          id="auth-email"
+          placeholder="Email"
+          autocomplete="email"
+          style="
+            width: 100%;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+            padding: 12px;
+          "
+        >
+
+        <input
+          type="password"
+          id="auth-password"
+          placeholder="密碼（至少 6 碼）"
+          autocomplete="current-password"
+          style="
+            width: 100%;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+            padding: 12px;
+          "
+        >
+
+
+        <div
+          style="
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+          "
+        >
+
+          <button
+            type="button"
+            onclick="registerUser()"
+          >
+            📝 註冊
+          </button>
+
+          <button
+            type="button"
+            onclick="loginUser()"
+          >
+            🔑 登入
+          </button>
+
+        </div>
+
+      </div>
+
+
+      <!-- 登入後 -->
+
+      <div
+        id="logged-in-area"
+        style="display: none;"
+      >
+
+        <div
+          id="user-email"
+          style="margin-bottom: 12px;"
+        ></div>
+
+        <button
+          type="button"
+          onclick="logoutUser()"
+        >
+          🚪 登出
+        </button>
+
+      </div>
+
+    </section>
+
+
+
+    <!-- =========================
          玩家資訊
     ========================== -->
 
@@ -467,6 +570,10 @@
 
   </div>
 
+
+  <!-- Supabase -->
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 
   <!-- JavaScript -->
