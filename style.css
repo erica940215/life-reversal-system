@@ -2,154 +2,293 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 body {
-  background-color: #0f111a;
-  color: #e6edf3;
-  display: flex;
-  justify-content: center;
-  padding: 16px;
   min-height: 100vh;
+  background:
+    radial-gradient(circle at top, #252b3d 0%, #10131c 45%, #080a10 100%);
+  color: #f5f5f5;
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  padding: 20px;
 }
 
 .container {
   width: 100%;
-  max-width: 420px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  max-width: 700px;
+  margin: 0 auto;
 }
 
+/* =========================
+   卡片
+========================= */
+
 .card {
-  background: #161b22;
-  border: 1px solid #30363d;
-  border-radius: 12px;
-  padding: 18px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  background: rgba(24, 28, 40, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  padding: 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+/* =========================
+   系統標題
+========================= */
+
+.header-card {
+  text-align: center;
 }
 
 .system-title {
-  font-size: 1.25rem;
-  font-weight: bold;
-  text-align: center;
-  color: #58a6ff;
-  margin-bottom: 12px;
+  font-size: 26px;
+  font-weight: 800;
+  margin-bottom: 18px;
+  letter-spacing: 1px;
 }
 
 .stats-row {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
-  margin-bottom: 8px;
+  gap: 15px;
+  margin-bottom: 18px;
 }
 
 .badge {
-  background: #238636;
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-weight: bold;
-  font-size: 0.9rem;
+  display: inline-block;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: #343b55;
+  border: 1px solid #59627f;
+  font-weight: 700;
 }
 
 .gold-text {
-  color: #f1e05a;
-  font-weight: bold;
+  color: #ffd76a;
+  font-weight: 700;
 }
 
-.exp-container, .rate-container {
+/* =========================
+   EXP
+========================= */
+
+.exp-container {
   width: 100%;
-  height: 10px;
-  background-color: #21262d;
-  border-radius: 5px;
+  height: 14px;
+  background: #0d1018;
+  border-radius: 999px;
   overflow: hidden;
-  margin-top: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .exp-bar {
   height: 100%;
-  background: linear-gradient(90deg, #1f6feb, #58a6ff);
+  width: 50%;
+  background: linear-gradient(90deg, #7c5cff, #b18cff);
+  border-radius: inherit;
   transition: width 0.3s ease;
 }
 
 .exp-text {
-  text-align: right;
-  font-size: 0.75rem;
-  color: #8b949e;
-  margin-top: 4px;
+  margin-top: 8px;
+  color: #bfc5d6;
+  font-size: 14px;
 }
 
+/* =========================
+   任務區
+========================= */
+
 .task-card h2 {
-  font-size: 1.1rem;
-  margin-bottom: 12px;
-  border-bottom: 1px solid #30363d;
-  padding-bottom: 6px;
+  font-size: 21px;
+  margin-bottom: 15px;
 }
+
+/* =========================
+   任務分類按鈕
+========================= */
+
+.task-filter {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+}
+
+.task-filter::-webkit-scrollbar {
+  height: 4px;
+}
+
+.filter-btn {
+  flex-shrink: 0;
+  border: 1px solid #343b55;
+  background: #151925;
+  color: #bfc5d6;
+  border-radius: 999px;
+  padding: 8px 13px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.filter-btn:hover {
+  background: #242a3b;
+}
+
+.filter-btn.active {
+  background: #51417f;
+  border-color: #8067c7;
+  color: #ffffff;
+}
+
+/* =========================
+   任務列表
+========================= */
 
 .task-list {
   list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
 }
 
 .task-item {
   display: flex;
   align-items: center;
-  background: #21262d;
-  padding: 10px 14px;
-  border-radius: 8px;
+  gap: 12px;
+  padding: 15px;
+  margin-bottom: 10px;
+  background: #151925;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
   cursor: pointer;
-  border: 1px solid transparent;
-  user-select: none;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.task-item:hover {
+  transform: translateY(-2px);
+  background: #1c2130;
+  border-color: rgba(255, 255, 255, 0.16);
 }
 
 .task-item:active {
-  border-color: #58a6ff;
+  transform: scale(0.98);
 }
 
 .task-checkbox {
-  margin-right: 12px;
-  font-size: 1.1rem;
+  font-size: 22px;
+  width: 25px;
+  flex-shrink: 0;
 }
 
 .task-name {
-  flex-grow: 1;
+  flex: 1;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.task-name small {
+  display: block;
+  color: #9ca5bd;
+  font-size: 11px;
+  font-weight: 500;
+  margin-bottom: 2px;
 }
 
 .reward {
-  font-size: 0.8rem;
-  color: #7ee787;
+  color: #a98cff;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
+/* =========================
+   已完成任務
+========================= */
+
 .task-item.completed {
-  opacity: 0.5;
+  opacity: 0.55;
+  background: #10131b;
+}
+
+.task-item.completed .task-name {
   text-decoration: line-through;
 }
 
-.task-item.completed .task-checkbox::before {
-  content: "☑";
-}
-
 .task-item.completed .task-checkbox {
-  visibility: hidden;
-  position: relative;
+  color: #72e6a8;
 }
 
-.task-item.completed .task-checkbox::before {
-  visibility: visible;
-  position: absolute;
-  left: 0;
-}
+/* =========================
+   完成率
+========================= */
 
 .rate-title {
-  font-size: 0.9rem;
-  color: #8b949e;
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.rate-container {
+  width: 100%;
+  height: 14px;
+  background: #0d1018;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .rate-bar {
   height: 100%;
-  background: #238636;
+  width: 0%;
+  background: linear-gradient(90deg, #42d392, #79e6a8);
+  border-radius: inherit;
   transition: width 0.3s ease;
+}
+
+/* =========================
+   手機版
+========================= */
+
+@media (max-width: 600px) {
+
+  body {
+    padding: 12px;
+  }
+
+  .card {
+    padding: 16px;
+    border-radius: 15px;
+  }
+
+  .system-title {
+    font-size: 22px;
+  }
+
+  .stats-row {
+    gap: 10px;
+  }
+
+  .task-item {
+    padding: 13px;
+  }
+
+  .task-name {
+    font-size: 14px;
+  }
+
+  .reward {
+    font-size: 12px;
+  }
+
+  .filter-btn {
+    padding: 7px 11px;
+  }
 }
