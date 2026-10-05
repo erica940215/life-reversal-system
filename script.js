@@ -1,8 +1,9 @@
 // ==========================================
 // 神級人生逆襲系統
-// V0.7
-// Supabase Auth + Profiles
+// V0.8
+// Supabase Auth + Profiles + Tasks
 // ==========================================
+
 
 // ==========================================
 // Supabase 設定
@@ -17,6 +18,7 @@ const SUPABASE_PUBLISHABLE_KEY =
 let supabaseClient = null;
 let currentUser = null;
 
+
 // ==========================================
 // RPG 遊戲資料
 // ==========================================
@@ -30,25 +32,45 @@ let gameData = {
 
 let currentFilter = "all";
 
+
 // ==========================================
 // Supabase 診斷訊息
 // ==========================================
 
 function showDiagnostic(message, type = "info") {
-  let box = document.getElementById("supabase-diagnostic");
+
+  let box =
+    document.getElementById(
+      "supabase-diagnostic"
+    );
 
   if (!box) {
-    box = document.createElement("div");
-    box.id = "supabase-diagnostic";
 
-    box.style.margin = "15px 0";
-    box.style.padding = "14px";
-    box.style.borderRadius = "10px";
-    box.style.fontSize = "14px";
-    box.style.lineHeight = "1.6";
+    box =
+      document.createElement("div");
+
+    box.id =
+      "supabase-diagnostic";
+
+    box.style.margin =
+      "15px 0";
+
+    box.style.padding =
+      "14px";
+
+    box.style.borderRadius =
+      "10px";
+
+    box.style.fontSize =
+      "14px";
+
+    box.style.lineHeight =
+      "1.6";
 
     const authSection =
-      document.getElementById("auth-section");
+      document.getElementById(
+        "auth-section"
+      );
 
     if (authSection) {
       authSection.appendChild(box);
@@ -58,26 +80,45 @@ function showDiagnostic(message, type = "info") {
   }
 
   if (type === "success") {
-    box.style.background = "#163d27";
-    box.style.border = "1px solid #39d98a";
+
+    box.style.background =
+      "#163d27";
+
+    box.style.border =
+      "1px solid #39d98a";
+
   } else if (type === "error") {
-    box.style.background = "#421d1d";
-    box.style.border = "1px solid #ff6b6b";
+
+    box.style.background =
+      "#421d1d";
+
+    box.style.border =
+      "1px solid #ff6b6b";
+
   } else {
-    box.style.background = "#1d2d42";
-    box.style.border = "1px solid #6ea8fe";
+
+    box.style.background =
+      "#1d2d42";
+
+    box.style.border =
+      "1px solid #6ea8fe";
   }
 
-  box.innerHTML = message;
+  box.innerHTML =
+    message;
 }
+
 
 // ==========================================
 // 初始化 Supabase
 // ==========================================
 
 function initializeSupabase() {
+
   try {
+
     if (!window.supabase) {
+
       showDiagnostic(
         "🔴 <strong>Supabase JS 沒有成功載入</strong><br>" +
         "網站找不到 Supabase 程式庫。",
@@ -102,6 +143,7 @@ function initializeSupabase() {
     return true;
 
   } catch (error) {
+
     console.error(
       "Supabase 初始化失敗：",
       error
@@ -117,38 +159,48 @@ function initializeSupabase() {
   }
 }
 
+
 // ==========================================
 // 日期
 // ==========================================
 
 function getToday() {
-  const date = new Date();
 
-  const year = date.getFullYear();
+  const date =
+    new Date();
+
+  const year =
+    date.getFullYear();
 
   const month =
-    String(date.getMonth() + 1)
-      .padStart(2, "0");
+    String(
+      date.getMonth() + 1
+    ).padStart(2, "0");
 
   const day =
-    String(date.getDate())
-      .padStart(2, "0");
+    String(
+      date.getDate()
+    ).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
 }
+
 
 // ==========================================
 // LocalStorage
 // ==========================================
 
 function saveGame() {
+
   localStorage.setItem(
     "life-reversal-game",
     JSON.stringify(gameData)
   );
 }
 
+
 function loadGame() {
+
   const saved =
     localStorage.getItem(
       "life-reversal-game"
@@ -159,9 +211,12 @@ function loadGame() {
   }
 
   try {
+
     gameData =
       JSON.parse(saved);
+
   } catch (error) {
+
     console.error(
       "讀取 LocalStorage 失敗：",
       error
@@ -169,16 +224,403 @@ function loadGame() {
   }
 }
 
+
 // ==========================================
 // EXP 計算
 // ==========================================
 
 function getRequiredExp(level) {
-  return 100 + (level - 1) * 50;
+
+  return (
+    100 +
+    (level - 1) * 50
+  );
 }
+
+
+// ==========================================
+// Supabase 任務
+// ==========================================
+
+async function loadTodayTasks() {
+
+  if (!supabaseClient) {
+    return;
+  }
+
+  if (!currentUser) {
+    return;
+  }
+
+  try {
+
+    const today =
+      getToday();
+
+    const {
+      data,
+      error
+    } =
+      await supabaseClient
+        .from("tasks")
+        .select(
+          "id, title, category, difficulty, exp_reward, gold_reward, completed, completed_at, task_date"
+        )
+        .eq(
+          "user_id",
+          currentUser.id
+        )
+        .eq(
+          "task_date",
+          today
+        )
+        .order(
+          "id",
+          {
+            ascending: true
+          }
+        );
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data || data.length === 0) {
+
+      showDiagnostic(
+        "🟡 <strong>目前沒有今天的任務</strong><br>" +
+        "Supabase 中找不到今日任務。",
+        "info"
+      );
+
+      return;
+    }
+
+    renderTasks(
+      data
+    );
+
+    gameData.completedTasks =
+      data
+        .filter(
+          task =>
+            task.completed
+        )
+        .map(
+          task =>
+            String(task.id)
+        );
+
+    updateUI();
+
+    showDiagnostic(
+      "🟢 <strong>今日任務載入成功</strong><br>" +
+      `共 ${data.length} 個任務`,
+      "success"
+    );
+
+  } catch (error) {
+
+    console.error(
+      "讀取任務失敗：",
+      error
+    );
+
+    showDiagnostic(
+      `🔴 <strong>讀取任務失敗</strong><br>${error.message}`,
+      "error"
+    );
+  }
+}
+
+
+// ==========================================
+// 將 Supabase 任務顯示到網站
+// ==========================================
+
+function renderTasks(tasks) {
+
+  const taskContainer =
+    document.querySelector(
+      ".tasks-container"
+    );
+
+  if (!taskContainer) {
+
+    console.warn(
+      "找不到 .tasks-container"
+    );
+
+    return;
+  }
+
+  taskContainer.innerHTML =
+    "";
+
+  tasks.forEach(
+    task => {
+
+      const taskElement =
+        document.createElement(
+          "div"
+        );
+
+      taskElement.className =
+        "task";
+
+      taskElement.dataset.taskId =
+        String(task.id);
+
+      taskElement.dataset.category =
+        task.category;
+
+      taskElement.dataset.difficulty =
+        task.difficulty;
+
+      if (task.completed) {
+
+        taskElement.classList.add(
+          "completed"
+        );
+      }
+
+      taskElement.innerHTML = `
+        <div class="task-content">
+          <div class="task-title">
+            ${escapeHtml(task.title)}
+          </div>
+
+          <div class="task-meta">
+            <span>
+              ${getCategoryName(task.category)}
+            </span>
+
+            <span>
+              ${getDifficultyName(task.difficulty)}
+            </span>
+
+            <span>
+              +${task.exp_reward} EXP
+            </span>
+
+            <span>
+              +${task.gold_reward} Gold
+            </span>
+          </div>
+        </div>
+
+        <div class="task-status">
+          ${task.completed ? "✅" : "⬜"}
+        </div>
+      `;
+
+      taskElement.addEventListener(
+        "click",
+        () => {
+
+          toggleSupabaseTask(
+            taskElement,
+            task
+          );
+        }
+      );
+
+      taskContainer.appendChild(
+        taskElement
+      );
+    }
+  );
+
+  filterTasks(
+    currentFilter
+  );
+}
+
+
+// ==========================================
+// 安全處理文字
+// ==========================================
+
+function escapeHtml(text) {
+
+  const div =
+    document.createElement(
+      "div"
+    );
+
+  div.textContent =
+    text ?? "";
+
+  return div.innerHTML;
+}
+
+
+// ==========================================
+// 任務分類名稱
+// ==========================================
+
+function getCategoryName(
+  category
+) {
+
+  const names = {
+
+    toeic:
+      "🎧 多益",
+
+    study:
+      "📚 學習",
+
+    focus:
+      "🎯 專注",
+
+    health:
+      "❤️ 健康"
+  };
+
+  return (
+    names[category] ||
+    category
+  );
+}
+
+
+// ==========================================
+// 任務難度名稱
+// ==========================================
+
+function getDifficultyName(
+  difficulty
+) {
+
+  const names = {
+
+    easy:
+      "簡單",
+
+    normal:
+      "普通",
+
+    hard:
+      "困難"
+  };
+
+  return (
+    names[difficulty] ||
+    difficulty
+  );
+}
+
 
 // ==========================================
 // 任務完成
+// ==========================================
+
+async function toggleSupabaseTask(
+  element,
+  task
+) {
+
+  if (!currentUser) {
+
+    setAuthMessage(
+      "⚠️ 請先登入"
+    );
+
+    return;
+  }
+
+  const isCompleted =
+    element.classList.contains(
+      "completed"
+    );
+
+  // ========================================
+  // 目前這一版只更新畫面與資料庫任務狀態
+  // EXP / Gold 雲端同步下一版處理
+  // ========================================
+
+  try {
+
+    const newStatus =
+      !isCompleted;
+
+    const {
+      error
+    } =
+      await supabaseClient
+        .from("tasks")
+        .update({
+          completed:
+            newStatus,
+
+          completed_at:
+            newStatus
+              ? new Date().toISOString()
+              : null
+        })
+        .eq(
+          "id",
+          task.id
+        )
+        .eq(
+          "user_id",
+          currentUser.id
+        );
+
+    if (error) {
+      throw error;
+    }
+
+    if (newStatus) {
+
+      element.classList.add(
+        "completed"
+      );
+
+      if (
+        !gameData.completedTasks.includes(
+          String(task.id)
+        )
+      ) {
+
+        gameData.completedTasks.push(
+          String(task.id)
+        );
+      }
+
+    } else {
+
+      element.classList.remove(
+        "completed"
+      );
+
+      gameData.completedTasks =
+        gameData.completedTasks.filter(
+          id =>
+            id !== String(task.id)
+        );
+    }
+
+    updateUI();
+
+  } catch (error) {
+
+    console.error(
+      "更新任務失敗：",
+      error
+    );
+
+    showDiagnostic(
+      `🔴 <strong>更新任務失敗</strong><br>${error.message}`,
+      "error"
+    );
+  }
+}
+
+
+// ==========================================
+// 舊版 toggleTask 相容
 // ==========================================
 
 function toggleTask(
@@ -186,67 +628,12 @@ function toggleTask(
   expReward,
   goldReward
 ) {
-  if (!element) {
-    return;
-  }
 
-  const taskId =
-    element.dataset.taskId ||
-    element.innerText.trim();
-
-  const alreadyCompleted =
-    element.classList.contains(
-      "completed"
-    );
-
-  if (alreadyCompleted) {
-
-    element.classList.remove(
-      "completed"
-    );
-
-    gameData.completedTasks =
-      gameData.completedTasks.filter(
-        id => id !== taskId
-      );
-
-    gameData.exp -= expReward;
-
-    gameData.gold -= goldReward;
-
-    if (gameData.exp < 0) {
-      gameData.exp = 0;
-    }
-
-    if (gameData.gold < 0) {
-      gameData.gold = 0;
-    }
-
-  } else {
-
-    element.classList.add(
-      "completed"
-    );
-
-    if (
-      !gameData.completedTasks.includes(
-        taskId
-      )
-    ) {
-      gameData.completedTasks.push(
-        taskId
-      );
-    }
-
-    gameData.exp += expReward;
-    gameData.gold += goldReward;
-
-    checkLevelUp();
-  }
-
-  saveGame();
-  updateUI();
+  console.warn(
+    "目前已改用 Supabase 任務系統。"
+  );
 }
+
 
 // ==========================================
 // 升級
@@ -263,11 +650,14 @@ function checkLevelUp() {
     gameData.exp >= requiredExp
   ) {
 
-    gameData.exp -= requiredExp;
+    gameData.exp -=
+      requiredExp;
 
-    gameData.level += 1;
+    gameData.level +=
+      1;
 
-    gameData.gold += 100;
+    gameData.gold +=
+      100;
 
     alert(
       `🎉 升級成功！\n\n` +
@@ -282,34 +672,6 @@ function checkLevelUp() {
   }
 }
 
-// ==========================================
-// 還原任務
-// ==========================================
-
-function restoreTasks() {
-
-  const tasks =
-    document.querySelectorAll(
-      ".task"
-    );
-
-  tasks.forEach(task => {
-
-    const taskId =
-      task.dataset.taskId ||
-      task.innerText.trim();
-
-    if (
-      gameData.completedTasks.includes(
-        taskId
-      )
-    ) {
-      task.classList.add(
-        "completed"
-      );
-    }
-  });
-}
 
 // ==========================================
 // 更新 UI
@@ -343,11 +705,13 @@ function updateUI() {
     );
 
   if (level) {
+
     level.textContent =
       gameData.level;
   }
 
   if (gold) {
+
     gold.textContent =
       gameData.gold;
   }
@@ -358,11 +722,13 @@ function updateUI() {
     );
 
   if (currentExp) {
+
     currentExp.textContent =
       gameData.exp;
   }
 
   if (requiredExp) {
+
     requiredExp.textContent =
       required;
   }
@@ -371,8 +737,10 @@ function updateUI() {
 
     const percentage =
       Math.min(
-        (gameData.exp / required) *
-          100,
+        (
+          gameData.exp /
+          required
+        ) * 100,
         100
       );
 
@@ -385,18 +753,22 @@ function updateUI() {
       ".task"
     );
 
-  let completed = 0;
+  let completed =
+    0;
 
-  tasks.forEach(task => {
+  tasks.forEach(
+    task => {
 
-    if (
-      task.classList.contains(
-        "completed"
-      )
-    ) {
-      completed++;
+      if (
+        task.classList.contains(
+          "completed"
+        )
+      ) {
+
+        completed++;
+      }
     }
-  });
+  );
 
   const total =
     tasks.length;
@@ -405,8 +777,10 @@ function updateUI() {
     total === 0
       ? 0
       : Math.round(
-          (completed / total) *
-            100
+          (
+            completed /
+            total
+          ) * 100
         );
 
   const completedCount =
@@ -430,25 +804,30 @@ function updateUI() {
     );
 
   if (completedCount) {
+
     completedCount.textContent =
       `${completed} / ${total}`;
   }
 
   if (summaryRate) {
+
     summaryRate.textContent =
       `${rate}%`;
   }
 
   if (rateText) {
+
     rateText.textContent =
       `${rate}%`;
   }
 
   if (rateBar) {
+
     rateBar.style.width =
       `${rate}%`;
   }
 }
+
 
 // ==========================================
 // 任務分類
@@ -467,46 +846,58 @@ function filterTasks(
       ".task"
     );
 
-  tasks.forEach(task => {
+  tasks.forEach(
+    task => {
 
-    const taskCategory =
-      task.dataset.category;
+      const taskCategory =
+        task.dataset.category;
 
-    if (
-      category === "all" ||
-      taskCategory === category
-    ) {
-      task.style.display = "";
-    } else {
-      task.style.display =
-        "none";
+      if (
+        category === "all" ||
+        taskCategory === category
+      ) {
+
+        task.style.display =
+          "";
+
+      } else {
+
+        task.style.display =
+          "none";
+      }
     }
-  });
+  );
 
   const buttons =
     document.querySelectorAll(
       ".filter-btn"
     );
 
-  buttons.forEach(btn => {
+  buttons.forEach(
+    btn => {
 
-    btn.classList.remove(
-      "active"
-    );
-  });
+      btn.classList.remove(
+        "active"
+      );
+    }
+  );
 
   if (button) {
+
     button.classList.add(
       "active"
     );
   }
 }
 
+
 // ==========================================
 // Auth 訊息
 // ==========================================
 
-function setAuthMessage(message) {
+function setAuthMessage(
+  message
+) {
 
   const box =
     document.getElementById(
@@ -514,16 +905,20 @@ function setAuthMessage(message) {
     );
 
   if (box) {
+
     box.textContent =
       message;
   }
 }
 
+
 // ==========================================
 // Auth UI
 // ==========================================
 
-function updateAuthUI(user) {
+function updateAuthUI(
+  user
+) {
 
   const authForm =
     document.getElementById(
@@ -543,16 +938,19 @@ function updateAuthUI(user) {
   if (user) {
 
     if (authForm) {
+
       authForm.style.display =
         "none";
     }
 
     if (loggedInArea) {
+
       loggedInArea.style.display =
         "block";
     }
 
     if (userEmail) {
+
       userEmail.textContent =
         `目前登入：${user.email}`;
     }
@@ -564,11 +962,13 @@ function updateAuthUI(user) {
   } else {
 
     if (authForm) {
+
       authForm.style.display =
         "block";
     }
 
     if (loggedInArea) {
+
       loggedInArea.style.display =
         "none";
     }
@@ -579,11 +979,14 @@ function updateAuthUI(user) {
   }
 }
 
+
 // ==========================================
 // 讀取自己的玩家資料
 // ==========================================
 
-async function loadProfile(user) {
+async function loadProfile(
+  user
+) {
 
   if (!supabaseClient) {
     return;
@@ -625,7 +1028,6 @@ async function loadProfile(user) {
       return;
     }
 
-    // 把雲端玩家資料載入遊戲
     gameData.level =
       data.level ?? 1;
 
@@ -659,6 +1061,7 @@ async function loadProfile(user) {
     );
   }
 }
+
 
 // ==========================================
 // 註冊
@@ -748,14 +1151,6 @@ async function registerUser() {
     currentUser =
       data.user;
 
-    /*
-      注意：
-      這裡不再 INSERT profiles。
-
-      profiles 會由 Supabase Database Trigger
-      自動建立。
-    */
-
     updateAuthUI(
       data.user
     );
@@ -765,6 +1160,8 @@ async function registerUser() {
       await loadProfile(
         data.user
       );
+
+      await loadTodayTasks();
 
       setAuthMessage(
         "🟢 註冊成功！"
@@ -789,6 +1186,7 @@ async function registerUser() {
     );
   }
 }
+
 
 // ==========================================
 // 登入
@@ -869,6 +1267,8 @@ async function loginUser() {
       data.user
     );
 
+    await loadTodayTasks();
+
     setAuthMessage(
       "🟢 登入成功！"
     );
@@ -885,6 +1285,7 @@ async function loginUser() {
     );
   }
 }
+
 
 // ==========================================
 // 登出
@@ -932,6 +1333,7 @@ async function logoutUser() {
   }
 }
 
+
 // ==========================================
 // 檢查目前登入狀態
 // ==========================================
@@ -968,6 +1370,8 @@ async function checkAuth() {
         currentUser
       );
 
+      await loadTodayTasks();
+
     } else {
 
       currentUser =
@@ -986,7 +1390,8 @@ async function checkAuth() {
         ) => {
 
           currentUser =
-            session?.user || null;
+            session?.user ||
+            null;
 
           updateAuthUI(
             currentUser
@@ -994,11 +1399,15 @@ async function checkAuth() {
 
           if (
             currentUser &&
-            event !== "INITIAL_SESSION"
+            event !==
+              "INITIAL_SESSION"
           ) {
+
             await loadProfile(
               currentUser
             );
+
+            await loadTodayTasks();
           }
         }
       );
@@ -1017,6 +1426,7 @@ async function checkAuth() {
   }
 }
 
+
 // ==========================================
 // 網頁啟動
 // ==========================================
@@ -1031,14 +1441,13 @@ document.addEventListener(
 
     loadGame();
 
-    restoreTasks();
-
     updateUI();
 
     const connected =
       initializeSupabase();
 
     if (connected) {
+
       await checkAuth();
     }
   }
