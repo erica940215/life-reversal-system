@@ -1,14 +1,14 @@
-// ============================================================
+// ======================================================
 // 神級人生逆襲系統
-// Supabase 核心版
-// ============================================================
+// Supabase 核心 JavaScript
+// ======================================================
 
-// ------------------------------------------------------------
+
+// ======================================================
 // 1. Supabase 設定
-// ------------------------------------------------------------
+// ======================================================
 
-const SUPABASE_URL =
-  "https://smlaokhqhgzjhnxeqfen.supabase.co";
+const SUPABASE_URL = "https://smlaokhqhgzjhnxeqfen.supabase.co";
 
 const SUPABASE_KEY =
   "sb_publishable_2uJS9Kex4YSTQh1Bbh3H-w_4cPPW25j";
@@ -20,409 +20,110 @@ const supabaseClient =
   );
 
 
-// ------------------------------------------------------------
+// ======================================================
 // 2. 全域資料
-// ------------------------------------------------------------
+// ======================================================
 
 let currentUser = null;
 let currentProfile = null;
 let currentTasks = [];
 
 
-// ------------------------------------------------------------
+// ======================================================
 // 3. 網頁載入
-// ------------------------------------------------------------
+// ======================================================
 
-document.addEventListener(
-  "DOMContentLoaded",
-  async function () {
+document.addEventListener("DOMContentLoaded", async () => {
 
-    console.log(
-      "⚔️ 神級人生逆襲系統啟動"
-    );
+  console.log("神級人生逆襲系統 JavaScript 載入成功");
 
-    try {
+  await checkSession();
 
-      const {
-        data,
-        error
-      } =
-        await supabaseClient.auth.getSession();
-
-      if (error) {
-
-        console.error(
-          "取得登入狀態失敗：",
-          error
-        );
-
-        showMessage(
-          "登入狀態讀取失敗：" +
-          error.message
-        );
-
-        return;
-      }
+});
 
 
-      if (
-        data.session &&
-        data.session.user
-      ) {
+// ======================================================
+// 4. 取得目前登入狀態
+// ======================================================
 
-        currentUser =
-          data.session.user;
+async function checkSession() {
 
-        await loadPlayer();
+  try {
 
-      } else {
+    const {
+      data,
+      error
+    } = await supabaseClient.auth.getSession();
 
-        showLoggedOut();
-
-      }
-
-    } catch (error) {
-
-      console.error(
-        "初始化錯誤：",
-        error
-      );
-
-      showMessage(
-        "系統初始化失敗：" +
-        error.message
-      );
-
-    }
-
-
-    // ----------------------------------------------------------
-    // 監聽登入狀態
-    // ----------------------------------------------------------
-
-    supabaseClient.auth.onAuthStateChange(
-      async function (
-        event,
-        session
-      ) {
-
-        console.log(
-          "登入狀態變化：",
-          event
-        );
-
-
-        if (
-          session &&
-          session.user
-        ) {
-
-          currentUser =
-            session.user;
-
-          await loadPlayer();
-
-        } else {
-
-          currentUser = null;
-          currentProfile = null;
-          currentTasks = [];
-
-          showLoggedOut();
-
-        }
-
-      }
-    );
-
-  }
-);
-
-
-// ------------------------------------------------------------
-// 4. 登入
-// ------------------------------------------------------------
-
-window.loginUser =
-  async function () {
-
-    const email =
-      document
-        .getElementById("auth-email")
-        .value
-        .trim();
-
-    const password =
-      document
-        .getElementById("auth-password")
-        .value;
-
-
-    if (!email) {
-
-      alert(
-        "請輸入 Email"
-      );
-
+    if (error) {
+      console.error("取得登入狀態失敗：", error);
+      showAuthMessage("⚠️ 無法取得登入狀態");
       return;
-
     }
 
+    currentUser = data.session
+      ? data.session.user
+      : null;
 
-    if (!password) {
 
-      alert(
-        "請輸入密碼"
+    if (currentUser) {
+
+      console.log(
+        "目前登入玩家：",
+        currentUser.email
       );
 
-      return;
-
-    }
-
-
-    showMessage(
-      "登入中……"
-    );
-
-
-    try {
-
-      const {
-        data,
-        error
-      } =
-        await supabaseClient.auth.signInWithPassword(
-          {
-            email: email,
-            password: password
-          }
-        );
-
-
-      if (error) {
-
-        console.error(
-          "登入失敗：",
-          error
-        );
-
-        showMessage(
-          "登入失敗：" +
-          error.message
-        );
-
-        return;
-
-      }
-
-
-      currentUser =
-        data.user;
-
+      await showLoggedInUI();
 
       await loadPlayer();
 
+      await loadTasks();
 
-    } catch (error) {
+    } else {
 
-      console.error(
-        "登入錯誤：",
-        error
-      );
-
-      showMessage(
-        "登入錯誤：" +
-        error.message
-      );
+      showLoggedOutUI();
 
     }
 
-  };
+  } catch (error) {
 
-
-// ------------------------------------------------------------
-// 5. 註冊
-// ------------------------------------------------------------
-
-window.registerUser =
-  async function () {
-
-    const email =
-      document
-        .getElementById("auth-email")
-        .value
-        .trim();
-
-    const password =
-      document
-        .getElementById("auth-password")
-        .value;
-
-
-    if (!email) {
-
-      alert(
-        "請輸入 Email"
-      );
-
-      return;
-
-    }
-
-
-    if (!password) {
-
-      alert(
-        "請輸入密碼"
-      );
-
-      return;
-
-    }
-
-
-    if (password.length < 6) {
-
-      alert(
-        "密碼至少需要 6 碼"
-      );
-
-      return;
-
-    }
-
-
-    showMessage(
-      "註冊中……"
-    );
-
-
-    try {
-
-      const {
-        data,
-        error
-      } =
-        await supabaseClient.auth.signUp(
-          {
-            email: email,
-            password: password
-          }
-        );
-
-
-      if (error) {
-
-        console.error(
-          "註冊失敗：",
-          error
-        );
-
-        showMessage(
-          "註冊失敗：" +
-          error.message
-        );
-
-        return;
-
-      }
-
-
-      if (
-        data.session &&
-        data.user
-      ) {
-
-        currentUser =
-          data.user;
-
-        await loadPlayer();
-
-      } else {
-
-        showMessage(
-          "註冊成功！請先到 Email 完成驗證。"
-        );
-
-      }
-
-    } catch (error) {
-
-      console.error(
-        "註冊錯誤：",
-        error
-      );
-
-      showMessage(
-        "註冊錯誤：" +
-        error.message
-      );
-
-    }
-
-  };
-
-
-// ------------------------------------------------------------
-// 6. 登出
-// ------------------------------------------------------------
-
-window.logoutUser =
-  async function () {
-
-    try {
-
-      const {
-        error
-      } =
-        await supabaseClient.auth.signOut();
-
-
-      if (error) {
-
-        alert(
-          "登出失敗：" +
-          error.message
-        );
-
-        return;
-
-      }
-
-
-      currentUser = null;
-      currentProfile = null;
-      currentTasks = [];
-
-      showLoggedOut();
-
-
-    } catch (error) {
-
-      console.error(
-        "登出錯誤：",
-        error
-      );
-
-    }
-
-  };
-
-
-// ------------------------------------------------------------
-// 7. 載入玩家
-// ------------------------------------------------------------
-
-async function loadPlayer() {
-
-  if (!currentUser) {
-
-    return;
+    console.error("Session 錯誤：", error);
 
   }
 
+}
 
-  showLoggedIn();
+
+// ======================================================
+// 5. 登入
+// ======================================================
+
+window.loginUser = async function () {
+
+  const emailInput =
+    document.getElementById("auth-email");
+
+  const passwordInput =
+    document.getElementById("auth-password");
+
+  const email =
+    emailInput.value.trim();
+
+  const password =
+    passwordInput.value;
+
+
+  if (!email || !password) {
+
+    showAuthMessage(
+      "⚠️ 請輸入 Email 和密碼"
+    );
+
+    return;
+  }
+
+
+  showAuthMessage("🔄 登入中……");
 
 
   try {
@@ -430,168 +131,397 @@ async function loadPlayer() {
     const {
       data,
       error
-    } =
-      await supabaseClient
-        .from("profiles")
-        .select("*")
-        .eq(
-          "id",
-          currentUser.id
-        )
-        .maybeSingle();
+    } = await supabaseClient.auth.signInWithPassword({
+      email,
+      password
+    });
 
 
     if (error) {
 
-      console.error(
-        "玩家資料讀取失敗：",
-        error
-      );
+      console.error("登入失敗：", error);
 
-      showMessage(
-        "玩家資料讀取失敗：" +
-        error.message
+      showAuthMessage(
+        "❌ 登入失敗：" + error.message
       );
 
       return;
-
     }
 
 
-    if (!data) {
-
-      showMessage(
-        "找不到玩家資料"
-      );
-
-      return;
-
-    }
+    currentUser = data.user;
 
 
-    currentProfile =
-      data;
-
-
-    console.log(
-      "玩家資料載入成功：",
-      data
+    showAuthMessage(
+      "✅ 登入成功！"
     );
 
 
-    updatePlayerUI();
+    await showLoggedInUI();
 
+    await loadPlayer();
 
     await loadTasks();
 
 
   } catch (error) {
 
-    console.error(
-      "載入玩家錯誤：",
-      error
+    console.error(error);
+
+    showAuthMessage(
+      "❌ 登入發生錯誤"
     );
+
+  }
+
+};
+
+
+// ======================================================
+// 6. 註冊
+// ======================================================
+
+window.registerUser = async function () {
+
+  const emailInput =
+    document.getElementById("auth-email");
+
+  const passwordInput =
+    document.getElementById("auth-password");
+
+  const email =
+    emailInput.value.trim();
+
+  const password =
+    passwordInput.value;
+
+
+  if (!email || !password) {
+
+    showAuthMessage(
+      "⚠️ 請輸入 Email 和密碼"
+    );
+
+    return;
+  }
+
+
+  if (password.length < 6) {
+
+    showAuthMessage(
+      "⚠️ 密碼至少需要 6 碼"
+    );
+
+    return;
+  }
+
+
+  showAuthMessage(
+    "🔄 註冊中……"
+  );
+
+
+  try {
+
+    const {
+      data,
+      error
+    } = await supabaseClient.auth.signUp({
+      email,
+      password
+    });
+
+
+    if (error) {
+
+      console.error(
+        "註冊失敗：",
+        error
+      );
+
+      showAuthMessage(
+        "❌ 註冊失敗：" +
+        error.message
+      );
+
+      return;
+    }
+
+
+    if (data.session) {
+
+      currentUser = data.user;
+
+      showAuthMessage(
+        "✅ 註冊成功並已登入！"
+      );
+
+      await showLoggedInUI();
+
+      await loadPlayer();
+
+      await loadTasks();
+
+    } else {
+
+      showAuthMessage(
+        "✅ 註冊成功！請確認 Email 後再登入。"
+      );
+
+    }
+
+
+  } catch (error) {
+
+    console.error(error);
+
+    showAuthMessage(
+      "❌ 註冊發生錯誤"
+    );
+
+  }
+
+};
+
+
+// ======================================================
+// 7. 登出
+// ======================================================
+
+window.logoutUser = async function () {
+
+  try {
+
+    const {
+      error
+    } = await supabaseClient.auth.signOut();
+
+
+    if (error) {
+
+      console.error(
+        "登出失敗：",
+        error
+      );
+
+      showAuthMessage(
+        "❌ 登出失敗"
+      );
+
+      return;
+    }
+
+
+    currentUser = null;
+    currentProfile = null;
+    currentTasks = [];
+
+
+    showLoggedOutUI();
+
+
+    const taskList =
+      document.querySelector(".task-list");
+
+    if (taskList) {
+      taskList.innerHTML = "";
+    }
+
+
+    updateSummary();
+
+
+  } catch (error) {
+
+    console.error(error);
+
+  }
+
+};
+
+
+// ======================================================
+// 8. 顯示登入狀態
+// ======================================================
+
+async function showLoggedInUI() {
+
+  const authForm =
+    document.getElementById("auth-form");
+
+  const loggedInArea =
+    document.getElementById("logged-in-area");
+
+  const userEmail =
+    document.getElementById("user-email");
+
+  if (authForm) {
+    authForm.style.display = "none";
+  }
+
+  if (loggedInArea) {
+    loggedInArea.style.display = "block";
+  }
+
+  if (userEmail && currentUser) {
+
+    userEmail.textContent =
+      "👤 玩家：" + currentUser.email;
 
   }
 
 }
 
 
-// ------------------------------------------------------------
-// 8. 更新玩家資訊
-// ------------------------------------------------------------
+// ======================================================
+// 9. 顯示未登入狀態
+// ======================================================
 
-function updatePlayerUI() {
+function showLoggedOutUI() {
 
-  if (!currentProfile) {
+  const authForm =
+    document.getElementById("auth-form");
 
+  const loggedInArea =
+    document.getElementById("logged-in-area");
+
+  if (authForm) {
+    authForm.style.display = "block";
+  }
+
+  if (loggedInArea) {
+    loggedInArea.style.display = "none";
+  }
+
+}
+
+
+// ======================================================
+// 10. 登入訊息
+// ======================================================
+
+function showAuthMessage(message) {
+
+  const element =
+    document.getElementById("auth-message");
+
+  if (element) {
+    element.textContent = message;
+  }
+
+}
+
+
+// ======================================================
+// 11. 載入玩家資料
+// ======================================================
+
+async function loadPlayer() {
+
+  if (!currentUser) {
     return;
-
   }
 
 
-  const level =
-    Number(
-      currentProfile.level
-    );
+  try {
+
+    const {
+      data,
+      error
+    } = await supabaseClient
+      .from("profiles")
+      .select("*")
+      .eq("id", currentUser.id)
+      .single();
 
 
-  const exp =
-    Number(
-      currentProfile.exp
-    );
+    if (error) {
+
+      console.error(
+        "載入玩家資料失敗：",
+        error
+      );
+
+      return;
+    }
 
 
-  const gold =
-    Number(
-      currentProfile.gold
-    );
+    currentProfile = data;
+
+    renderPlayer();
 
 
-  const requiredExp =
-    100 +
-    (level - 1) * 50;
+  } catch (error) {
+
+    console.error(error);
+
+  }
+
+}
+
+
+// ======================================================
+// 12. 顯示玩家資料
+// ======================================================
+
+function renderPlayer() {
+
+  if (!currentProfile) {
+    return;
+  }
 
 
   const levelElement =
-    document.getElementById(
-      "player-level"
-    );
-
+    document.getElementById("player-level");
 
   const goldElement =
-    document.getElementById(
-      "player-gold"
-    );
+    document.getElementById("player-gold");
 
+  const currentExpElement =
+    document.getElementById("current-exp");
 
-  const expElement =
-    document.getElementById(
-      "current-exp"
-    );
-
-
-  const requiredElement =
-    document.getElementById(
-      "required-exp"
-    );
-
+  const requiredExpElement =
+    document.getElementById("required-exp");
 
   const expBar =
-    document.getElementById(
-      "exp-bar"
-    );
+    document.getElementById("exp-bar");
+
+
+  const level =
+    Number(currentProfile.level);
+
+  const exp =
+    Number(currentProfile.exp);
+
+  const gold =
+    Number(currentProfile.gold);
+
+
+  const requiredExp =
+    100 + (level - 1) * 50;
 
 
   if (levelElement) {
-
     levelElement.textContent =
       "Lv." + level;
-
   }
 
 
   if (goldElement) {
-
     goldElement.textContent =
       gold;
-
   }
 
 
-  if (expElement) {
-
-    expElement.textContent =
+  if (currentExpElement) {
+    currentExpElement.textContent =
       exp;
-
   }
 
 
-  if (requiredElement) {
-
-    requiredElement.textContent =
+  if (requiredExpElement) {
+    requiredExpElement.textContent =
       requiredExp;
-
   }
 
 
@@ -600,9 +530,11 @@ function updatePlayerUI() {
     const percentage =
       Math.min(
         100,
-        (exp / requiredExp) * 100
+        Math.max(
+          0,
+          (exp / requiredExp) * 100
+        )
       );
-
 
     expBar.style.width =
       percentage + "%";
@@ -612,16 +544,42 @@ function updatePlayerUI() {
 }
 
 
-// ------------------------------------------------------------
-// 9. 載入今日任務
-// ------------------------------------------------------------
+// ======================================================
+// 13. 取得今天日期
+// ======================================================
+
+function getToday() {
+
+  const now =
+    new Date();
+
+  const year =
+    now.getFullYear();
+
+  const month =
+    String(
+      now.getMonth() + 1
+    ).padStart(2, "0");
+
+  const day =
+    String(
+      now.getDate()
+    ).padStart(2, "0");
+
+
+  return `${year}-${month}-${day}`;
+
+}
+
+
+// ======================================================
+// 14. 載入今日任務
+// ======================================================
 
 async function loadTasks() {
 
   if (!currentUser) {
-
     return;
-
   }
 
 
@@ -634,40 +592,24 @@ async function loadTasks() {
     const {
       data,
       error
-    } =
-      await supabaseClient
-        .from("tasks")
-        .select("*")
-        .eq(
-          "user_id",
-          currentUser.id
-        )
-        .eq(
-          "task_date",
-          today
-        )
-        .order(
-          "id",
-          {
-            ascending: true
-          }
-        );
+    } = await supabaseClient
+      .from("tasks")
+      .select("*")
+      .eq("user_id", currentUser.id)
+      .eq("task_date", today)
+      .order("id", {
+        ascending: true
+      });
 
 
     if (error) {
 
       console.error(
-        "任務載入失敗：",
+        "載入任務失敗：",
         error
       );
 
-      showMessage(
-        "任務載入失敗：" +
-        error.message
-      );
-
       return;
-
     }
 
 
@@ -676,208 +618,539 @@ async function loadTasks() {
 
 
     console.log(
-      "今日任務載入成功"
-    );
-
-    console.log(
-      "共",
-      currentTasks.length,
-      "個任務"
+      "今日任務載入成功：",
+      currentTasks
     );
 
 
     renderTasks();
 
-
     updateSummary();
-
-
-    showMessage(
-      "Supabase 玩家資料載入成功｜今日任務載入成功"
-    );
 
 
   } catch (error) {
 
-    console.error(
-      "任務錯誤：",
-      error
-    );
+    console.error(error);
 
   }
 
 }
 
 
-// ------------------------------------------------------------
-// 10. 顯示任務
-// ------------------------------------------------------------
+// ======================================================
+// 15. 顯示任務
+// ======================================================
 
 function renderTasks() {
 
   const taskList =
-    document.querySelector(
-      ".task-list"
-    );
+    document.querySelector(".task-list");
 
 
   if (!taskList) {
-
-    console.error(
-      "找不到 .task-list"
-    );
-
     return;
-
   }
 
 
   taskList.innerHTML = "";
 
 
-  currentTasks.forEach(
-    function (task) {
+  currentTasks.forEach(task => {
 
-      const li =
-        document.createElement(
-          "li"
-        );
+    const li =
+      document.createElement("li");
 
 
-      li.className =
-        "task-item";
+    li.className =
+      "task-item";
 
 
-      li.dataset.category =
-        task.category;
+    li.dataset.category =
+      task.category;
 
 
-      li.dataset.difficulty =
-        task.difficulty;
+    li.dataset.difficulty =
+      task.difficulty;
 
 
-      li.dataset.taskId =
-        task.id;
+    li.dataset.taskId =
+      task.id;
 
 
-      if (task.completed) {
+    if (task.completed) {
 
-        li.classList.add(
-          "completed"
-        );
-
-      }
-
-
-      const category =
-        getCategory(
-          task.category
-        );
-
-
-      const difficulty =
-        getDifficulty(
-          task.difficulty
-        );
-
-
-      li.innerHTML = `
-
-        <span class="task-checkbox">
-          ${task.completed ? "☑" : "☐"}
-        </span>
-
-        <div class="task-info">
-
-          <small>
-            ${category}
-          </small>
-
-          <span class="task-name">
-            ${escapeHTML(task.title)}
-          </span>
-
-          <span class="difficulty ${task.difficulty}">
-            ${difficulty}
-          </span>
-
-        </div>
-
-        <div class="reward">
-
-          <span>
-            +${task.exp_reward} EXP
-          </span>
-
-          <span class="gold-reward">
-            +${task.gold_reward} 💰
-          </span>
-
-        </div>
-
-      `;
-
-
-      li.onclick =
-        function () {
-
-          completeTask(
-            task.id,
-            li
-          );
-
-        };
-
-
-      taskList.appendChild(
-        li
-      );
+      li.classList.add("completed");
 
     }
-  );
+
+
+    li.onclick = function () {
+
+      toggleTask(
+        li,
+        Number(task.exp_reward),
+        Number(task.gold_reward),
+        task.id
+      );
+
+    };
+
+
+    const checkbox =
+      document.createElement("span");
+
+    checkbox.className =
+      "task-checkbox";
+
+    checkbox.textContent =
+      task.completed
+        ? "☑"
+        : "☐";
+
+
+    const taskInfo =
+      document.createElement("div");
+
+    taskInfo.className =
+      "task-info";
+
+
+    const category =
+      document.createElement("small");
+
+    category.textContent =
+      getCategoryLabel(
+        task.category
+      );
+
+
+    const name =
+      document.createElement("span");
+
+    name.className =
+      "task-name";
+
+    name.textContent =
+      task.title;
+
+
+    const difficulty =
+      document.createElement("span");
+
+    difficulty.className =
+      "difficulty " +
+      task.difficulty;
+
+    difficulty.textContent =
+      getDifficultyLabel(
+        task.difficulty
+      );
+
+
+    taskInfo.appendChild(
+      category
+    );
+
+    taskInfo.appendChild(
+      name
+    );
+
+    taskInfo.appendChild(
+      difficulty
+    );
+
+
+    const reward =
+      document.createElement("div");
+
+    reward.className =
+      "reward";
+
+
+    const expReward =
+      document.createElement("span");
+
+    expReward.textContent =
+      "+" +
+      task.exp_reward +
+      " EXP";
+
+
+    const goldReward =
+      document.createElement("span");
+
+    goldReward.className =
+      "gold-reward";
+
+    goldReward.textContent =
+      "+" +
+      task.gold_reward +
+      " 💰";
+
+
+    reward.appendChild(
+      expReward
+    );
+
+    reward.appendChild(
+      goldReward
+    );
+
+
+    li.appendChild(
+      checkbox
+    );
+
+    li.appendChild(
+      taskInfo
+    );
+
+    li.appendChild(
+      reward
+    );
+
+
+    taskList.appendChild(
+      li
+    );
+
+  });
+
+
+  applyCurrentFilter();
 
 }
 
 
-// ------------------------------------------------------------
-// 11. 完成任務
-// ------------------------------------------------------------
+// ======================================================
+// 16. 類別名稱
+// ======================================================
 
-async function completeTask(
-  taskId,
-  element
+function getCategoryLabel(category) {
+
+  const labels = {
+
+    study: "📚 學習",
+
+    toeic: "🇬🇧 多益",
+
+    focus: "🎯 專注",
+
+    health: "❤️ 健康"
+
+  };
+
+
+  return labels[category]
+    || "📌 其他";
+
+}
+
+
+// ======================================================
+// 17. 難度名稱
+// ======================================================
+
+function getDifficultyLabel(
+  difficulty
+) {
+
+  const labels = {
+
+    easy: "🟢 簡單",
+
+    normal: "🔵 普通",
+
+    hard: "🟣 困難"
+
+  };
+
+
+  return labels[difficulty]
+    || "🔵 普通";
+
+}
+
+
+// ======================================================
+// 18. 新增任務
+// ======================================================
+
+window.addTask = async function () {
+
+  if (!currentUser) {
+
+    setAddTaskMessage(
+      "⚠️ 請先登入"
+    );
+
+    return;
+  }
+
+
+  const titleInput =
+    document.getElementById(
+      "new-task-title"
+    );
+
+  const categoryInput =
+    document.getElementById(
+      "new-task-category"
+    );
+
+  const difficultyInput =
+    document.getElementById(
+      "new-task-difficulty"
+    );
+
+
+  if (!titleInput) {
+    return;
+  }
+
+
+  const title =
+    titleInput.value.trim();
+
+  const category =
+    categoryInput.value;
+
+  const difficulty =
+    difficultyInput.value;
+
+
+  if (!title) {
+
+    setAddTaskMessage(
+      "⚠️ 請輸入任務名稱"
+    );
+
+    return;
+  }
+
+
+  if (title.length > 100) {
+
+    setAddTaskMessage(
+      "⚠️ 任務名稱不能超過 100 字"
+    );
+
+    return;
+  }
+
+
+  // --------------------------------------------------
+  // 根據難度決定獎勵
+  // --------------------------------------------------
+
+  let expReward = 30;
+  let goldReward = 20;
+
+
+  if (difficulty === "easy") {
+
+    expReward = 20;
+    goldReward = 15;
+
+  } else if (
+    difficulty === "normal"
+  ) {
+
+    expReward = 30;
+    goldReward = 20;
+
+  } else if (
+    difficulty === "hard"
+  ) {
+
+    expReward = 50;
+    goldReward = 35;
+
+  }
+
+
+  setAddTaskMessage(
+    "🔄 正在新增任務……"
+  );
+
+
+  try {
+
+    const {
+      data,
+      error
+    } = await supabaseClient
+      .from("tasks")
+      .insert({
+
+        user_id:
+          currentUser.id,
+
+        title:
+          title,
+
+        category:
+          category,
+
+        difficulty:
+          difficulty,
+
+        exp_reward:
+          expReward,
+
+        gold_reward:
+          goldReward,
+
+        completed:
+          false,
+
+        task_date:
+          getToday()
+
+      })
+      .select()
+      .single();
+
+
+    if (error) {
+
+      console.error(
+        "新增任務失敗：",
+        error
+      );
+
+
+      setAddTaskMessage(
+        "❌ 新增失敗：" +
+        error.message
+      );
+
+      return;
+    }
+
+
+    console.log(
+      "新增任務成功：",
+      data
+    );
+
+
+    // ------------------------------------------------
+    // 更新本地任務資料
+    // ------------------------------------------------
+
+    currentTasks.push(data);
+
+
+    renderTasks();
+
+    updateSummary();
+
+
+    // ------------------------------------------------
+    // 清空輸入框
+    // ------------------------------------------------
+
+    titleInput.value = "";
+
+
+    setAddTaskMessage(
+      "✅ 任務新增成功！"
+    );
+
+
+    // 3 秒後清除訊息
+    setTimeout(() => {
+
+      setAddTaskMessage("");
+
+    }, 3000);
+
+
+  } catch (error) {
+
+    console.error(error);
+
+    setAddTaskMessage(
+      "❌ 新增任務時發生錯誤"
+    );
+
+  }
+
+};
+
+
+// ======================================================
+// 19. 新增任務訊息
+// ======================================================
+
+function setAddTaskMessage(
+  message
+) {
+
+  const element =
+    document.getElementById(
+      "add-task-message"
+    );
+
+
+  if (element) {
+
+    element.textContent =
+      message;
+
+  }
+
+}
+
+
+// ======================================================
+// 20. 完成任務
+// ======================================================
+
+window.toggleTask = async function (
+  element,
+  exp,
+  gold,
+  taskId
 ) {
 
   if (!currentUser) {
 
     alert(
-      "請先登入"
+      "⚠️ 請先登入"
     );
 
     return;
+  }
 
+
+  if (!taskId) {
+
+    console.error(
+      "找不到 taskId"
+    );
+
+    return;
   }
 
 
   const task =
     currentTasks.find(
-      function (item) {
-
-        return String(item.id) ===
-          String(taskId);
-
-      }
+      item =>
+        Number(item.id) ===
+        Number(taskId)
     );
 
 
   if (!task) {
 
-    alert(
-      "找不到這個任務"
+    console.error(
+      "找不到任務：",
+      taskId
     );
 
     return;
-
   }
 
 
@@ -888,17 +1161,11 @@ async function completeTask(
   }
 
 
-  // 防止連續點擊
-  element.style.pointerEvents =
-    "none";
-
-
-  showMessage(
-    "正在完成任務……"
-  );
-
-
   try {
+
+    element.style.pointerEvents =
+      "none";
+
 
     console.log(
       "正在完成任務：",
@@ -909,20 +1176,14 @@ async function completeTask(
     const {
       data,
       error
-    } =
-      await supabaseClient.rpc(
+    } = await supabaseClient
+      .rpc(
         "complete_task",
         {
           p_task_id:
             Number(taskId)
         }
       );
-
-
-    console.log(
-      "RPC 回傳：",
-      data
-    );
 
 
     if (error) {
@@ -933,13 +1194,21 @@ async function completeTask(
       );
 
       alert(
-        "完成任務失敗：\n" +
+        "❌ 任務完成失敗：" +
         error.message
       );
 
-      return;
+      element.style.pointerEvents =
+        "";
 
+      return;
     }
+
+
+    console.log(
+      "任務完成結果：",
+      data
+    );
 
 
     if (
@@ -949,15 +1218,30 @@ async function completeTask(
 
       alert(
         data?.message ||
-        "任務沒有完成"
+        "⚠️ 任務沒有完成"
       );
 
-      return;
+      element.style.pointerEvents =
+        "";
 
+      return;
     }
 
 
+    // ------------------------------------------------
+    // 記錄升級前等級
+    // ------------------------------------------------
+
+    const oldLevel =
+      Number(
+        currentProfile.level
+      );
+
+
+    // ------------------------------------------------
     // 更新玩家資料
+    // ------------------------------------------------
+
     currentProfile.level =
       Number(data.level);
 
@@ -968,42 +1252,53 @@ async function completeTask(
       Number(data.gold);
 
 
-    // 更新任務
+    // ------------------------------------------------
+    // 更新任務狀態
+    // ------------------------------------------------
+
     task.completed =
       true;
-
 
     task.completed_at =
       new Date().toISOString();
 
 
+    // ------------------------------------------------
     // 更新畫面
-    updatePlayerUI();
+    // ------------------------------------------------
+
+    renderPlayer();
 
     renderTasks();
 
     updateSummary();
 
 
-    showMessage(
-      "任務完成！ +" +
-      data.task_exp +
-      " EXP｜+" +
-      data.task_gold +
-      " 金幣"
-    );
+    // ------------------------------------------------
+    // 升級提示
+    // ------------------------------------------------
 
-
-    // 如果升級
     if (
       Number(data.level) >
-      Number(
-        currentProfile.level
-      )
+      oldLevel
     ) {
 
       alert(
-        "🎉 升級成功！"
+        "🎉 升級成功！\n\n" +
+        "現在等級：Lv." +
+        data.level
+      );
+
+    } else {
+
+      alert(
+        "✅ 任務完成！\n\n" +
+        "+" +
+        data.task_exp +
+        " EXP\n" +
+        "+" +
+        data.task_gold +
+        " 💰"
       );
 
     }
@@ -1017,122 +1312,105 @@ async function completeTask(
     );
 
     alert(
-      "完成任務錯誤：\n" +
-      error.message
+      "❌ 完成任務時發生錯誤"
     );
-
-  } finally {
 
     element.style.pointerEvents =
       "";
 
   }
 
+};
+
+
+// ======================================================
+// 21. 任務篩選
+// ======================================================
+
+window.filterTasks = function (
+  category,
+  button
+) {
+
+  const buttons =
+    document.querySelectorAll(
+      ".filter-btn"
+    );
+
+
+  buttons.forEach(btn => {
+
+    btn.classList.remove(
+      "active"
+    );
+
+  });
+
+
+  if (button) {
+
+    button.classList.add(
+      "active"
+    );
+
+  }
+
+
+  window.currentFilter =
+    category;
+
+
+  applyCurrentFilter();
+
+};
+
+
+// ======================================================
+// 22. 套用目前篩選
+// ======================================================
+
+function applyCurrentFilter() {
+
+  const filter =
+    window.currentFilter ||
+    "all";
+
+
+  const items =
+    document.querySelectorAll(
+      ".task-item"
+    );
+
+
+  items.forEach(item => {
+
+    const category =
+      item.dataset.category;
+
+
+    if (
+      filter === "all" ||
+      category === filter
+    ) {
+
+      item.style.display =
+        "";
+
+    } else {
+
+      item.style.display =
+        "none";
+
+    }
+
+  });
+
 }
 
 
-// ------------------------------------------------------------
-// 12. 保留 index.html 原本的 toggleTask
-// ------------------------------------------------------------
-
-window.toggleTask =
-  function (
-    element
-  ) {
-
-    const taskId =
-      element.dataset.taskId;
-
-
-    if (!taskId) {
-
-      alert(
-        "請重新整理頁面後再試"
-      );
-
-      return;
-
-    }
-
-
-    completeTask(
-      taskId,
-      element
-    );
-
-  };
-
-
-// ------------------------------------------------------------
-// 13. 任務分類
-// ------------------------------------------------------------
-
-window.filterTasks =
-  function (
-    category,
-    button
-  ) {
-
-    const items =
-      document.querySelectorAll(
-        ".task-item"
-      );
-
-
-    items.forEach(
-      function (item) {
-
-        if (
-          category === "all" ||
-          item.dataset.category ===
-            category
-        ) {
-
-          item.style.display =
-            "";
-
-        } else {
-
-          item.style.display =
-            "none";
-
-        }
-
-      }
-    );
-
-
-    const buttons =
-      document.querySelectorAll(
-        ".filter-btn"
-      );
-
-
-    buttons.forEach(
-      function (btn) {
-
-        btn.classList.remove(
-          "active"
-        );
-
-      }
-    );
-
-
-    if (button) {
-
-      button.classList.add(
-        "active"
-      );
-
-    }
-
-  };
-
-
-// ------------------------------------------------------------
-// 14. 今日統計
-// ------------------------------------------------------------
+// ======================================================
+// 23. 更新今日統計
+// ======================================================
 
 function updateSummary() {
 
@@ -1140,62 +1418,41 @@ function updateSummary() {
     currentTasks.length;
 
 
-  const completed =
+  const completedTasks =
     currentTasks.filter(
-      function (task) {
-
-        return task.completed;
-
-      }
+      task => task.completed
     );
 
 
   const completedCount =
-    completed.length;
+    completedTasks.length;
+
+
+  const totalExp =
+    completedTasks.reduce(
+      (sum, task) =>
+        sum +
+        Number(task.exp_reward || 0),
+      0
+    );
+
+
+  const totalGold =
+    completedTasks.reduce(
+      (sum, task) =>
+        sum +
+        Number(task.gold_reward || 0),
+      0
+    );
 
 
   const rate =
-    total === 0
-      ? 0
-      : Math.round(
-          completedCount /
-          total *
+    total > 0
+      ? Math.round(
+          (completedCount / total) *
           100
-        );
-
-
-  const todayExp =
-    completed.reduce(
-      function (
-        total,
-        task
-      ) {
-
-        return total +
-          Number(
-            task.exp_reward
-          );
-
-      },
-      0
-    );
-
-
-  const todayGold =
-    completed.reduce(
-      function (
-        total,
-        task
-      ) {
-
-        return total +
-          Number(
-            task.gold_reward
-          );
-
-      },
-      0
-    );
+        )
+      : 0;
 
 
   const completedElement =
@@ -1203,30 +1460,25 @@ function updateSummary() {
       "completed-count"
     );
 
-
   const rateElement =
     document.getElementById(
       "summary-rate"
     );
 
-
-  const expElement =
+  const todayExpElement =
     document.getElementById(
       "today-exp"
     );
 
-
-  const goldElement =
+  const todayGoldElement =
     document.getElementById(
       "today-gold"
     );
 
-
-  const rateText =
+  const rateTextElement =
     document.getElementById(
       "rate-text"
     );
-
 
   const rateBar =
     document.getElementById(
@@ -1237,9 +1489,7 @@ function updateSummary() {
   if (completedElement) {
 
     completedElement.textContent =
-      completedCount +
-      " / " +
-      total;
+      `${completedCount} / ${total}`;
 
   }
 
@@ -1252,27 +1502,25 @@ function updateSummary() {
   }
 
 
-  if (expElement) {
+  if (todayExpElement) {
 
-    expElement.textContent =
-      "+" +
-      todayExp;
-
-  }
-
-
-  if (goldElement) {
-
-    goldElement.textContent =
-      "+" +
-      todayGold;
+    todayExpElement.textContent =
+      "+" + totalExp;
 
   }
 
 
-  if (rateText) {
+  if (todayGoldElement) {
 
-    rateText.textContent =
+    todayGoldElement.textContent =
+      "+" + totalGold;
+
+  }
+
+
+  if (rateTextElement) {
+
+    rateTextElement.textContent =
       rate + "%";
 
   }
@@ -1288,262 +1536,9 @@ function updateSummary() {
 }
 
 
-// ------------------------------------------------------------
-// 15. 登入後畫面
-// ------------------------------------------------------------
-
-function showLoggedIn() {
-
-  const authForm =
-    document.getElementById(
-      "auth-form"
-    );
-
-
-  const loggedInArea =
-    document.getElementById(
-      "logged-in-area"
-    );
-
-
-  const userEmail =
-    document.getElementById(
-      "user-email"
-    );
-
-
-  if (authForm) {
-
-    authForm.style.display =
-      "none";
-
-  }
-
-
-  if (loggedInArea) {
-
-    loggedInArea.style.display =
-      "block";
-
-  }
-
-
-  if (
-    userEmail &&
-    currentUser
-  ) {
-
-    userEmail.textContent =
-      "目前玩家：" +
-      currentUser.email;
-
-  }
-
-}
-
-
-// ------------------------------------------------------------
-// 16. 登出後畫面
-// ------------------------------------------------------------
-
-function showLoggedOut() {
-
-  const authForm =
-    document.getElementById(
-      "auth-form"
-    );
-
-
-  const loggedInArea =
-    document.getElementById(
-      "logged-in-area"
-    );
-
-
-  if (authForm) {
-
-    authForm.style.display =
-      "block";
-
-  }
-
-
-  if (loggedInArea) {
-
-    loggedInArea.style.display =
-      "none";
-
-  }
-
-
-  showMessage(
-    "尚未登入"
-  );
-
-}
-
-
-// ------------------------------------------------------------
-// 17. 顯示訊息
-// ------------------------------------------------------------
-
-function showMessage(
-  message
-) {
-
-  const element =
-    document.getElementById(
-      "auth-message"
-    );
-
-
-  if (element) {
-
-    element.textContent =
-      message;
-
-  }
-
-}
-
-
-// ------------------------------------------------------------
-// 18. 類別
-// ------------------------------------------------------------
-
-function getCategory(
-  category
-) {
-
-  switch (category) {
-
-    case "study":
-      return "📚 學習";
-
-    case "toeic":
-      return "🇬🇧 多益";
-
-    case "focus":
-      return "🎯 專注";
-
-    case "health":
-      return "❤️ 健康";
-
-    default:
-      return "📌 任務";
-
-  }
-
-}
-
-
-// ------------------------------------------------------------
-// 19. 難度
-// ------------------------------------------------------------
-
-function getDifficulty(
-  difficulty
-) {
-
-  switch (difficulty) {
-
-    case "easy":
-      return "🟢 簡單";
-
-    case "normal":
-      return "🔵 普通";
-
-    case "hard":
-      return "🟣 困難";
-
-    default:
-      return "🔵 普通";
-
-  }
-
-}
-
-
-// ------------------------------------------------------------
-// 20. 今日日期
-// ------------------------------------------------------------
-
-function getToday() {
-
-  const date =
-    new Date();
-
-
-  const year =
-    date.getFullYear();
-
-
-  const month =
-    String(
-      date.getMonth() + 1
-    ).padStart(
-      2,
-      "0"
-    );
-
-
-  const day =
-    String(
-      date.getDate()
-    ).padStart(
-      2,
-      "0"
-    );
-
-
-  return (
-    year +
-    "-" +
-    month +
-    "-" +
-    day
-  );
-
-}
-
-
-// ------------------------------------------------------------
-// 21. HTML 安全處理
-// ------------------------------------------------------------
-
-function escapeHTML(
-  value
-) {
-
-  return String(value)
-    .replaceAll(
-      "&",
-      "&amp;"
-    )
-    .replaceAll(
-      "<",
-      "&lt;"
-    )
-    .replaceAll(
-      ">",
-      "&gt;"
-    )
-    .replaceAll(
-      '"',
-      "&quot;"
-    )
-    .replaceAll(
-      "'",
-      "&#039;"
-    );
-
-}
-
-
-// ------------------------------------------------------------
-// 完成
-// ------------------------------------------------------------
-
-console.log(
-  "⚔️ 神級人生逆襲系統 script.js 載入完成"
-);
+// ======================================================
+// 24. 預設篩選
+// ======================================================
+
+window.currentFilter =
+  "all";
