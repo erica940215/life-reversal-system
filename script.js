@@ -1,15 +1,18 @@
 // ========================================
-// 神級人生逆襲系統 V0.9
-// Supabase 雲端任務 + EXP / Gold / 升級
+// 神級人生逆襲系統 V1.0
+// Supabase：登入 + 玩家資料 + 雲端任務 + EXP / Gold
 // ========================================
 
 const SUPABASE_URL = "https://smlaokhqhgzjhnxeqfen.supabase.co";
-const SUPABASE_KEY = "sb_publishable_2uJS9Kex4YSTQh1Bbh3H-w_4cPPW25j";
 
-const supabaseClient = window.supabase.createClient(
-  SUPABASE_URL,
-  SUPABASE_KEY
-);
+const SUPABASE_KEY =
+  "sb_publishable_2uJS9Kex4YSTQh1Bbh3H-w_4cPPW25j";
+
+const supabaseClient =
+  window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_KEY
+  );
 
 
 // ========================================
@@ -21,36 +24,51 @@ let currentProfile = null;
 let currentTasks = [];
 
 
+// 防止同一時間重複送出完成任務
+let completingTask = false;
+
+
 // ========================================
 // 日期
 // ========================================
 
 function getToday() {
+
   const now = new Date();
 
   const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
+
+  const month =
+    String(now.getMonth() + 1).padStart(2, "0");
+
+  const day =
+    String(now.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
 }
 
 
 // ========================================
-// EXP 計算
+// EXP需求
 // ========================================
 
 function getRequiredExp(level) {
+
   return 100 + (level - 1) * 50;
+
 }
 
 
 // ========================================
-// HTML 安全處理
+// HTML安全處理
 // ========================================
 
 function escapeHtml(text) {
-  if (text === null || text === undefined) {
+
+  if (
+    text === null ||
+    text === undefined
+  ) {
     return "";
   }
 
@@ -60,88 +78,167 @@ function escapeHtml(text) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+
 }
 
 
 // ========================================
-// 任務分類
+// 系統提示
+// ========================================
+
+function showSystemMessage(
+  message,
+  type = "normal"
+) {
+
+  let box =
+    document.querySelector("#system-message");
+
+  if (!box) {
+
+    box =
+      document.createElement("div");
+
+    box.id =
+      "system-message";
+
+    box.style.position =
+      "fixed";
+
+    box.style.top =
+      "20px";
+
+    box.style.left =
+      "50%";
+
+    box.style.transform =
+      "translateX(-50%)";
+
+    box.style.zIndex =
+      "99999";
+
+    box.style.padding =
+      "12px 20px";
+
+    box.style.borderRadius =
+      "10px";
+
+    box.style.background =
+      "#1f2937";
+
+    box.style.color =
+      "#ffffff";
+
+    box.style.fontSize =
+      "14px";
+
+    box.style.boxShadow =
+      "0 5px 20px rgba(0,0,0,0.3)";
+
+    document.body.appendChild(box);
+
+  }
+
+
+  box.textContent =
+    message;
+
+
+  if (type === "success") {
+
+    box.style.background =
+      "#166534";
+
+  }
+  else if (type === "error") {
+
+    box.style.background =
+      "#991b1b";
+
+  }
+  else {
+
+    box.style.background =
+      "#1f2937";
+
+  }
+
+
+  box.style.display =
+    "block";
+
+
+  clearTimeout(
+    box._hideTimer
+  );
+
+
+  box._hideTimer =
+    setTimeout(() => {
+
+      box.style.display =
+        "none";
+
+    }, 2500);
+
+}
+
+
+// ========================================
+// 任務分類名稱
 // ========================================
 
 function getCategoryName(category) {
 
   const names = {
+
     study: "主科學習",
+
     toeic: "多益",
+
     focus: "專注",
+
     health: "健康",
+
     life: "生活",
+
     random: "隨機自律"
+
   };
 
-  return names[category] || category;
+
+  return (
+    names[category] ||
+    category ||
+    "其他"
+  );
+
 }
 
 
 // ========================================
-// 難度
+// 難度名稱
 // ========================================
 
 function getDifficultyName(difficulty) {
 
   const names = {
+
     easy: "簡單",
+
     normal: "普通",
+
     hard: "困難"
+
   };
 
-  return names[difficulty] || difficulty;
-}
 
+  return (
+    names[difficulty] ||
+    difficulty ||
+    "普通"
+  );
 
-// ========================================
-// 顯示系統訊息
-// ========================================
-
-function showSystemMessage(message, type = "normal") {
-
-  let box = document.querySelector("#system-message");
-
-  if (!box) {
-
-    box = document.createElement("div");
-
-    box.id = "system-message";
-
-    box.style.position = "fixed";
-    box.style.top = "20px";
-    box.style.left = "50%";
-    box.style.transform = "translateX(-50%)";
-    box.style.zIndex = "9999";
-    box.style.padding = "12px 20px";
-    box.style.borderRadius = "10px";
-    box.style.background = "#1f2937";
-    box.style.color = "#fff";
-    box.style.fontSize = "14px";
-    box.style.boxShadow = "0 5px 20px rgba(0,0,0,0.3)";
-
-    document.body.appendChild(box);
-  }
-
-  box.textContent = message;
-
-  if (type === "success") {
-    box.style.background = "#166534";
-  }
-
-  if (type === "error") {
-    box.style.background = "#991b1b";
-  }
-
-  box.style.display = "block";
-
-  setTimeout(() => {
-    box.style.display = "none";
-  }, 2500);
 }
 
 
@@ -152,46 +249,102 @@ function showSystemMessage(message, type = "normal") {
 async function loadTodayTasks() {
 
   if (!currentUser) {
-    return;
-  }
 
-  const today = getToday();
-
-  const { data, error } = await supabaseClient
-    .from("tasks")
-    .select(`
-      id,
-      title,
-      category,
-      difficulty,
-      exp_reward,
-      gold_reward,
-      completed,
-      completed_at,
-      task_date
-    `)
-    .eq("user_id", currentUser.id)
-    .eq("task_date", today)
-    .order("id", { ascending: true });
-
-  if (error) {
-
-    console.error("載入任務失敗：", error);
-
-    showSystemMessage(
-      "任務載入失敗：" + error.message,
-      "error"
+    console.log(
+      "尚未登入，無法載入任務"
     );
 
     return;
+
   }
 
-  currentTasks = data || [];
 
-  console.log("今日任務載入成功");
-  console.log(`共 ${currentTasks.length} 個任務`);
+  const today =
+    getToday();
 
-  renderTasks(currentTasks);
+
+  console.log(
+    "正在載入今日任務：",
+    today
+  );
+
+
+  const {
+    data,
+    error
+  } =
+    await supabaseClient
+
+      .from("tasks")
+
+      .select(`
+        id,
+        title,
+        category,
+        difficulty,
+        exp_reward,
+        gold_reward,
+        completed,
+        completed_at,
+        task_date
+      `)
+
+      .eq(
+        "user_id",
+        currentUser.id
+      )
+
+      .eq(
+        "task_date",
+        today
+      )
+
+      .order(
+        "id",
+        {
+          ascending: true
+        }
+      );
+
+
+  if (error) {
+
+    console.error(
+      "任務載入失敗：",
+      error
+    );
+
+
+    showSystemMessage(
+      "任務載入失敗：" +
+      error.message,
+      "error"
+    );
+
+
+    return;
+
+  }
+
+
+  currentTasks =
+    data || [];
+
+
+  console.log(
+    "今日任務載入成功"
+  );
+
+
+  console.log(
+    `共 ${currentTasks.length} 個任務`
+  );
+
+
+  renderTasks(
+    currentTasks
+  );
+
 }
 
 
@@ -202,41 +355,71 @@ async function loadTodayTasks() {
 function renderTasks(tasks) {
 
   const container =
-    document.querySelector(".tasks-container");
+    document.querySelector(
+      ".tasks-container"
+    );
+
 
   if (!container) {
 
-    console.warn(
-      "找不到 .tasks-container，請確認 HTML 有任務容器"
+    console.error(
+      "找不到 .tasks-container"
     );
 
+
     return;
+
   }
 
-  container.innerHTML = "";
 
-  if (!tasks || tasks.length === 0) {
+  container.innerHTML =
+    "";
+
+
+  if (
+    !tasks ||
+    tasks.length === 0
+  ) {
 
     container.innerHTML = `
+
       <div class="empty-task">
         今天還沒有任務
       </div>
+
     `;
 
+
     return;
+
   }
 
 
   tasks.forEach(task => {
 
     const taskElement =
-      document.createElement("div");
+      document.createElement(
+        "div"
+      );
+
 
     taskElement.className =
-      "task-item" +
-      (task.completed ? " completed" : "");
+      "task-item";
 
-    taskElement.dataset.taskId = task.id;
+
+    if (task.completed) {
+
+      taskElement.classList.add(
+        "completed"
+      );
+
+    }
+
+
+    // 非常重要：
+    // 把任務ID直接放進HTML
+    taskElement.dataset.taskId =
+      String(task.id);
 
 
     taskElement.innerHTML = `
@@ -244,27 +427,48 @@ function renderTasks(tasks) {
       <div class="task-main">
 
         <div class="task-check">
-          ${task.completed ? "✓" : "○"}
+
+          ${
+            task.completed
+              ? "✓"
+              : "○"
+          }
+
         </div>
+
 
         <div class="task-info">
 
           <div class="task-title">
-            ${escapeHtml(task.title)}
+
+            ${escapeHtml(
+              task.title
+            )}
+
           </div>
+
 
           <div class="task-meta">
 
             <span>
+
               ${escapeHtml(
-                getCategoryName(task.category)
+                getCategoryName(
+                  task.category
+                )
               )}
+
             </span>
 
+
             <span>
+
               ${escapeHtml(
-                getDifficultyName(task.difficulty)
+                getDifficultyName(
+                  task.difficulty
+                )
               )}
+
             </span>
 
           </div>
@@ -277,11 +481,12 @@ function renderTasks(tasks) {
       <div class="task-reward">
 
         <span>
-          +${task.exp_reward} EXP
+          +${Number(task.exp_reward) || 0} EXP
         </span>
 
+
         <span>
-          +${task.gold_reward} 🪙
+          +${Number(task.gold_reward) || 0} 🪙
         </span>
 
       </div>
@@ -289,23 +494,163 @@ function renderTasks(tasks) {
     `;
 
 
-    // 已完成任務不再重複領獎
-    if (!task.completed) {
+    container.appendChild(
+      taskElement
+    );
 
-      taskElement.addEventListener(
-        "click",
-        () => toggleSupabaseTask(
-          taskElement,
-          task
-        )
+  });
+
+
+  console.log(
+    "任務畫面渲染完成"
+  );
+
+}
+
+
+// ========================================
+// ★ 任務點擊事件
+// ========================================
+//
+// 不再對每一個任務 individually 綁定事件。
+// 改由 .tasks-container 統一處理。
+// ========================================
+
+function setupTaskClickHandler() {
+
+  const container =
+    document.querySelector(
+      ".tasks-container"
+    );
+
+
+  if (!container) {
+
+    console.warn(
+      "初始化任務點擊事件時找不到 .tasks-container"
+    );
+
+
+    return;
+
+  }
+
+
+  // 避免重複綁定
+  if (
+    container.dataset.clickReady === "true"
+  ) {
+
+    return;
+
+  }
+
+
+  container.dataset.clickReady =
+    "true";
+
+
+  container.addEventListener(
+    "click",
+    async function(event) {
+
+      // 找到使用者實際點擊的任務元素
+      const taskElement =
+        event.target.closest(
+          ".task-item"
+        );
+
+
+      // 點到容器空白處
+      if (!taskElement) {
+
+        return;
+
+      }
+
+
+      const taskId =
+        Number(
+          taskElement.dataset.taskId
+        );
+
+
+      if (
+        !Number.isFinite(taskId)
+      ) {
+
+        console.error(
+          "任務ID無效：",
+          taskElement.dataset.taskId
+        );
+
+
+        return;
+
+      }
+
+
+      console.log(
+        "偵測到任務點擊：",
+        taskId
+      );
+
+
+      // 找到對應任務
+      const task =
+        currentTasks.find(
+          item =>
+            Number(item.id) ===
+            taskId
+        );
+
+
+      if (!task) {
+
+        console.error(
+          "找不到對應任務：",
+          taskId
+        );
+
+
+        showSystemMessage(
+          "找不到這個任務",
+          "error"
+        );
+
+
+        return;
+
+      }
+
+
+      // 已完成
+      if (task.completed) {
+
+        showSystemMessage(
+          "這個任務已經完成",
+          "normal"
+        );
+
+
+        return;
+
+      }
+
+
+      await completeTask(
+        taskElement,
+        task
       );
 
     }
+  );
 
 
-    container.appendChild(taskElement);
+  console.log(
+    "任務點擊事件初始化成功"
+  );
 
-  });
 }
 
 
@@ -313,8 +658,8 @@ function renderTasks(tasks) {
 // 完成任務
 // ========================================
 
-async function toggleSupabaseTask(
-  element,
+async function completeTask(
+  taskElement,
   task
 ) {
 
@@ -325,23 +670,35 @@ async function toggleSupabaseTask(
       "error"
     );
 
+
     return;
+
   }
 
 
-  if (task.completed) {
+  if (completingTask) {
 
-    showSystemMessage(
-      "這個任務已經完成",
-      "normal"
+    console.log(
+      "目前已有任務正在完成"
     );
 
+
     return;
+
   }
 
 
-  // 防止使用者連續快速點擊
-  element.style.pointerEvents = "none";
+  completingTask =
+    true;
+
+
+  // 暫時禁止點擊
+  taskElement.style.pointerEvents =
+    "none";
+
+
+  taskElement.style.opacity =
+    "0.6";
 
 
   showSystemMessage(
@@ -349,94 +706,178 @@ async function toggleSupabaseTask(
   );
 
 
-  const { data, error } =
-    await supabaseClient.rpc(
-      "complete_task",
-      {
-        p_task_id: task.id
-      }
+  console.log(
+    "正在呼叫 complete_task：",
+    task.id
+  );
+
+
+  try {
+
+    const {
+      data,
+      error
+    } =
+      await supabaseClient.rpc(
+        "complete_task",
+        {
+          p_task_id:
+            Number(task.id)
+        }
+      );
+
+
+    console.log(
+      "RPC 回傳：",
+      data
     );
 
 
-  if (error) {
+    if (error) {
+
+      console.error(
+        "complete_task RPC 錯誤：",
+        error
+      );
+
+
+      throw error;
+
+    }
+
+
+    if (
+      !data ||
+      data.success !== true
+    ) {
+
+      const message =
+        data?.message ||
+        "任務無法完成";
+
+
+      showSystemMessage(
+        message,
+        "error"
+      );
+
+
+      return;
+
+    }
+
+
+    // 保存升級前等級
+    const oldLevel =
+      currentProfile
+        ? Number(
+            currentProfile.level
+          )
+        : Number(
+            data.level
+          );
+
+
+    // 更新玩家資料
+    if (!currentProfile) {
+
+      currentProfile = {};
+
+    }
+
+
+    currentProfile.level =
+      Number(data.level);
+
+
+    currentProfile.exp =
+      Number(data.exp);
+
+
+    currentProfile.gold =
+      Number(data.gold);
+
+
+    // 更新任務狀態
+    task.completed =
+      true;
+
+
+    task.completed_at =
+      new Date().toISOString();
+
+
+    // 更新玩家畫面
+    updateUI();
+
+
+    // 重新渲染任務
+    renderTasks(
+      currentTasks
+    );
+
+
+    // 成功訊息
+    showSystemMessage(
+      `任務完成！ +${data.task_exp} EXP +${data.task_gold} 🪙`,
+      "success"
+    );
+
+
+    console.log(
+      "任務完成成功"
+    );
+
+
+    // 升級提示
+    if (
+      Number(data.level) >
+      oldLevel
+    ) {
+
+      setTimeout(() => {
+
+        showSystemMessage(
+          `🎉 升級成功！現在是 Lv.${data.level}`,
+          "success"
+        );
+
+      }, 700);
+
+    }
+
+  }
+  catch (error) {
 
     console.error(
-      "完成任務失敗：",
+      "完成任務發生錯誤：",
       error
     );
 
-    element.style.pointerEvents = "auto";
 
     showSystemMessage(
-      "完成任務失敗：" + error.message,
+      "完成任務失敗：" +
+      (
+        error.message ||
+        "未知錯誤"
+      ),
       "error"
     );
 
-    return;
+
+    // 恢復點擊
+    taskElement.style.pointerEvents =
+      "auto";
+
+
+    taskElement.style.opacity =
+      "1";
+
   }
+  finally {
 
-
-  console.log(
-    "完成任務結果：",
-    data
-  );
-
-
-  if (!data || !data.success) {
-
-    element.style.pointerEvents = "auto";
-
-    showSystemMessage(
-      data?.message || "任務無法完成",
-      "error"
-    );
-
-    return;
-  }
-
-
-  // 更新本地玩家資料
-  currentProfile = {
-    ...currentProfile,
-    level: data.level,
-    exp: data.exp,
-    gold: data.gold
-  };
-
-
-  // 更新任務狀態
-  task.completed = true;
-  task.completed_at = new Date().toISOString();
-
-
-  // 更新畫面
-  updateUI();
-
-
-  renderTasks(currentTasks);
-
-
-  // 任務完成提示
-  showSystemMessage(
-    `任務完成！ +${data.task_exp} EXP +${data.task_gold} 🪙`,
-    "success"
-  );
-
-
-  // 如果升級
-  if (
-    data.level >
-    (currentProfile.previousLevel || data.level)
-  ) {
-
-    setTimeout(() => {
-
-      showSystemMessage(
-        `🎉 升級成功！現在是 Lv.${data.level}`,
-        "success"
-      );
-
-    }, 500);
+    completingTask =
+      false;
 
   }
 
@@ -447,127 +888,201 @@ async function toggleSupabaseTask(
 // 舊版 toggleTask 相容
 // ========================================
 
-function toggleTask(element) {
+function toggleTask(
+  element
+) {
 
   const taskId =
-    Number(element?.dataset?.taskId);
+    Number(
+      element?.dataset?.taskId
+    );
+
 
   const task =
     currentTasks.find(
-      item => item.id === taskId
+      item =>
+        Number(item.id) ===
+        taskId
     );
 
+
   if (!task) {
+
+    console.error(
+      "toggleTask 找不到任務",
+      taskId
+    );
+
+
     return;
+
   }
 
-  toggleSupabaseTask(
+
+  completeTask(
     element,
     task
   );
+
 }
 
 
 // ========================================
-// 更新玩家 UI
+// 更新玩家UI
 // ========================================
 
 function updateUI() {
 
   if (!currentProfile) {
+
     return;
+
   }
 
 
   const level =
-    currentProfile.level ?? 1;
+    Number(
+      currentProfile.level || 1
+    );
+
 
   const exp =
-    currentProfile.exp ?? 0;
+    Number(
+      currentProfile.exp || 0
+    );
+
 
   const gold =
-    currentProfile.gold ?? 0;
+    Number(
+      currentProfile.gold || 0
+    );
+
+
+  const username =
+    currentProfile.username ||
+    "玩家";
 
 
   const requiredExp =
-    getRequiredExp(level);
+    getRequiredExp(
+      level
+    );
 
 
+  // ====================================
   // 玩家名稱
+  // ====================================
+
   const usernameElements =
     document.querySelectorAll(
       ".player-name, #player-name, [data-player-name]"
     );
 
-  usernameElements.forEach(element => {
 
-    element.textContent =
-      currentProfile.username || "玩家";
+  usernameElements.forEach(
+    element => {
 
-  });
+      element.textContent =
+        username;
+
+    }
+  );
 
 
+  // ====================================
   // 等級
+  // ====================================
+
   const levelElements =
     document.querySelectorAll(
       ".player-level, #player-level, [data-player-level]"
     );
 
-  levelElements.forEach(element => {
 
-    element.textContent =
-      `Lv.${level}`;
+  levelElements.forEach(
+    element => {
 
-  });
+      element.textContent =
+        `Lv.${level}`;
+
+    }
+  );
 
 
+  // ====================================
   // EXP
+  // ====================================
+
   const expElements =
     document.querySelectorAll(
       ".player-exp, #player-exp, [data-player-exp]"
     );
 
-  expElements.forEach(element => {
 
-    element.textContent =
-      `${exp} / ${requiredExp}`;
+  expElements.forEach(
+    element => {
 
-  });
+      element.textContent =
+        `${exp} / ${requiredExp}`;
+
+    }
+  );
 
 
+  // ====================================
   // Gold
+  // ====================================
+
   const goldElements =
     document.querySelectorAll(
       ".player-gold, #player-gold, [data-player-gold]"
     );
 
-  goldElements.forEach(element => {
 
-    element.textContent =
-      `${gold}`;
+  goldElements.forEach(
+    element => {
 
-  });
+      element.textContent =
+        `${gold}`;
+
+    }
+  );
 
 
-  // EXP Bar
+  // ====================================
+  // EXP進度條
+  // ====================================
+
   const expBars =
     document.querySelectorAll(
       ".exp-fill, #exp-fill, [data-exp-bar]"
     );
 
+
   const percentage =
     Math.min(
       100,
-      (exp / requiredExp) * 100
+      Math.max(
+        0,
+        (exp / requiredExp) * 100
+      )
     );
 
 
-  expBars.forEach(bar => {
+  expBars.forEach(
+    bar => {
 
-    bar.style.width =
-      `${percentage}%`;
+      bar.style.width =
+        `${percentage}%`;
 
-  });
+    }
+  );
+
+
+  console.log(
+    `玩家UI更新：Lv.${level} EXP ${exp}/${requiredExp} Gold ${gold}`
+  );
+
 }
 
 
@@ -578,13 +1093,25 @@ function updateUI() {
 async function loadProfile() {
 
   if (!currentUser) {
+
     return;
+
   }
 
 
-  const { data, error } =
+  console.log(
+    "正在載入玩家資料..."
+  );
+
+
+  const {
+    data,
+    error
+  } =
     await supabaseClient
+
       .from("profiles")
+
       .select(`
         id,
         username,
@@ -592,7 +1119,12 @@ async function loadProfile() {
         exp,
         gold
       `)
-      .eq("id", currentUser.id)
+
+      .eq(
+        "id",
+        currentUser.id
+      )
+
       .maybeSingle();
 
 
@@ -603,12 +1135,16 @@ async function loadProfile() {
       error
     );
 
+
     showSystemMessage(
-      "玩家資料載入失敗",
+      "玩家資料載入失敗：" +
+      error.message,
       "error"
     );
 
+
     return;
+
   }
 
 
@@ -618,24 +1154,31 @@ async function loadProfile() {
       "找不到玩家資料"
     );
 
+
     showSystemMessage(
       "找不到玩家資料",
       "error"
     );
 
+
     return;
+
   }
 
 
-  currentProfile = data;
+  currentProfile =
+    data;
+
 
   console.log(
     "Supabase 玩家資料載入成功"
   );
 
+
   console.log(
     `玩家：${data.username}`
   );
+
 
   console.log(
     `Lv.${data.level} EXP：${data.exp} 金幣：${data.gold}`
@@ -643,6 +1186,7 @@ async function loadProfile() {
 
 
   updateUI();
+
 }
 
 
@@ -655,10 +1199,20 @@ async function login(
   password
 ) {
 
-  const { data, error } =
+  console.log(
+    "正在登入..."
+  );
+
+
+  const {
+    data,
+    error
+  } =
     await supabaseClient.auth.signInWithPassword({
+
       email,
       password
+
     });
 
 
@@ -669,12 +1223,16 @@ async function login(
       error
     );
 
+
     showSystemMessage(
-      "登入失敗：" + error.message,
+      "登入失敗：" +
+      error.message,
       "error"
     );
 
+
     return false;
+
   }
 
 
@@ -683,6 +1241,7 @@ async function login(
 
 
   await loadProfile();
+
   await loadTodayTasks();
 
 
@@ -693,6 +1252,7 @@ async function login(
 
 
   return true;
+
 }
 
 
@@ -705,10 +1265,20 @@ async function register(
   password
 ) {
 
-  const { data, error } =
+  console.log(
+    "正在註冊..."
+  );
+
+
+  const {
+    data,
+    error
+  } =
     await supabaseClient.auth.signUp({
+
       email,
       password
+
     });
 
 
@@ -719,12 +1289,16 @@ async function register(
       error
     );
 
+
     showSystemMessage(
-      "註冊失敗：" + error.message,
+      "註冊失敗：" +
+      error.message,
       "error"
     );
 
+
     return false;
+
   }
 
 
@@ -733,7 +1307,9 @@ async function register(
     currentUser =
       data.user;
 
+
     await loadProfile();
+
     await loadTodayTasks();
 
   }
@@ -746,6 +1322,7 @@ async function register(
 
 
   return true;
+
 }
 
 
@@ -755,7 +1332,9 @@ async function register(
 
 async function logout() {
 
-  const { error } =
+  const {
+    error
+  } =
     await supabaseClient.auth.signOut();
 
 
@@ -766,13 +1345,29 @@ async function logout() {
       error
     );
 
+
+    showSystemMessage(
+      "登出失敗：" +
+      error.message,
+      "error"
+    );
+
+
     return;
+
   }
 
 
-  currentUser = null;
-  currentProfile = null;
-  currentTasks = [];
+  currentUser =
+    null;
+
+
+  currentProfile =
+    null;
+
+
+  currentTasks =
+    [];
 
 
   showSystemMessage(
@@ -786,6 +1381,7 @@ async function logout() {
     location.reload();
 
   }, 500);
+
 }
 
 
@@ -794,6 +1390,11 @@ async function logout() {
 // ========================================
 
 async function checkAuth() {
+
+  console.log(
+    "正在檢查登入狀態..."
+  );
+
 
   const {
     data,
@@ -809,6 +1410,7 @@ async function checkAuth() {
       error
     );
 
+
     return;
 
   }
@@ -819,6 +1421,7 @@ async function checkAuth() {
     console.log(
       "目前沒有登入"
     );
+
 
     return;
 
@@ -836,7 +1439,9 @@ async function checkAuth() {
 
 
   await loadProfile();
+
   await loadTodayTasks();
+
 }
 
 
@@ -844,24 +1449,36 @@ async function checkAuth() {
 // 任務篩選
 // ========================================
 
-function filterTasks(category) {
+function filterTasks(
+  category
+) {
 
-  if (category === "all") {
+  if (
+    category === "all"
+  ) {
 
-    renderTasks(currentTasks);
+    renderTasks(
+      currentTasks
+    );
+
 
     return;
+
   }
 
 
   const filtered =
     currentTasks.filter(
       task =>
-        task.category === category
+        task.category ===
+        category
     );
 
 
-  renderTasks(filtered);
+  renderTasks(
+    filtered
+  );
+
 }
 
 
@@ -871,13 +1488,28 @@ function filterTasks(category) {
 
 document.addEventListener(
   "DOMContentLoaded",
-  async () => {
+  async function() {
 
     console.log(
-      "神級人生逆襲系統啟動"
+      "================================"
     );
 
 
+    console.log(
+      "神級人生逆襲系統 V1.0 啟動"
+    );
+
+
+    console.log(
+      "================================"
+    );
+
+
+    // 先設定任務點擊事件
+    setupTaskClickHandler();
+
+
+    // 再檢查登入
     await checkAuth();
 
   }
@@ -888,8 +1520,21 @@ document.addEventListener(
 // 暴露給 HTML
 // ========================================
 
-window.login = login;
-window.register = register;
-window.logout = logout;
-window.toggleTask = toggleTask;
-window.filterTasks = filterTasks;
+window.login =
+  login;
+
+
+window.register =
+  register;
+
+
+window.logout =
+  logout;
+
+
+window.toggleTask =
+  toggleTask;
+
+
+window.filterTasks =
+  filterTasks;
