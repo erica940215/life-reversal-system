@@ -3,510 +3,482 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <title>神級人生逆襲系統</title>
+
   <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
-  <div class="container">
 
-    <!-- ==================== 登入區 ==================== -->
-    <section class="card" id="auth-section" style="margin-bottom: 20px;">
-      <h2>🔐 玩家登入</h2>
+<div class="container">
 
-      <div id="auth-message" style="margin-bottom: 12px;">
-        尚未登入
-      </div>
+  <!-- ==================================================
+       登入
+  ================================================== -->
 
-      <div id="auth-form">
-        <input
-          type="email"
-          id="auth-email"
-          placeholder="Email"
-          autocomplete="email"
-          style="width: 100%; box-sizing: border-box; margin-bottom: 10px; padding: 12px;"
-        >
+  <section
+    class="card"
+    id="auth-section"
+    style="margin-bottom: 20px;"
+  >
 
-        <input
-          type="password"
-          id="auth-password"
-          placeholder="密碼（至少 6 碼）"
-          autocomplete="current-password"
-          style="width: 100%; box-sizing: border-box; margin-bottom: 10px; padding: 12px;"
-        >
+    <h2>🔐 玩家登入</h2>
 
-        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-          <button type="button" onclick="registerUser()">
-            📝 註冊
-          </button>
-
-          <button type="button" onclick="loginUser()">
-            🔑 登入
-          </button>
-        </div>
-      </div>
-
-      <div id="logged-in-area" style="display: none;">
-        <div id="user-email" style="margin-bottom: 12px;"></div>
-
-        <button type="button" onclick="logoutUser()">
-          🚪 登出
-        </button>
-      </div>
-    </section>
+    <div
+      id="auth-message"
+      style="margin-bottom: 12px;"
+    >
+      尚未登入
+    </div>
 
 
-    <!-- ==================== 玩家資料 ==================== -->
-    <header class="card header-card">
+    <div id="auth-form">
 
-      <div class="system-title">
-        ⚔️ 神級人生逆襲系統
-      </div>
-
-      <div class="stats-row">
-        <span class="badge" id="player-level">
-          Lv.1
-        </span>
-
-        <span class="gold-text">
-          💰 金幣：
-          <span id="player-gold">100</span>
-        </span>
-      </div>
-
-      <div class="exp-container">
-        <div
-          class="exp-bar"
-          id="exp-bar"
-          style="width: 50%;"
-        ></div>
-      </div>
-
-      <div class="exp-text">
-        <span id="current-exp">50</span>
-        /
-        <span id="required-exp">100</span>
-        EXP
-      </div>
-
-    </header>
-
-
-    <!-- ==================== 今日進度 ==================== -->
-    <section class="card daily-summary">
-
-      <h2>📊 今日進度</h2>
-
-      <div class="summary-grid">
-
-        <div class="summary-item">
-          <span class="summary-label">
-            任務完成
-          </span>
-
-          <strong id="completed-count">
-            0 / 4
-          </strong>
-        </div>
-
-
-        <div class="summary-item">
-          <span class="summary-label">
-            完成率
-          </span>
-
-          <strong id="summary-rate">
-            0%
-          </strong>
-        </div>
-
-
-        <div class="summary-item">
-          <span class="summary-label">
-            今日 EXP
-          </span>
-
-          <strong id="today-exp">
-            +0
-          </strong>
-        </div>
-
-
-        <div class="summary-item">
-          <span class="summary-label">
-            今日金幣
-          </span>
-
-          <strong id="today-gold">
-            +0
-          </strong>
-        </div>
-
-      </div>
-
-    </section>
-
-
-    <!-- ==================== 今日任務 ==================== -->
-    <section class="card task-card">
-
-      <h2>📜 今日任務</h2>
-
-
-      <!-- 新增任務 -->
-      <div
-        class="add-task-box"
+      <input
+        type="email"
+        id="auth-email"
+        placeholder="Email"
+        autocomplete="email"
         style="
-          margin-bottom: 20px;
-          padding: 15px;
-          border: 1px solid rgba(255,255,255,0.15);
-          border-radius: 12px;
+          width: 100%;
+          box-sizing: border-box;
+          margin-bottom: 10px;
+          padding: 12px;
         "
       >
 
-        <h3 style="margin-top: 0;">
-          ➕ 新增任務
-        </h3>
+
+      <input
+        type="password"
+        id="auth-password"
+        placeholder="密碼（至少 6 碼）"
+        autocomplete="current-password"
+        style="
+          width: 100%;
+          box-sizing: border-box;
+          margin-bottom: 10px;
+          padding: 12px;
+        "
+      >
 
 
-        <input
-          type="text"
-          id="new-task-title"
-          placeholder="輸入新任務，例如：背 TOEIC 單字 20 個"
-          style="
-            width: 100%;
-            box-sizing: border-box;
-            margin-bottom: 10px;
-            padding: 12px;
-          "
+      <div
+        style="
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        "
+      >
+
+        <button
+          type="button"
+          onclick="registerUser()"
         >
-
-
-        <div
-          style="
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-bottom: 10px;
-          "
-        >
-
-          <select
-            id="new-task-category"
-            style="
-              padding: 10px;
-              flex: 1;
-              min-width: 130px;
-            "
-          >
-
-            <option value="study">
-              📚 學習
-            </option>
-
-            <option value="toeic">
-              🇬🇧 多益
-            </option>
-
-            <option value="focus">
-              🎯 專注
-            </option>
-
-            <option value="health">
-              ❤️ 健康
-            </option>
-
-          </select>
-
-
-          <select
-            id="new-task-difficulty"
-            style="
-              padding: 10px;
-              flex: 1;
-              min-width: 130px;
-            "
-          >
-
-            <option value="easy">
-              🟢 簡單
-            </option>
-
-            <option value="normal" selected>
-              🔵 普通
-            </option>
-
-            <option value="hard">
-              🟣 困難
-            </option>
-
-          </select>
-
-        </div>
+          📝 註冊
+        </button>
 
 
         <button
           type="button"
-          onclick="addTask()"
+          onclick="loginUser()"
         >
-          ➕ 新增任務
-        </button>
-
-
-        <div
-          id="add-task-message"
-          style="margin-top: 10px;"
-        ></div>
-
-      </div>
-
-
-      <!-- 任務分類 -->
-      <div class="task-filter">
-
-        <button
-          class="filter-btn active"
-          onclick="filterTasks('all', this)"
-        >
-          全部
-        </button>
-
-        <button
-          class="filter-btn"
-          onclick="filterTasks('study', this)"
-        >
-          📚 學習
-        </button>
-
-        <button
-          class="filter-btn"
-          onclick="filterTasks('toeic', this)"
-        >
-          🇬🇧 多益
-        </button>
-
-        <button
-          class="filter-btn"
-          onclick="filterTasks('focus', this)"
-        >
-          🎯 專注
-        </button>
-
-        <button
-          class="filter-btn"
-          onclick="filterTasks('health', this)"
-        >
-          ❤️ 健康
+          🔑 登入
         </button>
 
       </div>
 
-
-      <!-- 任務列表 -->
-      <ul class="task-list">
-
-        <li
-          class="task-item"
-          data-category="toeic"
-          data-difficulty="normal"
-          onclick="toggleTask(this, 30, 20)"
-        >
-
-          <span class="task-checkbox">
-            ☐
-          </span>
-
-          <div class="task-info">
-
-            <small>
-              🇬🇧 多益
-            </small>
-
-            <span class="task-name">
-              多益單字 20 個
-            </span>
-
-            <span class="difficulty normal">
-              🔵 普通
-            </span>
-
-          </div>
-
-          <div class="reward">
-
-            <span>
-              +30 EXP
-            </span>
-
-            <span class="gold-reward">
-              +20 💰
-            </span>
-
-          </div>
-
-        </li>
+    </div>
 
 
-        <li
-          class="task-item"
-          data-category="study"
-          data-difficulty="hard"
-          onclick="toggleTask(this, 50, 35)"
-        >
+    <div
+      id="logged-in-area"
+      style="display: none;"
+    >
 
-          <span class="task-checkbox">
-            ☐
-          </span>
-
-          <div class="task-info">
-
-            <small>
-              📚 學習
-            </small>
-
-            <span class="task-name">
-              計概複習 60 分鐘
-            </span>
-
-            <span class="difficulty hard">
-              🟣 困難
-            </span>
-
-          </div>
-
-          <div class="reward">
-
-            <span>
-              +50 EXP
-            </span>
-
-            <span class="gold-reward">
-              +35 💰
-            </span>
-
-          </div>
-
-        </li>
+      <div
+        id="user-email"
+        style="margin-bottom: 12px;"
+      ></div>
 
 
-        <li
-          class="task-item"
-          data-category="focus"
-          data-difficulty="normal"
-          onclick="toggleTask(this, 20, 10)"
-        >
+      <button
+        type="button"
+        onclick="logoutUser()"
+      >
+        🚪 登出
+      </button>
 
-          <span class="task-checkbox">
-            ☐
-          </span>
+    </div>
 
-          <div class="task-info">
-
-            <small>
-              🎯 專注
-            </small>
-
-            <span class="task-name">
-              深度專注 30 分鐘
-            </span>
-
-            <span class="difficulty normal">
-              🔵 普通
-            </span>
-
-          </div>
-
-          <div class="reward">
-
-            <span>
-              +20 EXP
-            </span>
-
-            <span class="gold-reward">
-              +10 💰
-            </span>
-
-          </div>
-
-        </li>
+  </section>
 
 
-        <li
-          class="task-item"
-          data-category="health"
-          data-difficulty="easy"
-          onclick="toggleTask(this, 20, 15)"
-        >
 
-          <span class="task-checkbox">
-            ☐
-          </span>
+  <!-- ==================================================
+       玩家資料
+  ================================================== -->
 
-          <div class="task-info">
+  <header class="card header-card">
 
-            <small>
-              ❤️ 健康
-            </small>
-
-            <span class="task-name">
-              喝水與休息
-            </span>
-
-            <span class="difficulty easy">
-              🟢 簡單
-            </span>
-
-          </div>
-
-          <div class="reward">
-
-            <span>
-              +20 EXP
-            </span>
-
-            <span class="gold-reward">
-              +15 💰
-            </span>
-
-          </div>
-
-        </li>
-
-      </ul>
-
-    </section>
+    <div class="system-title">
+      ⚔️ 神級人生逆襲系統
+    </div>
 
 
-    <!-- ==================== 完成率 ==================== -->
-    <footer class="card rate-card">
+    <div class="stats-row">
 
-      <div class="rate-title">
-        今日完成率：
-        <span id="rate-text">
-          0%
+      <span
+        class="badge"
+        id="player-level"
+      >
+        Lv.1
+      </span>
+
+
+      <span class="gold-text">
+
+        💰 金幣：
+
+        <span id="player-gold">
+          100
         </span>
+
+      </span>
+
+    </div>
+
+
+    <div class="exp-container">
+
+      <div
+        class="exp-bar"
+        id="exp-bar"
+        style="width: 50%;"
+      ></div>
+
+    </div>
+
+
+    <div class="exp-text">
+
+      <span id="current-exp">
+        50
+      </span>
+
+      /
+
+      <span id="required-exp">
+        100
+      </span>
+
+      EXP
+
+    </div>
+
+  </header>
+
+
+
+  <!-- ==================================================
+       今日進度
+  ================================================== -->
+
+  <section class="card daily-summary">
+
+    <h2>📊 今日進度</h2>
+
+
+    <div class="summary-grid">
+
+      <div class="summary-item">
+
+        <span class="summary-label">
+          任務完成
+        </span>
+
+        <strong id="completed-count">
+          0 / 4
+        </strong>
+
       </div>
 
-      <div class="rate-container">
 
-        <div
-          class="rate-bar"
-          id="rate-bar"
-          style="width: 0%;"
-        ></div>
+      <div class="summary-item">
+
+        <span class="summary-label">
+          完成率
+        </span>
+
+        <strong id="summary-rate">
+          0%
+        </strong>
 
       </div>
 
-    </footer>
 
-  </div>
+      <div class="summary-item">
+
+        <span class="summary-label">
+          今日 EXP
+        </span>
+
+        <strong id="today-exp">
+          +0
+        </strong>
+
+      </div>
 
 
-  <!-- ==================== Supabase ==================== -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <div class="summary-item">
 
-  <!-- ==================== 我們的 JavaScript ==================== -->
-  <script src="script.js"></script>
+        <span class="summary-label">
+          今日金幣
+        </span>
+
+        <strong id="today-gold">
+          +0
+        </strong>
+
+      </div>
+
+    </div>
+
+  </section>
+
+
+
+  <!-- ==================================================
+       任務
+  ================================================== -->
+
+  <section class="card task-card">
+
+    <h2>📜 今日任務</h2>
+
+
+
+    <!-- ==================================================
+         新增任務
+    ================================================== -->
+
+    <div
+      class="add-task-box"
+      style="
+        margin-bottom: 20px;
+        padding: 15px;
+        border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 12px;
+      "
+    >
+
+      <h3 style="margin-top: 0;">
+        ➕ 新增任務
+      </h3>
+
+
+      <input
+        type="text"
+        id="new-task-title"
+        placeholder="輸入新任務，例如：背 TOEIC 單字 20 個"
+        style="
+          width: 100%;
+          box-sizing: border-box;
+          margin-bottom: 10px;
+          padding: 12px;
+        "
+      >
+
+
+      <div
+        style="
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin-bottom: 10px;
+        "
+      >
+
+        <select
+          id="new-task-category"
+          style="
+            padding: 10px;
+            flex: 1;
+            min-width: 130px;
+          "
+        >
+
+          <option value="study">
+            📚 學習
+          </option>
+
+          <option value="toeic">
+            🇬🇧 多益
+          </option>
+
+          <option value="focus">
+            🎯 專注
+          </option>
+
+          <option value="health">
+            ❤️ 健康
+          </option>
+
+        </select>
+
+
+        <select
+          id="new-task-difficulty"
+          style="
+            padding: 10px;
+            flex: 1;
+            min-width: 130px;
+          "
+        >
+
+          <option value="easy">
+            🟢 簡單
+          </option>
+
+          <option
+            value="normal"
+            selected
+          >
+            🔵 普通
+          </option>
+
+          <option value="hard">
+            🟣 困難
+          </option>
+
+        </select>
+
+      </div>
+
+
+      <button
+        type="button"
+        onclick="addTask()"
+      >
+        ➕ 新增任務
+      </button>
+
+
+      <div
+        id="add-task-message"
+        style="margin-top: 10px;"
+      ></div>
+
+    </div>
+
+
+
+    <!-- ==================================================
+         篩選
+    ================================================== -->
+
+    <div class="task-filter">
+
+      <button
+        class="filter-btn active"
+        onclick="filterTasks('all', this)"
+      >
+        全部
+      </button>
+
+
+      <button
+        class="filter-btn"
+        onclick="filterTasks('study', this)"
+      >
+        📚 學習
+      </button>
+
+
+      <button
+        class="filter-btn"
+        onclick="filterTasks('toeic', this)"
+      >
+        🇬🇧 多益
+      </button>
+
+
+      <button
+        class="filter-btn"
+        onclick="filterTasks('focus', this)"
+      >
+        🎯 專注
+      </button>
+
+
+      <button
+        class="filter-btn"
+        onclick="filterTasks('health', this)"
+      >
+        ❤️ 健康
+      </button>
+
+    </div>
+
+
+
+    <!-- ==================================================
+         任務列表
+    ================================================== -->
+
+    <ul class="task-list">
+
+    </ul>
+
+  </section>
+
+
+
+  <!-- ==================================================
+       完成率
+  ================================================== -->
+
+  <footer class="card rate-card">
+
+    <div class="rate-title">
+
+      今日完成率：
+
+      <span id="rate-text">
+        0%
+      </span>
+
+    </div>
+
+
+    <div class="rate-container">
+
+      <div
+        class="rate-bar"
+        id="rate-bar"
+        style="width: 0%;"
+      ></div>
+
+    </div>
+
+  </footer>
+
+</div>
+
+
+
+<!-- ==================================================
+     Supabase
+================================================== -->
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+
+<!-- ==================================================
+     JavaScript
+================================================== -->
+
+<script src="script.js"></script>
 
 </body>
 </html>
