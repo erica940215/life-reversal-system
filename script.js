@@ -684,13 +684,18 @@ function renderPlayer() {
 
 
   /*
-    每級需要 150 EXP
+    升級門檻和資料庫的 complete_task 一致：
+    Lv1 → 100、Lv2 → 150、Lv3 → 200 ……（每級 +50）
+
+    資料庫存的 exp 已經是「這一級累積的經驗」，
+    升級時會自動扣掉門檻，所以直接用，不用再取餘數
   */
 
-  const expNeeded = 150;
+  const expNeeded =
+    100 + (level - 1) * 50;
 
   const currentExp =
-    exp % expNeeded;
+    exp;
 
   const progress =
     Math.min(
@@ -1010,7 +1015,7 @@ function renderTasks() {
               <input
                 type="checkbox"
                 ${task.completed ? "checked" : ""}
-                onchange="toggleTask('${task.id}', this.checked)"
+                onchange="toggleTask('${task.id}', this.checked, this)"
               >
 
             </div>
@@ -1462,61 +1467,66 @@ function clearTaskForm() {
    24. 完成 / 取消任務
 ========================================================= */
 
+/*
+  規則（方案 B：取消就扣回）：
+  - 勾選   → complete_task：加 EXP / 金幣，必要時升級
+  - 取消勾選 → uncomplete_task：扣回 EXP / 金幣，必要時降級
+  兩個方向都交給資料庫處理，前端不再直接改 completed，
+  這樣 EXP 永遠和任務狀態一致，也刷不了分。
+*/
+
 async function toggleTask(
   taskId,
-  completed
+  completed,
+  checkbox
 ) {
 
   if (!currentUser) return;
 
 
+  /*
+    送出期間先鎖住勾選框，防止連點
+  */
+
+  if (checkbox) {
+
+    checkbox.disabled = true;
+
+  }
+
+
   try {
 
-    /*
-      如果有 complete_task RPC，
-      優先使用 RPC
-    */
-
-    if (completed) {
-
-      const {
-        data,
-        error
-      } = await db.rpc(
-        "complete_task",
-        {
-          p_task_id: taskId
-        }
-      );
-
-
-      if (error) {
-
-        console.warn(
-          "complete_task RPC 失敗，改用一般更新：",
-          error
-        );
-
-
-        await updateTaskCompleted(
-          taskId,
-          true
-        );
-
-      } else {
-
-        console.log(
-          "✅ 任務完成",
-          data
-        );
-
+    const {
+      data,
+      error
+    } = await db.rpc(
+      completed
+        ? "complete_task"
+        : "uncomplete_task",
+      {
+        p_task_id: taskId
       }
+    );
 
-    } else {
 
-      await updateTaskCompleted(
-        taskId,
-        false
+    if (error) {
+
+      throw error;
+
+    }
+
+
+    if (data && data.success === false) {
+
+      /*
+        例如畫面還沒更新、任務其實早就是這個狀態，
+        重新載入就會對上
+      */
+
+      console.warn(
+        "任務狀態沒有改變：",
+        data.message
       );
 
     }
@@ -1536,41 +1546,30 @@ async function toggleTask(
       error
     );
 
-  }
 
-}
+    /*
+      失敗就把勾選框還原，不偷偷改成「完成但沒獎勵」
+    */
 
+    if (checkbox) {
 
-/* =========================================================
-   25. 一般更新任務完成狀態
-========================================================= */
+      checkbox.checked = !completed;
 
-async function updateTaskCompleted(
-  taskId,
-  completed
-) {
-
-  const {
-    error
-  } = await db
-    .from("tasks")
-    .update({
-
-      completed,
-
-      completed_at:
-        completed
-          ? new Date().toISOString()
-          : null
-
-    })
-    .eq("id", taskId)
-    .eq("user_id", currentUser.id);
+    }
 
 
-  if (error) {
+    alert(
+      "更新任務失敗：" +
+      error.message
+    );
 
-    throw error;
+  } finally {
+
+    if (checkbox) {
+
+      checkbox.disabled = false;
+
+    }
 
   }
 
@@ -2630,4 +2629,3 @@ console.log(
   "Supabase Client：",
   db
 );
-
