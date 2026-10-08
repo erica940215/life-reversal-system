@@ -1,668 +1,1078 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <title>神級人生逆襲系統</title>
 
-  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        "Noto Sans TC",
+        sans-serif;
+
+      background:
+        radial-gradient(circle at top, #1d2638 0%, #0b0f17 45%, #070a10 100%);
+
+      color: #f3f4f6;
+      min-height: 100vh;
+    }
+
+    .container {
+      width: min(1100px, calc(100% - 30px));
+      margin: 0 auto;
+      padding: 30px 0 60px;
+    }
+
+    /* =========================
+       Header
+    ========================= */
+
+    header {
+      margin-bottom: 25px;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 30px;
+      letter-spacing: 1px;
+    }
+
+    header p {
+      margin: 8px 0 0;
+      color: #9ca3af;
+    }
+
+    /* =========================
+       Card
+    ========================= */
+
+    .card {
+      background: rgba(17, 24, 39, 0.9);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+
+    .card h2 {
+      margin-top: 0;
+    }
+
+    /* =========================
+       Login
+    ========================= */
+
+    .login-card {
+      max-width: 500px;
+      margin: 60px auto;
+    }
+
+    .login-card h1 {
+      text-align: center;
+      margin-top: 0;
+    }
+
+    /* =========================
+       Input
+    ========================= */
+
+    input,
+    select {
+      width: 100%;
+      padding: 11px 13px;
+      margin-top: 6px;
+
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 9px;
+
+      color: white;
+      outline: none;
+    }
+
+    input:focus,
+    select:focus {
+      border-color: #64748b;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 14px;
+      color: #cbd5e1;
+      font-size: 14px;
+    }
+
+    /* =========================
+       Button
+    ========================= */
+
+    button {
+      border: 0;
+      border-radius: 9px;
+      padding: 10px 15px;
+
+      background: #334155;
+      color: white;
+
+      cursor: pointer;
+      transition: 0.15s;
+      font-size: 14px;
+    }
+
+    button:hover {
+      background: #475569;
+      transform: translateY(-1px);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .primary-button {
+      background: #2563eb;
+    }
+
+    .primary-button:hover {
+      background: #3b82f6;
+    }
+
+    .danger-button {
+      background: #7f1d1d;
+    }
+
+    .danger-button:hover {
+      background: #991b1b;
+    }
+
+    /* =========================
+       Player
+    ========================= */
+
+    .player-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+    }
+
+    .stat-box {
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 18px;
+      text-align: center;
+    }
+
+    .stat-label {
+      color: #94a3b8;
+      font-size: 13px;
+      margin-bottom: 7px;
+    }
+
+    .stat-value {
+      font-size: 25px;
+      font-weight: bold;
+    }
+
+    /* =========================
+       EXP
+    ========================= */
+
+    .exp-container {
+      margin-top: 18px;
+    }
+
+    .exp-bar {
+      height: 12px;
+      background: #1e293b;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .exp-progress {
+      height: 100%;
+      width: 0%;
+      background: #3b82f6;
+      transition: width 0.3s;
+    }
+
+    .exp-text {
+      margin-top: 7px;
+      text-align: right;
+      color: #94a3b8;
+      font-size: 13px;
+    }
+
+    /* =========================
+       Daily summary
+    ========================= */
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+
+    .summary-item {
+      background: #0f172a;
+      padding: 15px;
+      border-radius: 12px;
+      border: 1px solid #1e293b;
+    }
+
+    .summary-title {
+      color: #94a3b8;
+      font-size: 13px;
+    }
+
+    .summary-value {
+      font-size: 20px;
+      font-weight: bold;
+      margin-top: 5px;
+    }
+
+    /* =========================
+       Add task
+    ========================= */
+
+    .task-form-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr;
+      gap: 12px;
+    }
+
+    .repeat-options {
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
+      margin: 8px 0 15px;
+    }
+
+    .radio-option,
+    .checkbox-option {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin: 0;
+      cursor: pointer;
+    }
+
+    .radio-option input,
+    .checkbox-option input {
+      width: auto;
+      margin: 0;
+    }
+
+    #repeat-settings {
+      display: none;
+      background: #0b1220;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 15px;
+      margin-top: 10px;
+    }
+
+    #weekday-settings {
+      display: none;
+      margin-top: 12px;
+    }
+
+    .weekday-grid {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .weekday-grid label {
+      background: #1e293b;
+      padding: 8px 11px;
+      border-radius: 8px;
+      margin: 0;
+    }
+
+    /* =========================
+       Task list
+    ========================= */
+
+    .task-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .task-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 15px;
+
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+
+      padding: 15px;
+    }
+
+    .task-main {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .task-title {
+      font-weight: bold;
+      font-size: 16px;
+      margin-bottom: 7px;
+    }
+
+    .task-meta {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+    }
+
+    .tag {
+      background: #1e293b;
+      color: #cbd5e1;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+
+    .task-actions {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+    }
+
+    .completed {
+      opacity: 0.55;
+    }
+
+    .completed .task-title {
+      text-decoration: line-through;
+    }
+
+    /* =========================
+       Task management
+    ========================= */
+
+    .management-filter {
+      background: #1e293b;
+    }
+
+    .management-filter.active {
+      background: #2563eb;
+    }
+
+    #task-management-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .management-item {
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    .management-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 15px;
+    }
+
+    .management-title {
+      font-size: 17px;
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+
+    .management-meta {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+    }
+
+    .management-description {
+      color: #94a3b8;
+      font-size: 13px;
+      margin-top: 10px;
+    }
+
+    .management-actions {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    .status-enabled {
+      color: #86efac;
+    }
+
+    .status-disabled {
+      color: #fca5a5;
+    }
+
+    /* =========================
+       Messages
+    ========================= */
+
+    .message {
+      margin-top: 10px;
+      min-height: 20px;
+      color: #94a3b8;
+      font-size: 14px;
+    }
+
+    .error {
+      color: #fca5a5;
+    }
+
+    .success {
+      color: #86efac;
+    }
+
+    /* =========================
+       Empty
+    ========================= */
+
+    .empty-state {
+      padding: 30px 20px;
+      text-align: center;
+      color: #64748b;
+    }
+
+    /* =========================
+       Footer
+    ========================= */
+
+    footer {
+      text-align: center;
+      color: #475569;
+      font-size: 12px;
+      margin-top: 30px;
+    }
+
+    /* =========================
+       Responsive
+    ========================= */
+
+    @media (max-width: 800px) {
+
+      .player-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .summary-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .task-form-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .task-item {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .management-header {
+        flex-direction: column;
+      }
+
+      .task-actions {
+        width: 100%;
+      }
+
+    }
+
+    @media (max-width: 500px) {
+
+      .container {
+        width: min(100% - 20px, 1100px);
+        padding-top: 20px;
+      }
+
+      .card {
+        padding: 15px;
+        border-radius: 13px;
+      }
+
+      header h1 {
+        font-size: 24px;
+      }
+
+      .summary-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      button {
+        padding: 9px 12px;
+      }
+
+    }
+  </style>
 </head>
+
 
 <body>
 
 <div class="container">
 
   <!-- ==================================================
-       登入
+       登入區
   ================================================== -->
 
-  <section
-    class="card"
-    id="auth-section"
-    style="margin-bottom: 20px;"
-  >
+  <section id="auth-section" class="card login-card">
 
-    <h2>🔐 玩家登入</h2>
+    <h1>⚔️ 神級人生逆襲系統</h1>
 
-    <div
-      id="auth-message"
-      style="margin-bottom: 12px;"
-    >
-      尚未登入
-    </div>
+    <p style="text-align:center; color:#94a3b8;">
+      登入你的專屬人生系統
+    </p>
 
-
-    <div id="auth-form">
-
+    <label>
+      Email
       <input
         type="email"
-        id="auth-email"
-        placeholder="Email"
-        autocomplete="email"
-        style="
-          width: 100%;
-          box-sizing: border-box;
-          margin-bottom: 10px;
-          padding: 12px;
-        "
+        id="email"
+        placeholder="輸入 Email"
       >
+    </label>
 
-
+    <label>
+      密碼
       <input
         type="password"
-        id="auth-password"
-        placeholder="密碼（至少 6 碼）"
-        autocomplete="current-password"
-        style="
-          width: 100%;
-          box-sizing: border-box;
-          margin-bottom: 10px;
-          padding: 12px;
-        "
+        id="password"
+        placeholder="輸入密碼"
       >
+    </label>
 
-
-      <div
-        style="
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
-        "
-      >
-
-        <button
-          type="button"
-          onclick="registerUser()"
-        >
-          📝 註冊
-        </button>
-
-
-        <button
-          type="button"
-          onclick="loginUser()"
-        >
-          🔑 登入
-        </button>
-
-      </div>
-
-    </div>
-
-
-    <div
-      id="logged-in-area"
-      style="display: none;"
-    >
-
-      <div
-        id="user-email"
-        style="margin-bottom: 12px;"
-      ></div>
-
+    <div style="display:flex; gap:10px;">
 
       <button
         type="button"
-        onclick="logoutUser()"
+        class="primary-button"
+        onclick="login()"
+        style="flex:1;"
       >
-        🚪 登出
+        🔑 登入
+      </button>
+
+      <button
+        type="button"
+        onclick="register()"
+        style="flex:1;"
+      >
+        📝 註冊
       </button>
 
     </div>
 
+    <div id="auth-message" class="message"></div>
+
   </section>
 
 
-
   <!-- ==================================================
-       玩家資料
+       主系統
   ================================================== -->
 
-  <header class="card header-card">
+  <main id="app-section" style="display:none;">
 
-    <div class="system-title">
-      ⚔️ 神級人生逆襲系統
-    </div>
+    <!-- Header -->
 
+    <header>
 
-    <div class="stats-row">
+      <h1>⚔️ 神級人生逆襲系統</h1>
 
-      <span
-        class="badge"
-        id="player-level"
+      <p>
+        歡迎回來，<span id="username">玩家</span>
+      </p>
+
+      <button
+        type="button"
+        onclick="logout()"
+        style="margin-top:12px;"
       >
-        Lv.1
-      </span>
+        🚪 登出
+      </button>
+
+    </header>
 
 
-      <span class="gold-text">
+    <!-- ==================================================
+         玩家資訊
+    ================================================== -->
 
-        💰 金幣：
+    <section class="card">
 
-        <span id="player-gold">
-          100
-        </span>
+      <h2>👤 玩家資訊</h2>
 
-      </span>
+      <div class="player-grid">
 
-    </div>
+        <div class="stat-box">
 
+          <div class="stat-label">
+            等級
+          </div>
 
-    <div class="exp-container">
+          <div
+            class="stat-value"
+            id="player-level"
+          >
+            Lv.1
+          </div>
 
-      <div
-        class="exp-bar"
-        id="exp-bar"
-        style="width: 50%;"
-      ></div>
-
-    </div>
-
-
-    <div class="exp-text">
-
-      <span id="current-exp">
-        50
-      </span>
-
-      /
-
-      <span id="required-exp">
-        100
-      </span>
-
-      EXP
-
-    </div>
-
-  </header>
+        </div>
 
 
+        <div class="stat-box">
 
-  <!-- ==================================================
-       今日進度
-  ================================================== -->
+          <div class="stat-label">
+            經驗值
+          </div>
 
-  <section class="card daily-summary">
+          <div
+            class="stat-value"
+            id="player-exp"
+          >
+            50
+          </div>
 
-    <h2>📊 今日進度</h2>
+        </div>
 
 
-    <div class="summary-grid">
+        <div class="stat-box">
 
-      <div class="summary-item">
+          <div class="stat-label">
+            金幣
+          </div>
 
-        <span class="summary-label">
-          任務完成
-        </span>
+          <div
+            class="stat-value"
+            id="player-gold"
+          >
+            100
+          </div>
 
-        <strong id="completed-count">
-          0 / 0
-        </strong>
+        </div>
 
       </div>
 
 
-      <div class="summary-item">
+      <div class="exp-container">
 
-        <span class="summary-label">
-          完成率
-        </span>
+        <div class="exp-bar">
 
-        <strong id="summary-rate">
-          0%
-        </strong>
+          <div
+            id="exp-progress"
+            class="exp-progress"
+          ></div>
 
-      </div>
+        </div>
 
-
-      <div class="summary-item">
-
-        <span class="summary-label">
-          今日 EXP
-        </span>
-
-        <strong id="today-exp">
-          +0
-        </strong>
+        <div
+          id="exp-text"
+          class="exp-text"
+        >
+          50 EXP
+        </div>
 
       </div>
 
+    </section>
 
-      <div class="summary-item">
 
-        <span class="summary-label">
-          今日金幣
-        </span>
+    <!-- ==================================================
+         今日摘要
+    ================================================== -->
 
-        <strong id="today-gold">
-          +0
-        </strong>
+    <section class="card">
+
+      <h2>📊 今日狀態</h2>
+
+      <div class="summary-grid">
+
+        <div class="summary-item">
+
+          <div class="summary-title">
+            今日任務
+          </div>
+
+          <div
+            class="summary-value"
+            id="daily-task-count"
+          >
+            0 / 0
+          </div>
+
+        </div>
+
+
+        <div class="summary-item">
+
+          <div class="summary-title">
+            完成率
+          </div>
+
+          <div
+            class="summary-value"
+            id="completion-rate"
+          >
+            0%
+          </div>
+
+        </div>
+
+
+        <div class="summary-item">
+
+          <div class="summary-title">
+            今日獲得 EXP
+          </div>
+
+          <div
+            class="summary-value"
+            id="today-exp"
+          >
+            0
+          </div>
+
+        </div>
+
+
+        <div class="summary-item">
+
+          <div class="summary-title">
+            今日獲得 Gold
+          </div>
+
+          <div
+            class="summary-value"
+            id="today-gold"
+          >
+            0
+          </div>
+
+        </div>
 
       </div>
 
-    </div>
-
-  </section>
-
-
-
-  <!-- ==================================================
-       任務
-  ================================================== -->
-
-  <section class="card task-card">
-
-    <h2>📜 今日任務</h2>
-
+    </section>
 
 
     <!-- ==================================================
          新增任務
     ================================================== -->
 
-    <div
-      class="add-task-box"
-      style="
-        margin-bottom: 20px;
-        padding: 15px;
-        border: 1px solid rgba(255,255,255,0.15);
-        border-radius: 12px;
-      "
-    >
+    <section class="card">
 
-      <h3 style="margin-top: 0;">
-        ➕ 新增任務
-      </h3>
+      <h2>➕ 新增任務</h2>
 
+      <div class="task-form-grid">
 
-      <!-- 任務名稱 -->
+        <label>
 
-      <input
-        type="text"
-        id="new-task-title"
-        placeholder="輸入新任務，例如：背 TOEIC 單字 20 個"
-        style="
-          width: 100%;
-          box-sizing: border-box;
-          margin-bottom: 10px;
-          padding: 12px;
-        "
-      >
+          任務名稱
 
-
-      <!-- 分類 / 難度 -->
-
-      <div
-        style="
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
-          margin-bottom: 15px;
-        "
-      >
-
-        <select
-          id="new-task-category"
-          style="
-            padding: 10px;
-            flex: 1;
-            min-width: 130px;
-          "
-        >
-
-          <option value="study">
-            📚 學習
-          </option>
-
-          <option value="toeic">
-            🇬🇧 多益
-          </option>
-
-          <option value="focus">
-            🎯 專注
-          </option>
-
-          <option value="health">
-            ❤️ 健康
-          </option>
-
-        </select>
-
-
-        <select
-          id="new-task-difficulty"
-          style="
-            padding: 10px;
-            flex: 1;
-            min-width: 130px;
-          "
-        >
-
-          <option value="easy">
-            🟢 簡單
-          </option>
-
-          <option
-            value="normal"
-            selected
+          <input
+            type="text"
+            id="new-task-title"
+            placeholder="例如：完成計概複習"
           >
-            🔵 普通
-          </option>
 
-          <option value="hard">
-            🟣 困難
-          </option>
+        </label>
 
-        </select>
+
+        <label>
+
+          分類
+
+          <select id="new-task-category">
+
+            <option value="study">
+              📚 學習
+            </option>
+
+            <option value="toeic">
+              📝 多益
+            </option>
+
+            <option value="health">
+              ❤️ 健康
+            </option>
+
+            <option value="focus">
+              🎯 專注
+            </option>
+
+            <option value="life">
+              🏠 生活
+            </option>
+
+            <option value="other">
+              📌 其他
+            </option>
+
+          </select>
+
+        </label>
+
+
+        <label>
+
+          難度
+
+          <select id="new-task-difficulty">
+
+            <option value="easy">
+              🟢 簡單
+            </option>
+
+            <option value="normal" selected>
+              🟡 普通
+            </option>
+
+            <option value="hard">
+              🔴 困難
+            </option>
+
+          </select>
+
+        </label>
 
       </div>
 
 
+      <!-- 任務類型 -->
 
-      <!-- ==================================================
-           是否重複
-      ================================================== -->
-
-      <div
-        style="
-          margin-bottom: 15px;
-          padding: 12px;
-          border-radius: 10px;
-          background: rgba(255,255,255,0.04);
-        "
-      >
+      <div style="margin-top:10px;">
 
         <div
           style="
-            font-weight: bold;
-            margin-bottom: 10px;
+            font-size:14px;
+            color:#cbd5e1;
+            margin-bottom:8px;
           "
         >
-          🔁 重複設定
+          任務類型
         </div>
 
 
-        <label
-          style="
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            margin-right: 15px;
-          "
-        >
+        <div class="repeat-options">
 
-          <input
-            type="radio"
-            name="new-task-repeat"
-            value="none"
-            checked
-            onchange="toggleRepeatSettings()"
-          >
-
-          不重複
-
-        </label>
-
-
-        <label
-          style="
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-          "
-        >
-
-          <input
-            type="radio"
-            name="new-task-repeat"
-            value="repeat"
-            onchange="toggleRepeatSettings()"
-          >
-
-          🔁 重複任務
-
-        </label>
-
-
-
-        <!-- ==================================================
-             重複設定內容
-        ================================================== -->
-
-        <div
-          id="repeat-settings"
-          style="
-            display: none;
-            margin-top: 15px;
-            padding-top: 15px;
-            border-top: 1px solid rgba(255,255,255,0.1);
-          "
-        >
-
-          <!-- 重複方式 -->
-
-          <div
-            style="
-              margin-bottom: 15px;
-            "
-          >
-
-            <div
-              style="
-                font-weight: bold;
-                margin-bottom: 8px;
-              "
-            >
-              重複方式
-            </div>
-
-
-            <label
-              style="
-                display: inline-flex;
-                align-items: center;
-                gap: 6px;
-                margin-right: 15px;
-              "
-            >
-
-              <input
-                type="radio"
-                name="repeat-type"
-                value="daily"
-                checked
-                onchange="toggleWeekdaySettings()"
-              >
-
-              每日
-
-            </label>
-
-
-            <label
-              style="
-                display: inline-flex;
-                align-items: center;
-                gap: 6px;
-              "
-            >
-
-              <input
-                type="radio"
-                name="repeat-type"
-                value="weekly"
-                onchange="toggleWeekdaySettings()"
-              >
-
-              每週
-
-            </label>
-
-          </div>
-
-
-
-          <!-- ==================================================
-               星期選擇
-          ================================================== -->
-
-          <div
-            id="weekday-settings"
-            style="
-              display: none;
-              margin-bottom: 15px;
-            "
-          >
-
-            <div
-              style="
-                font-weight: bold;
-                margin-bottom: 8px;
-              "
-            >
-              選擇星期
-            </div>
-
-
-            <div
-              style="
-                display: flex;
-                flex-wrap: wrap;
-                gap: 8px;
-              "
-            >
-
-              <label>
-                <input
-                  type="checkbox"
-                  name="repeat-day"
-                  value="1"
-                >
-                一
-              </label>
-
-
-              <label>
-                <input
-                  type="checkbox"
-                  name="repeat-day"
-                  value="2"
-                >
-                二
-              </label>
-
-
-              <label>
-                <input
-                  type="checkbox"
-                  name="repeat-day"
-                  value="3"
-                >
-                三
-              </label>
-
-
-              <label>
-                <input
-                  type="checkbox"
-                  name="repeat-day"
-                  value="4"
-                >
-                四
-              </label>
-
-
-              <label>
-                <input
-                  type="checkbox"
-                  name="repeat-day"
-                  value="5"
-                >
-                五
-              </label>
-
-
-              <label>
-                <input
-                  type="checkbox"
-                  name="repeat-day"
-                  value="6"
-                >
-                六
-              </label>
-
-
-              <label>
-                <input
-                  type="checkbox"
-                  name="repeat-day"
-                  value="7"
-                >
-                日
-              </label>
-
-            </div>
-
-          </div>
-
-
-
-          <!-- ==================================================
-               結束日期
-          ================================================== -->
-
-          <div>
-
-            <label
-              for="repeat-end-date"
-              style="
-                display: block;
-                font-weight: bold;
-                margin-bottom: 8px;
-              "
-            >
-              結束日期
-            </label>
-
+          <label class="radio-option">
 
             <input
-              type="date"
-              id="repeat-end-date"
-              style="
-                padding: 10px;
-                max-width: 220px;
-                box-sizing: border-box;
-              "
+              type="radio"
+              name="new-task-repeat"
+              value="none"
+              checked
+              onchange="toggleRepeatSettings()"
             >
 
+            一次性任務
 
-            <div
-              style="
-                margin-top: 6px;
-                font-size: 13px;
-                opacity: 0.7;
-              "
+          </label>
+
+
+          <label class="radio-option">
+
+            <input
+              type="radio"
+              name="new-task-repeat"
+              value="repeat"
+              onchange="toggleRepeatSettings()"
             >
-              不填代表持續重複，直到你關閉任務。
-            </div>
 
-          </div>
+            🔁 重複任務
+
+          </label>
 
         </div>
 
       </div>
 
 
-
       <!-- ==================================================
-           新增按鈕
+           重複任務設定
       ================================================== -->
+
+      <div id="repeat-settings">
+
+        <div
+          style="
+            font-size:14px;
+            color:#cbd5e1;
+            margin-bottom:8px;
+          "
+        >
+          重複方式
+        </div>
+
+
+        <div class="repeat-options">
+
+          <label class="radio-option">
+
+            <input
+              type="radio"
+              name="repeat-type"
+              value="daily"
+              checked
+              onchange="toggleWeekdaySettings()"
+            >
+
+            📅 每日
+
+          </label>
+
+
+          <label class="radio-option">
+
+            <input
+              type="radio"
+              name="repeat-type"
+              value="weekly"
+              onchange="toggleWeekdaySettings()"
+            >
+
+            📆 每週
+
+          </label>
+
+        </div>
+
+
+        <!-- 星期 -->
+
+        <div id="weekday-settings">
+
+          <div
+            style="
+              font-size:14px;
+              color:#94a3b8;
+              margin-bottom:8px;
+            "
+          >
+            選擇執行星期
+          </div>
+
+
+          <div class="weekday-grid">
+
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="repeat-day"
+                value="1"
+              >
+              一
+            </label>
+
+
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="repeat-day"
+                value="2"
+              >
+              二
+            </label>
+
+
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="repeat-day"
+                value="3"
+              >
+              三
+            </label>
+
+
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="repeat-day"
+                value="4"
+              >
+              四
+            </label>
+
+
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="repeat-day"
+                value="5"
+              >
+              五
+            </label>
+
+
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="repeat-day"
+                value="6"
+              >
+              六
+            </label>
+
+
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="repeat-day"
+                value="7"
+              >
+              日
+            </label>
+
+          </div>
+
+        </div>
+
+
+        <!-- 結束日期 -->
+
+        <label style="margin-top:15px;">
+
+          重複結束日期（可不填）
+
+          <input
+            type="date"
+            id="repeat-end-date"
+          >
+
+        </label>
+
+      </div>
+
 
       <button
         type="button"
         id="add-task-button"
+        class="primary-button"
         onclick="addTask()"
       >
         ➕ 新增任務
@@ -671,119 +1081,250 @@
 
       <div
         id="add-task-message"
-        style="margin-top: 10px;"
+        class="message"
       ></div>
 
-    </div>
-
-
-
-    <!-- ==================================================
-         篩選
-    ================================================== -->
-
-    <div class="task-filter">
-
-      <button
-        class="filter-btn active"
-        onclick="filterTasks('all', this)"
-      >
-        全部
-      </button>
-
-
-      <button
-        class="filter-btn"
-        onclick="filterTasks('study', this)"
-      >
-        📚 學習
-      </button>
-
-
-      <button
-        class="filter-btn"
-        onclick="filterTasks('toeic', this)"
-      >
-        🇬🇧 多益
-      </button>
-
-
-      <button
-        class="filter-btn"
-        onclick="filterTasks('focus', this)"
-      >
-        🎯 專注
-      </button>
-
-
-      <button
-        class="filter-btn"
-        onclick="filterTasks('health', this)"
-      >
-        ❤️ 健康
-      </button>
-
-    </div>
-
+    </section>
 
 
     <!-- ==================================================
-         任務列表
+         今日任務
     ================================================== -->
 
-    <ul class="task-list">
+    <section class="card">
 
-    </ul>
+      <h2>📋 今日任務</h2>
 
-  </section>
-
-
-
-  <!-- ==================================================
-       完成率
-  ================================================== -->
-
-  <footer class="card rate-card">
-
-    <div class="rate-title">
-
-      今日完成率：
-
-      <span id="rate-text">
-        0%
-      </span>
-
-    </div>
-
-
-    <div class="rate-container">
+      <!-- 篩選 -->
 
       <div
-        class="rate-bar"
-        id="rate-bar"
-        style="width: 0%;"
-      ></div>
+        style="
+          display:flex;
+          gap:8px;
+          flex-wrap:wrap;
+          margin-bottom:15px;
+        "
+      >
 
-    </div>
+        <button
+          type="button"
+          onclick="filterTasks('all', this)"
+        >
+          全部
+        </button>
 
-  </footer>
+        <button
+          type="button"
+          onclick="filterTasks('study', this)"
+        >
+          📚 學習
+        </button>
+
+        <button
+          type="button"
+          onclick="filterTasks('toeic', this)"
+        >
+          📝 多益
+        </button>
+
+        <button
+          type="button"
+          onclick="filterTasks('health', this)"
+        >
+          ❤️ 健康
+        </button>
+
+        <button
+          type="button"
+          onclick="filterTasks('focus', this)"
+        >
+          🎯 專注
+        </button>
+
+        <button
+          type="button"
+          onclick="filterTasks('life', this)"
+        >
+          🏠 生活
+        </button>
+
+        <button
+          type="button"
+          onclick="filterTasks('other', this)"
+        >
+          📌 其他
+        </button>
+
+      </div>
+
+
+      <div id="task-list" class="task-list">
+
+        <div class="empty-state">
+          尚未載入任務
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- ==================================================
+         任務管理
+    ================================================== -->
+
+    <section class="card task-management-card">
+
+      <h2>🗂️ 任務管理</h2>
+
+      <p
+        style="
+          opacity:0.7;
+          margin-top:-5px;
+        "
+      >
+        管理你的所有任務與重複任務設定
+      </p>
+
+
+      <!-- 任務管理分類 -->
+
+      <div
+        style="
+          display:flex;
+          gap:10px;
+          flex-wrap:wrap;
+          margin-bottom:15px;
+        "
+      >
+
+        <button
+          type="button"
+          class="management-filter active"
+          onclick="filterManagedTasks('all', this)"
+        >
+          全部
+        </button>
+
+
+        <button
+          type="button"
+          class="management-filter"
+          onclick="filterManagedTasks('once', this)"
+        >
+          📌 一次性
+        </button>
+
+
+        <button
+          type="button"
+          class="management-filter"
+          onclick="filterManagedTasks('repeat', this)"
+        >
+          🔁 重複任務
+        </button>
+
+      </div>
+
+
+      <!-- 任務管理列表 -->
+
+      <div id="task-management-list">
+
+        <div class="empty-state">
+          尚未載入任務
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- ==================================================
+         每日整理
+    ================================================== -->
+
+    <section class="card">
+
+      <h2>🌙 每日收尾</h2>
+
+      <p style="color:#94a3b8;">
+        完成今天的任務後，在這裡整理今日狀態。
+      </p>
+
+      <div
+        style="
+          display:flex;
+          gap:10px;
+          flex-wrap:wrap;
+        "
+      >
+
+        <button type="button">
+          📝 今日整理
+        </button>
+
+        <button type="button">
+          📊 今日報告
+        </button>
+
+      </div>
+
+    </section>
+
+
+    <!-- ==================================================
+         Footer
+    ================================================== -->
+
+    <footer>
+
+      神級人生逆襲系統 · 持續升級中
+
+    </footer>
+
+  </main>
 
 </div>
-
 
 
 <!-- ==================================================
      Supabase
 ================================================== -->
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+
+  const SUPABASE_URL =
+    "https://smlaokhqhgzjhnxeqfen.supabase.co";
+
+  const SUPABASE_KEY =
+    "sb_publishable_2uJS9Kex4YSTQh1Bbh3H-w_4cPPW25j";
+
+  const supabaseClient =
+    window.supabase.createClient(
+      SUPABASE_URL,
+      SUPABASE_KEY
+    );
+
+  /*
+   * 為了相容你目前 script.js 裡使用的：
+   * supabase.from(...)
+   * supabase.auth...
+   *
+   * 這裡把 client 命名成 supabase
+   */
+
+  const supabase = supabaseClient;
+
+</script>
 
 
 <!-- ==================================================
-     JavaScript
+     你的主要 JavaScript
 ================================================== -->
 
 <script src="script.js"></script>
+
 
 </body>
 </html>
