@@ -2735,3 +2735,2005 @@ console.log(
   "Supabase Client：",
   db
 );
+
+
+/* #########################################################
+   以下是「晨間打卡 / 專注 / 想法庫」（原本的 today.js，已併進這個檔案）
+######################################################### */
+
+/* =========================================================
+   今日模組：🌅 晨間打卡 / ⏱️ 專注 / 💡 想法庫
+
+   會用到上面的：
+   db、currentUser、getToday、escapeHtml、getTaskReward、
+   loadTasks、loadTaskManagement
+========================================================= */
+
+
+/* =========================================================
+   0. 共用小工具
+========================================================= */
+
+/* 任意時間 → 台灣日期 YYYY-MM-DD */
+function toTaipeiDate(dateLike) {
+
+  return new Date(dateLike).toLocaleDateString(
+    "sv-SE",
+    { timeZone: "Asia/Taipei" }
+  );
+
+}
+
+
+/* 秒數 → 「1h 20m」「25m」「40s」 */
+function formatDuration(totalSeconds) {
+
+  const s = Math.max(0, Math.round(totalSeconds || 0));
+
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  if (m > 0) return `${m}m`;
+
+  return `${s}s`;
+
+}
+
+
+/* 毫秒 → 時鐘「24:59」或「1:02:03」 */
+function formatClock(ms) {
+
+  const total = Math.max(0, Math.floor(ms / 1000));
+
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+
+  const mm = String(m).padStart(2, "0");
+  const ss = String(s).padStart(2, "0");
+
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+
+}
+
+
+/* 台灣時間 HH:MM */
+function formatTimeOfDay(dateLike) {
+
+  return new Date(dateLike).toLocaleTimeString(
+    "zh-TW",
+    {
+      timeZone: "Asia/Taipei",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }
+  );
+
+}
+
+
+/* 畫面下方的小提示 */
+let toastTimer = null;
+
+function showToast(message) {
+
+  const toast = document.getElementById("toast");
+
+  if (!toast) return;
+
+  toast.textContent = message;
+  toast.classList.add("show");
+
+  clearTimeout(toastTimer);
+
+  toastTimer = setTimeout(() => {
+    toast.classList.remove("show");
+  }, 2600);
+
+}
+
+
+/* localStorage 可能被瀏覽器擋掉，全部包 try/catch */
+function storageGet(key) {
+
+  try {
+    return localStorage.getItem(key);
+  } catch (error) {
+    return null;
+  }
+
+}
+
+function storageSet(key, value) {
+
+  try {
+    if (value === null) {
+      localStorage.removeItem(key);
+    } else {
+      localStorage.setItem(key, value);
+    }
+  } catch (error) {
+    /* 存不了就算了，不影響主要功能 */
+  }
+
+}
+
+
+/* =========================================================
+   1. 載入 / 重置（給 script.js 呼叫）
+========================================================= */
+
+async function loadTodayModules() {
+
+  if (!currentUser) return;
+
+  /* 一個模組壞掉不影響其他模組 */
+
+  for (const loader of [loadMorning, loadFocus, loadIdeas]) {
+
+    try {
+      await loader();
+    } catch (error) {
+      console.error("今日模組載入失敗：", loader.name, error);
+    }
+
+  }
+
+}
+
+
+function resetTodayModules() {
+
+  stopFocusTicking();
+
+  focusTimer = null;
+  focusSessions = [];
+  morningItems = [];
+  morningChecked = new Set();
+  morningEditing = false;
+  ideas = [];
+
+  document.title = ORIGINAL_TITLE;
+
+  closeIdeaCapture();
+
+}
+
+
+/* =========================================================
+   2. 🌅 晨間打卡
+========================================================= */
+
+const DEFAULT_MORNING_ITEMS = [
+  "起床",
+  "喝水",
+  "整理床鋪",
+  "洗漱",
+  "查看今日主線",
+  "確認今日任務",
+  "開始第一個專注"
+];
+
+let morningItems = [];          // 全部項目（含停用），已排序
+let morningChecked = new Set(); // 今天已打勾的 item_id
+let morningEditing = false;
+
+
+async function loadMorning() {
+
+  if (!currentUser) return;
+
+  const [itemsResult, checksResult] = await Promise.all([
+
+    db
+      .from("morning_items")
+      .select("*")
+      .eq("user_id", currentUser.id)
+      .order("sort_order", { ascending: true })
+      .order("id", { ascending: true }),
+
+    db
+      .from("morning_checkins")
+      .select("item_id")
+      .eq("user_id", currentUser.id)
+      .eq("check_date", getToday())
+
+  ]);
+
+
+  const error = itemsResult.error || checksResult.error;
+
+  if (error) {
+
+    console.error("晨間打卡載入失敗：", error);
+
+    document.getElementById("morning-list").innerHTML = `
+      <div class="empty-state">
+        ❌ 晨間打卡載入失敗：${escapeHtml(error.message)}
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  morningItems = itemsResult.data || [];
+
+  morningChecked = new Set(
+    (checksResult.data || []).map(row => Number(row.item_id))
+  );
+
+  renderMorning();
+
+}
+
+
+function getMorningStats() {
+
+  const enabled = morningItems.filter(item => item.enabled);
+
+  const done = enabled.filter(
+    item => morningChecked.has(Number(item.id))
+  ).length;
+
+  return {
+    done,
+    total: enabled.length
+  };
+
+}
+
+
+function renderMorning() {
+
+  const list = document.getElementById("morning-list");
+
+  if (!list) return;
+
+
+  /* 進度 */
+
+  const { done, total } = getMorningStats();
+
+  document.getElementById("morning-progress-text").textContent =
+    `${done} / ${total}`;
+
+  document.getElementById("morning-progress-bar").style.width =
+    total === 0 ? "0%" : `${Math.round((done / total) * 100)}%`;
+
+  document.getElementById("morning-edit-btn").textContent =
+    morningEditing ? "✅ 完成編輯" : "✏️ 編輯清單";
+
+
+  /* 完全沒有項目 */
+
+  if (morningItems.length === 0) {
+
+    list.innerHTML = `
+      <div class="empty-state">
+        還沒有晨間清單
+        <div style="margin-top:12px;">
+          <button class="btn btn-primary" onclick="applyDefaultMorningItems()">
+            套用預設 7 項
+          </button>
+        </div>
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  /* 編輯模式 */
+
+  if (morningEditing) {
+
+    list.innerHTML = morningItems
+      .map((item, index) => `
+
+        <div class="morning-edit-row ${item.enabled ? "" : "disabled"}">
+
+          <span class="title">
+            ${escapeHtml(item.title)}
+            ${item.enabled ? "" : '<span class="small-note">（停用中）</span>'}
+          </span>
+
+          <button class="icon-btn" title="上移"
+            ${index === 0 ? "disabled" : ""}
+            onclick="moveMorningItem(${Number(item.id)}, -1)">▲</button>
+
+          <button class="icon-btn" title="下移"
+            ${index === morningItems.length - 1 ? "disabled" : ""}
+            onclick="moveMorningItem(${Number(item.id)}, 1)">▼</button>
+
+          <button class="icon-btn" title="改名"
+            onclick="renameMorningItem(${Number(item.id)})">✏️</button>
+
+          <button class="icon-btn"
+            onclick="toggleMorningEnabled(${Number(item.id)})">
+            ${item.enabled ? "停用" : "啟用"}
+          </button>
+
+          <button class="icon-btn" title="刪除"
+            onclick="deleteMorningItem(${Number(item.id)})">🗑️</button>
+
+        </div>
+
+      `)
+      .join("") + `
+
+      <div class="add-row">
+
+        <input
+          type="text"
+          id="morning-new-title"
+          maxlength="50"
+          placeholder="新增項目，例如：伸展 5 分鐘"
+          onkeydown="if (event.key === 'Enter') addMorningItem()"
+        >
+
+        <button class="btn btn-primary" onclick="addMorningItem()">
+          ＋ 新增
+        </button>
+
+      </div>
+
+      <p class="small-note" style="margin-top:10px;">
+        「停用」會先隱藏、保留過去的紀錄；「刪除」會連過去的打卡紀錄一起刪掉。
+      </p>
+    `;
+
+    return;
+
+  }
+
+
+  /* 一般模式：只顯示啟用中的項目 */
+
+  const enabled = morningItems.filter(item => item.enabled);
+
+  if (enabled.length === 0) {
+
+    list.innerHTML = `
+      <div class="empty-state">
+        所有項目都停用了，按「編輯清單」可以重新啟用
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  list.innerHTML = enabled
+    .map(item => {
+
+      const checked = morningChecked.has(Number(item.id));
+
+      return `
+        <label class="morning-item ${checked ? "done" : ""}">
+          <input
+            type="checkbox"
+            ${checked ? "checked" : ""}
+            onchange="toggleMorningItem(${Number(item.id)}, this.checked, this)"
+          >
+          <span>${escapeHtml(item.title)}</span>
+        </label>
+      `;
+
+    })
+    .join("") + (
+      done === total
+        ? `<div class="morning-complete">🎉 晨間啟動完成！開始今天的主線吧</div>`
+        : ""
+    );
+
+}
+
+
+function toggleMorningEdit() {
+
+  morningEditing = !morningEditing;
+
+  renderMorning();
+
+  if (morningEditing) {
+
+    const input = document.getElementById("morning-new-title");
+
+    if (input) input.focus();
+
+  }
+
+}
+
+
+async function toggleMorningItem(itemId, checked, checkbox) {
+
+  if (!currentUser) return;
+
+  if (checkbox) checkbox.disabled = true;
+
+
+  try {
+
+    if (checked) {
+
+      const { error } = await db
+        .from("morning_checkins")
+        .upsert(
+          {
+            user_id: currentUser.id,
+            item_id: itemId,
+            check_date: getToday()
+          },
+          {
+            onConflict: "user_id,item_id,check_date",
+            ignoreDuplicates: true
+          }
+        );
+
+      if (error) throw error;
+
+      morningChecked.add(Number(itemId));
+
+    } else {
+
+      const { error } = await db
+        .from("morning_checkins")
+        .delete()
+        .eq("user_id", currentUser.id)
+        .eq("item_id", itemId)
+        .eq("check_date", getToday());
+
+      if (error) throw error;
+
+      morningChecked.delete(Number(itemId));
+
+    }
+
+
+    renderMorning();
+
+
+    const { done, total } = getMorningStats();
+
+    if (checked && total > 0 && done === total) {
+      showToast("🎉 晨間啟動完成！");
+    }
+
+  } catch (error) {
+
+    console.error("晨間打卡更新失敗：", error);
+
+    if (checkbox) checkbox.checked = !checked;
+
+    alert("晨間打卡更新失敗：" + error.message);
+
+  } finally {
+
+    if (checkbox) checkbox.disabled = false;
+
+  }
+
+}
+
+
+async function applyDefaultMorningItems() {
+
+  if (!currentUser) return;
+
+  const rows = DEFAULT_MORNING_ITEMS.map((title, index) => ({
+    user_id: currentUser.id,
+    title,
+    sort_order: index + 1,
+    enabled: true
+  }));
+
+  const { error } = await db.from("morning_items").insert(rows);
+
+  if (error) {
+    alert("建立預設清單失敗：" + error.message);
+    return;
+  }
+
+  await loadMorning();
+
+}
+
+
+async function addMorningItem() {
+
+  if (!currentUser) return;
+
+  const input = document.getElementById("morning-new-title");
+  const title = input ? input.value.trim() : "";
+
+  if (!title) {
+    if (input) input.focus();
+    return;
+  }
+
+  const maxOrder = morningItems.reduce(
+    (max, item) => Math.max(max, Number(item.sort_order) || 0),
+    0
+  );
+
+  const { error } = await db
+    .from("morning_items")
+    .insert({
+      user_id: currentUser.id,
+      title,
+      sort_order: maxOrder + 1,
+      enabled: true
+    });
+
+  if (error) {
+    alert("新增失敗：" + error.message);
+    return;
+  }
+
+  await loadMorning();
+
+  const newInput = document.getElementById("morning-new-title");
+  if (newInput) newInput.focus();
+
+}
+
+
+async function renameMorningItem(itemId) {
+
+  const item = morningItems.find(row => Number(row.id) === Number(itemId));
+
+  if (!item) return;
+
+  const answer = prompt("修改項目名稱：", item.title);
+
+  if (answer === null) return;
+
+  const title = answer.trim();
+
+  if (!title) {
+    alert("名稱不能是空的");
+    return;
+  }
+
+  const { error } = await db
+    .from("morning_items")
+    .update({ title })
+    .eq("id", itemId)
+    .eq("user_id", currentUser.id);
+
+  if (error) {
+    alert("修改失敗：" + error.message);
+    return;
+  }
+
+  await loadMorning();
+
+}
+
+
+async function toggleMorningEnabled(itemId) {
+
+  const item = morningItems.find(row => Number(row.id) === Number(itemId));
+
+  if (!item) return;
+
+  const { error } = await db
+    .from("morning_items")
+    .update({ enabled: !item.enabled })
+    .eq("id", itemId)
+    .eq("user_id", currentUser.id);
+
+  if (error) {
+    alert("更新失敗：" + error.message);
+    return;
+  }
+
+  await loadMorning();
+
+}
+
+
+async function deleteMorningItem(itemId) {
+
+  const item = morningItems.find(row => Number(row.id) === Number(itemId));
+
+  if (!item) return;
+
+  const ok = confirm(
+    `確定刪除「${item.title}」嗎？\n\n` +
+    "刪除會連這一項過去的打卡紀錄一起刪掉。\n" +
+    "如果只是暫時不做，建議用「停用」。"
+  );
+
+  if (!ok) return;
+
+  const { error } = await db
+    .from("morning_items")
+    .delete()
+    .eq("id", itemId)
+    .eq("user_id", currentUser.id);
+
+  if (error) {
+    alert("刪除失敗：" + error.message);
+    return;
+  }
+
+  await loadMorning();
+
+}
+
+
+async function moveMorningItem(itemId, direction) {
+
+  const ordered = [...morningItems];
+
+  const index = ordered.findIndex(row => Number(row.id) === Number(itemId));
+  const target = index + direction;
+
+  if (index < 0 || target < 0 || target >= ordered.length) return;
+
+  /* 交換位置後，把順序重新編成 1, 2, 3 ... */
+
+  [ordered[index], ordered[target]] = [ordered[target], ordered[index]];
+
+  const updates = ordered
+    .map((row, i) => ({ row, order: i + 1 }))
+    .filter(({ row, order }) => Number(row.sort_order) !== order)
+    .map(({ row, order }) =>
+      db
+        .from("morning_items")
+        .update({ sort_order: order })
+        .eq("id", row.id)
+        .eq("user_id", currentUser.id)
+    );
+
+  const results = await Promise.all(updates);
+  const failed = results.find(result => result.error);
+
+  if (failed) {
+    alert("排序失敗：" + failed.error.message);
+  }
+
+  await loadMorning();
+
+}
+
+
+/* =========================================================
+   3. ⏱️ 專注
+========================================================= */
+
+const DEFAULT_FOCUS_SUBJECTS = [
+  "計概",
+  "資結",
+  "MIS",
+  "多益單字",
+  "多益文法",
+  "多益閱讀",
+  "資料庫",
+  "AI",
+  "App 開發"
+];
+
+const FOCUS_PRESET_MINUTES = [15, 25, 45, 60];
+
+/* 少於這個秒數就不記錄 */
+const FOCUS_MIN_SECONDS = 60;
+
+const ORIGINAL_TITLE = document.title;
+
+let focusSessions = [];       // 今天的專注紀錄
+let focusKnownSubjects = [];  // 預設科目 + 用過的自訂科目
+let focusMode = "up";         // up = 正計時、down = 倒計時
+let focusPlannedMinutes = 25;
+let focusTimer = null;        // 進行中的計時（同時存在 localStorage）
+let focusTickHandle = null;
+let focusAudioContext = null;
+let focusFinishing = false;
+
+
+/*
+  計時狀態長這樣：
+  {
+    mode: "up" | "down",
+    subject: "計概",
+    plannedMinutes: 25 | null,
+    startedAt: "2026-10-09T01:00:00.000Z",  // 第一次按開始的時間
+    segmentStart: 1760000000000 | null,     // 這一段開始的時間（暫停時為 null）
+    accumulatedMs: 0,                       // 暫停前已累積的毫秒
+    status: "running" | "paused"
+  }
+  用「時間戳」計算而不是每秒 +1，
+  所以重新整理、切到背景、手機鎖螢幕都不會算錯。
+*/
+
+function focusStorageKey() {
+  return currentUser ? `focusTimer:${currentUser.id}` : null;
+}
+
+function saveFocusTimer() {
+  const key = focusStorageKey();
+  if (key) storageSet(key, focusTimer ? JSON.stringify(focusTimer) : null);
+}
+
+function readFocusTimer() {
+
+  const key = focusStorageKey();
+  const raw = key ? storageGet(key) : null;
+
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    return null;
+  }
+
+}
+
+function focusElapsedMs(timer) {
+
+  if (!timer) return 0;
+
+  return timer.accumulatedMs +
+    (timer.status === "running" ? Date.now() - timer.segmentStart : 0);
+
+}
+
+
+async function loadFocus() {
+
+  if (!currentUser) return;
+
+  const [sessionsResult, subjectsResult] = await Promise.all([
+
+    db
+      .from("focus_sessions")
+      .select("*")
+      .eq("user_id", currentUser.id)
+      .eq("session_date", getToday())
+      .order("started_at", { ascending: true }),
+
+    db
+      .from("focus_sessions")
+      .select("subject")
+      .eq("user_id", currentUser.id)
+      .order("started_at", { ascending: false })
+      .limit(500)
+
+  ]);
+
+
+  const error = sessionsResult.error || subjectsResult.error;
+
+  if (error) {
+
+    console.error("專注紀錄載入失敗：", error);
+
+    document.getElementById("focus-log").innerHTML = `
+      <div class="empty-state">
+        ❌ 專注紀錄載入失敗：${escapeHtml(error.message)}
+      </div>
+    `;
+
+  } else {
+
+    focusSessions = sessionsResult.data || [];
+
+    const used = (subjectsResult.data || []).map(row => row.subject);
+
+    focusKnownSubjects = [
+      ...new Set([...DEFAULT_FOCUS_SUBJECTS, ...used])
+    ];
+
+  }
+
+  if (focusKnownSubjects.length === 0) {
+    focusKnownSubjects = [...DEFAULT_FOCUS_SUBJECTS];
+  }
+
+
+  /* 恢復進行中的計時 */
+
+  if (!focusTimer) {
+
+    focusTimer = readFocusTimer();
+
+    if (focusTimer) {
+      focusMode = focusTimer.mode;
+      if (focusTimer.plannedMinutes) {
+        focusPlannedMinutes = focusTimer.plannedMinutes;
+      }
+    }
+
+  }
+
+
+  renderFocusSetup();
+  renderFocusClock();
+  renderFocusButtons();
+  renderFocusLog();
+
+
+  if (focusTimer && focusTimer.status === "running") {
+
+    /* 倒計時在離開期間已經結束 → 直接記錄 */
+
+    if (focusTimer.mode === "down" &&
+        focusElapsedMs(focusTimer) >= focusTimer.plannedMinutes * 60000) {
+
+      await finishFocus("away");
+
+    } else {
+
+      startFocusTicking();
+
+    }
+
+  }
+
+}
+
+
+function getFocusStats() {
+
+  const bySubject = {};
+  let seconds = 0;
+
+  focusSessions.forEach(session => {
+
+    const s = Number(session.duration_seconds) || 0;
+
+    seconds += s;
+    bySubject[session.subject] = (bySubject[session.subject] || 0) + s;
+
+  });
+
+  return { seconds, bySubject };
+
+}
+
+
+function renderFocusSetup() {
+
+  /* 模式按鈕 */
+
+  document.querySelectorAll("#focus-card .seg-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.mode === focusMode);
+  });
+
+
+  /* 科目選單（保留目前的選擇） */
+
+  const select = document.getElementById("focus-subject");
+  const previous = select.value || storageGet(`focusLastSubject:${currentUser.id}`);
+
+  select.innerHTML =
+    focusKnownSubjects
+      .map(subject => `<option value="${escapeHtml(subject)}">${escapeHtml(subject)}</option>`)
+      .join("") +
+    `<option value="__custom__">＋ 自訂科目…</option>`;
+
+  if (previous && (focusKnownSubjects.includes(previous) || previous === "__custom__")) {
+    select.value = previous;
+  }
+
+  onFocusSubjectChange();
+
+
+  /* 倒計時的時間選擇 */
+
+  document.getElementById("focus-minutes-row").style.display =
+    focusMode === "down" ? "flex" : "none";
+
+  document.getElementById("focus-presets").innerHTML = FOCUS_PRESET_MINUTES
+    .map(minutes => `
+      <button
+        class="chip ${minutes === focusPlannedMinutes ? "active" : ""}"
+        onclick="setFocusMinutes(${minutes})"
+      >${minutes} 分</button>
+    `)
+    .join("");
+
+
+  /* 計時中不能改設定 */
+
+  document.getElementById("focus-setup").style.display =
+    focusTimer ? "none" : "block";
+
+  document.getElementById("focus-now").textContent = focusTimer
+    ? `正在專注：${focusTimer.subject}・${focusTimer.mode === "down" ? `倒計時 ${focusTimer.plannedMinutes} 分` : "正計時"}${focusTimer.status === "paused" ? "（已暫停）" : ""}`
+    : "";
+
+}
+
+
+function renderFocusClock() {
+
+  const clock = document.getElementById("focus-clock");
+
+  if (!clock) return;
+
+  let ms;
+
+  if (focusTimer) {
+
+    const elapsed = focusElapsedMs(focusTimer);
+
+    ms = focusTimer.mode === "down"
+      ? focusTimer.plannedMinutes * 60000 - elapsed
+      : elapsed;
+
+  } else {
+
+    ms = focusMode === "down" ? focusPlannedMinutes * 60000 : 0;
+
+  }
+
+  const text = formatClock(ms);
+
+  clock.textContent = text;
+
+  clock.classList.toggle(
+    "running",
+    Boolean(focusTimer && focusTimer.status === "running")
+  );
+
+  document.title = focusTimer
+    ? `${focusTimer.status === "running" ? "⏱" : "⏸"} ${text}・${ORIGINAL_TITLE}`
+    : ORIGINAL_TITLE;
+
+}
+
+
+function renderFocusButtons() {
+
+  const box = document.getElementById("focus-buttons");
+
+  if (!box) return;
+
+  if (!focusTimer) {
+
+    box.innerHTML = `
+      <button class="btn btn-primary" onclick="startFocus()">▶ 開始專注</button>
+    `;
+
+  } else if (focusTimer.status === "running") {
+
+    box.innerHTML = `
+      <button class="btn" onclick="pauseFocus()">⏸ 暫停</button>
+      <button class="btn btn-primary" onclick="finishFocus('manual')">⏹ 結束並記錄</button>
+      <button class="btn btn-danger" onclick="discardFocus()">✖ 放棄</button>
+    `;
+
+  } else {
+
+    box.innerHTML = `
+      <button class="btn btn-primary" onclick="resumeFocus()">▶ 繼續</button>
+      <button class="btn" onclick="finishFocus('manual')">⏹ 結束並記錄</button>
+      <button class="btn btn-danger" onclick="discardFocus()">✖ 放棄</button>
+    `;
+
+  }
+
+}
+
+
+function renderFocusLog() {
+
+  const box = document.getElementById("focus-log");
+
+  if (!box) return;
+
+  const { seconds, bySubject } = getFocusStats();
+
+  document.getElementById("focus-today-total").textContent =
+    `今日 ${seconds > 0 ? formatDuration(seconds) : "0m"}`;
+
+
+  if (focusSessions.length === 0) {
+
+    box.innerHTML = `
+      <div class="small-note" style="text-align:center;">
+        今天還沒有專注紀錄
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  const subjectRows = Object.entries(bySubject)
+    .sort((a, b) => b[1] - a[1])
+    .map(([subject, s]) => `
+      <tr>
+        <td>${escapeHtml(subject)}</td>
+        <td class="num">${formatDuration(s)}</td>
+      </tr>
+    `)
+    .join("");
+
+
+  const sessionRows = focusSessions
+    .map(session => `
+      <tr>
+        <td>${formatTimeOfDay(session.started_at)}</td>
+        <td>${escapeHtml(session.subject)}</td>
+        <td class="num">${formatDuration(session.duration_seconds)}</td>
+        <td>${session.mode === "down" ? "倒計時" : "正計時"}</td>
+        <td class="num">
+          <button class="icon-btn" title="刪除這筆"
+            onclick="deleteFocusSession(${Number(session.id)})">🗑️</button>
+        </td>
+      </tr>
+    `)
+    .join("");
+
+
+  box.innerHTML = `
+
+    <div class="focus-log-title">📚 今日各科時間</div>
+
+    <table class="data-table">
+      <thead>
+        <tr><th>科目</th><th class="num">時間</th></tr>
+      </thead>
+      <tbody>
+        ${subjectRows}
+        <tr>
+          <td><strong>合計</strong></td>
+          <td class="num"><strong>${formatDuration(seconds)}</strong></td>
+        </tr>
+      </tbody>
+    </table>
+
+
+    <div class="focus-log-title">📝 今日專注紀錄</div>
+
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>開始</th><th>科目</th><th class="num">長度</th><th>模式</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${sessionRows}
+      </tbody>
+    </table>
+
+  `;
+
+}
+
+
+function setFocusMode(mode) {
+
+  if (focusTimer) return;
+
+  focusMode = mode;
+
+  renderFocusSetup();
+  renderFocusClock();
+
+}
+
+
+function setFocusMinutes(minutes) {
+
+  if (focusTimer) return;
+
+  focusPlannedMinutes = minutes;
+
+  const custom = document.getElementById("focus-custom-minutes");
+  if (custom) custom.value = "";
+
+  renderFocusSetup();
+  renderFocusClock();
+
+}
+
+
+function onFocusCustomMinutes() {
+
+  const value = Number(document.getElementById("focus-custom-minutes").value);
+
+  if (value >= 1 && value <= 600) {
+
+    focusPlannedMinutes = Math.round(value);
+
+    document.querySelectorAll("#focus-presets .chip").forEach(chip => {
+      chip.classList.remove("active");
+    });
+
+    renderFocusClock();
+
+  }
+
+}
+
+
+function onFocusSubjectChange() {
+
+  const select = document.getElementById("focus-subject");
+  const custom = document.getElementById("focus-custom-subject");
+
+  custom.style.display = select.value === "__custom__" ? "block" : "none";
+
+}
+
+
+function getSelectedFocusSubject() {
+
+  const select = document.getElementById("focus-subject");
+
+  if (select.value === "__custom__") {
+    return document.getElementById("focus-custom-subject").value.trim();
+  }
+
+  return select.value;
+
+}
+
+
+/* 瀏覽器規定：聲音要在使用者按按鈕時先「解鎖」 */
+function unlockFocusAudio() {
+
+  try {
+
+    if (!focusAudioContext) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) focusAudioContext = new AudioCtx();
+    }
+
+    if (focusAudioContext && focusAudioContext.state === "suspended") {
+      focusAudioContext.resume();
+    }
+
+  } catch (error) {
+    /* 沒有聲音也不影響計時 */
+  }
+
+}
+
+
+function playFocusAlarm() {
+
+  try {
+
+    if (focusAudioContext) {
+
+      if (focusAudioContext.state === "suspended") {
+        focusAudioContext.resume();
+      }
+
+      const now = focusAudioContext.currentTime;
+
+      /* 嗶 — 嗶 — 嗶 */
+
+      [0, 0.35, 0.7].forEach(offset => {
+
+        const osc = focusAudioContext.createOscillator();
+        const gain = focusAudioContext.createGain();
+
+        osc.type = "sine";
+        osc.frequency.value = 880;
+
+        gain.gain.setValueAtTime(0.0001, now + offset);
+        gain.gain.exponentialRampToValueAtTime(0.4, now + offset + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.25);
+
+        osc.connect(gain);
+        gain.connect(focusAudioContext.destination);
+
+        osc.start(now + offset);
+        osc.stop(now + offset + 0.3);
+
+      });
+
+    }
+
+    if (navigator.vibrate) {
+      navigator.vibrate([200, 100, 200, 100, 200]);
+    }
+
+  } catch (error) {
+    /* 沒有聲音也不影響記錄 */
+  }
+
+}
+
+
+function startFocusTicking() {
+
+  stopFocusTicking();
+
+  focusTickHandle = setInterval(onFocusTick, 500);
+
+  onFocusTick();
+
+}
+
+
+function stopFocusTicking() {
+
+  if (focusTickHandle) {
+    clearInterval(focusTickHandle);
+    focusTickHandle = null;
+  }
+
+}
+
+
+function onFocusTick() {
+
+  if (!focusTimer) {
+    stopFocusTicking();
+    return;
+  }
+
+  renderFocusClock();
+
+  if (focusTimer.mode === "down" &&
+      focusTimer.status === "running" &&
+      focusElapsedMs(focusTimer) >= focusTimer.plannedMinutes * 60000) {
+
+    playFocusAlarm();
+    finishFocus("timeup");
+
+  }
+
+}
+
+
+function startFocus() {
+
+  if (!currentUser || focusTimer) return;
+
+  const subject = getSelectedFocusSubject();
+
+  if (!subject) {
+    alert("請先選擇或輸入科目");
+    return;
+  }
+
+  if (focusMode === "down" &&
+      !(focusPlannedMinutes >= 1 && focusPlannedMinutes <= 600)) {
+    alert("倒計時請設定 1～600 分鐘");
+    return;
+  }
+
+  unlockFocusAudio();
+
+  storageSet(
+    `focusLastSubject:${currentUser.id}`,
+    document.getElementById("focus-subject").value === "__custom__"
+      ? null
+      : subject
+  );
+
+  focusTimer = {
+    mode: focusMode,
+    subject,
+    plannedMinutes: focusMode === "down" ? focusPlannedMinutes : null,
+    startedAt: new Date().toISOString(),
+    segmentStart: Date.now(),
+    accumulatedMs: 0,
+    status: "running"
+  };
+
+  saveFocusTimer();
+
+  renderFocusSetup();
+  renderFocusButtons();
+  startFocusTicking();
+
+}
+
+
+function pauseFocus() {
+
+  if (!focusTimer || focusTimer.status !== "running") return;
+
+  focusTimer.accumulatedMs = focusElapsedMs(focusTimer);
+  focusTimer.segmentStart = null;
+  focusTimer.status = "paused";
+
+  saveFocusTimer();
+  stopFocusTicking();
+
+  renderFocusSetup();
+  renderFocusClock();
+  renderFocusButtons();
+
+}
+
+
+function resumeFocus() {
+
+  if (!focusTimer || focusTimer.status !== "paused") return;
+
+  unlockFocusAudio();
+
+  focusTimer.segmentStart = Date.now();
+  focusTimer.status = "running";
+
+  saveFocusTimer();
+
+  renderFocusSetup();
+  renderFocusButtons();
+  startFocusTicking();
+
+}
+
+
+function discardFocus() {
+
+  if (!focusTimer) return;
+
+  const ok = confirm("放棄這次專注？這段時間不會被記錄。");
+
+  if (!ok) return;
+
+  stopFocusTicking();
+
+  focusTimer = null;
+  saveFocusTimer();
+
+  renderFocusSetup();
+  renderFocusClock();
+  renderFocusButtons();
+
+}
+
+
+/*
+  reason：
+  manual = 自己按結束
+  timeup = 倒計時到點
+  away   = 倒計時在你離開網頁時就結束了
+*/
+async function finishFocus(reason) {
+
+  if (!focusTimer || focusFinishing) return;
+
+  focusFinishing = true;
+  stopFocusTicking();
+
+
+  const timer = focusTimer;
+
+  let elapsedMs = focusElapsedMs(timer);
+
+  if (timer.mode === "down") {
+    elapsedMs = Math.min(elapsedMs, timer.plannedMinutes * 60000);
+  }
+
+  const seconds = Math.round(elapsedMs / 1000);
+
+
+  /* 先清掉計時，畫面回到待命 */
+
+  focusTimer = null;
+  saveFocusTimer();
+
+  renderFocusSetup();
+  renderFocusClock();
+  renderFocusButtons();
+
+
+  try {
+
+    if (seconds < FOCUS_MIN_SECONDS) {
+
+      showToast("少於 1 分鐘，這次不記錄");
+      return;
+
+    }
+
+
+    const { error } = await db
+      .from("focus_sessions")
+      .insert({
+        user_id: currentUser.id,
+        subject: timer.subject,
+        mode: timer.mode,
+        planned_minutes: timer.plannedMinutes,
+        duration_seconds: seconds,
+        started_at: timer.startedAt,
+        ended_at: new Date().toISOString(),
+        session_date: toTaipeiDate(timer.startedAt)
+      });
+
+    if (error) throw error;
+
+
+    const label = `${timer.subject} ${formatDuration(seconds)}`;
+
+    if (reason === "timeup") {
+      showToast(`⏰ 時間到！已記錄：${label}`);
+    } else if (reason === "away") {
+      showToast(`⏰ 倒計時在你離開時已結束，已記錄：${label}`);
+    } else {
+      showToast(`✅ 已記錄：${label}`);
+    }
+
+    await loadFocus();
+
+  } catch (error) {
+
+    console.error("專注紀錄儲存失敗：", error);
+
+    /* 存不進去就把計時改成暫停狀態留著，不讓時間白白消失 */
+
+    focusTimer = {
+      ...timer,
+      accumulatedMs: elapsedMs,
+      segmentStart: null,
+      status: "paused"
+    };
+
+    saveFocusTimer();
+
+    renderFocusSetup();
+    renderFocusClock();
+    renderFocusButtons();
+
+    alert(
+      "專注紀錄儲存失敗，計時先暫停保留，請稍後再按「結束並記錄」。\n\n" +
+      error.message
+    );
+
+  } finally {
+
+    focusFinishing = false;
+
+  }
+
+}
+
+
+async function deleteFocusSession(sessionId) {
+
+  const ok = confirm("刪除這筆專注紀錄？");
+
+  if (!ok) return;
+
+  const { error } = await db
+    .from("focus_sessions")
+    .delete()
+    .eq("id", sessionId)
+    .eq("user_id", currentUser.id);
+
+  if (error) {
+    alert("刪除失敗：" + error.message);
+    return;
+  }
+
+  await loadFocus();
+
+}
+
+
+/* =========================================================
+   4. 💡 想法庫
+========================================================= */
+
+const IDEA_CATEGORIES = [
+  { key: "todo",      label: "📋 待辦" },
+  { key: "idea",      label: "💡 點子" },
+  { key: "study",     label: "📚 學習" },
+  { key: "mainline",  label: "🎯 主線" },
+  { key: "shopping",  label: "🛒 購物" },
+  { key: "important", label: "⭐ 重要" },
+  { key: "other",     label: "📦 其他" }
+];
+
+/* 轉成任務時對應的任務分類 */
+const IDEA_TO_TASK_CATEGORY = {
+  study: "study"
+};
+
+let ideas = [];
+let ideaFilter = "all";
+let ideaShowProcessed = false;
+let ideaCaptureCategory = "idea";
+
+
+function getIdeaCategoryLabel(key) {
+
+  const found = IDEA_CATEGORIES.find(category => category.key === key);
+
+  return found ? found.label : "📦 其他";
+
+}
+
+
+async function loadIdeas() {
+
+  if (!currentUser) return;
+
+  const { data, error } = await db
+    .from("ideas")
+    .select("*")
+    .eq("user_id", currentUser.id)
+    .order("created_at", { ascending: false })
+    .limit(300);
+
+  if (error) {
+
+    console.error("想法庫載入失敗：", error);
+
+    document.getElementById("idea-list").innerHTML = `
+      <div class="empty-state">
+        ❌ 想法庫載入失敗：${escapeHtml(error.message)}
+      </div>
+    `;
+
+    return;
+
+  }
+
+  ideas = data || [];
+
+  renderIdeas();
+
+}
+
+
+function getIdeaStats() {
+
+  const today = getToday();
+
+  return {
+
+    added: ideas.filter(idea => idea.idea_date === today).length,
+
+    converted: ideas.filter(idea =>
+      idea.status === "converted" &&
+      idea.processed_at &&
+      toTaipeiDate(idea.processed_at) === today
+    ).length
+
+  };
+
+}
+
+
+function renderIdeas() {
+
+  const list = document.getElementById("idea-list");
+
+  if (!list) return;
+
+
+  const inbox = ideas.filter(idea => idea.status === "inbox");
+
+  document.getElementById("ideas-inbox-count").textContent =
+    `收件匣 ${inbox.length}`;
+
+
+  /* 分類篩選 */
+
+  const countIn = key =>
+    inbox.filter(idea => key === "all" || idea.category === key).length;
+
+  document.getElementById("idea-filters").innerHTML =
+    [{ key: "all", label: "全部" }, ...IDEA_CATEGORIES]
+      .map(category => `
+        <button
+          class="chip ${ideaFilter === category.key ? "active" : ""}"
+          onclick="setIdeaFilter('${category.key}')"
+        >${category.label} ${countIn(category.key) || ""}</button>
+      `)
+      .join("");
+
+
+  /* 清單 */
+
+  const visible = ideas.filter(idea =>
+    (ideaFilter === "all" || idea.category === ideaFilter) &&
+    (ideaShowProcessed || idea.status === "inbox")
+  );
+
+
+  if (visible.length === 0) {
+
+    list.innerHTML = `
+      <div class="empty-state">
+        ${ideas.length === 0
+          ? "還沒有想法。想到什麼，就按右下角的 💡 先記下來"
+          : "這裡沒有待處理的想法 👍"}
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  list.innerHTML = visible
+    .map(idea => {
+
+      const id = Number(idea.id);
+      const processed = idea.status !== "inbox";
+
+      let statusText = "";
+      let actions = "";
+
+      if (idea.status === "inbox") {
+
+        actions = `
+          <button class="icon-btn" onclick="convertIdeaToTask(${id})">→ 轉任務</button>
+          <button class="icon-btn" onclick="setIdeaStatus(${id}, 'done')">✓ 已處理</button>
+          <button class="icon-btn" title="刪除" onclick="deleteIdea(${id})">🗑️</button>
+        `;
+
+      } else if (idea.status === "done") {
+
+        statusText = "・已處理";
+
+        actions = `
+          <button class="icon-btn" onclick="setIdeaStatus(${id}, 'inbox')">↩ 放回收件匣</button>
+          <button class="icon-btn" title="刪除" onclick="deleteIdea(${id})">🗑️</button>
+        `;
+
+      } else {
+
+        statusText = "・已轉成任務";
+
+        actions = `
+          <button class="icon-btn" title="刪除" onclick="deleteIdea(${id})">🗑️</button>
+        `;
+
+      }
+
+      return `
+        <div class="idea-item ${processed ? "processed" : ""}">
+
+          <div class="idea-top">
+            <span class="idea-cat">${getIdeaCategoryLabel(idea.category)}</span>
+            <div class="idea-content">${escapeHtml(idea.content)}</div>
+          </div>
+
+          <div class="idea-bottom">
+            <span class="small-note">
+              ${escapeHtml(idea.idea_date)} ${formatTimeOfDay(idea.created_at)}${statusText}
+            </span>
+            <div class="idea-actions">${actions}</div>
+          </div>
+
+        </div>
+      `;
+
+    })
+    .join("");
+
+}
+
+
+function setIdeaFilter(key) {
+
+  ideaFilter = key;
+
+  renderIdeas();
+
+}
+
+
+function toggleIdeaShowProcessed(checked) {
+
+  ideaShowProcessed = checked;
+
+  renderIdeas();
+
+}
+
+
+/* ---------- 快速記下 ---------- */
+
+function renderIdeaCaptureCategories() {
+
+  document.getElementById("idea-capture-categories").innerHTML =
+    IDEA_CATEGORIES
+      .map(category => `
+        <button
+          class="chip ${ideaCaptureCategory === category.key ? "active" : ""}"
+          onclick="setIdeaCaptureCategory('${category.key}')"
+        >${category.label}</button>
+      `)
+      .join("");
+
+}
+
+
+function setIdeaCaptureCategory(key) {
+
+  ideaCaptureCategory = key;
+
+  renderIdeaCaptureCategories();
+
+  document.getElementById("idea-capture-input").focus();
+
+}
+
+
+function openIdeaCapture() {
+
+  if (!currentUser) return;
+
+  const box = document.getElementById("idea-capture");
+  const input = document.getElementById("idea-capture-input");
+
+  renderIdeaCaptureCategories();
+
+  box.style.display = "flex";
+  input.value = "";
+
+  setTimeout(() => input.focus(), 30);
+
+}
+
+
+function closeIdeaCapture() {
+
+  const box = document.getElementById("idea-capture");
+
+  if (box) box.style.display = "none";
+
+}
+
+
+function onIdeaCaptureKey(event) {
+
+  /* 中文輸入法選字時按的 Enter 不要送出 */
+
+  if (event.isComposing || event.keyCode === 229) return;
+
+  if (event.key === "Enter") {
+    event.preventDefault();
+    saveIdeaFromCapture();
+  }
+
+  if (event.key === "Escape") {
+    closeIdeaCapture();
+  }
+
+}
+
+
+let ideaSaving = false;
+
+async function saveIdeaFromCapture() {
+
+  if (!currentUser || ideaSaving) return;
+
+  const input = document.getElementById("idea-capture-input");
+  const content = input.value.trim();
+
+  if (!content) {
+    input.focus();
+    return;
+  }
+
+  ideaSaving = true;
+
+  try {
+
+    const { error } = await db
+      .from("ideas")
+      .insert({
+        user_id: currentUser.id,
+        content,
+        category: ideaCaptureCategory,
+        idea_date: getToday()
+      });
+
+    if (error) throw error;
+
+    closeIdeaCapture();
+
+    showToast("已記下 ✓ 回到主線吧");
+
+    await loadIdeas();
+
+  } catch (error) {
+
+    console.error("想法儲存失敗：", error);
+
+    alert("想法儲存失敗：" + error.message);
+
+  } finally {
+
+    ideaSaving = false;
+
+  }
+
+}
+
+
+/* Esc 關閉快速記下 */
+document.addEventListener("keydown", event => {
+
+  if (event.key === "Escape") closeIdeaCapture();
+
+});
+
+
+/* ---------- 處理想法 ---------- */
+
+async function setIdeaStatus(ideaId, status) {
+
+  const { error } = await db
+    .from("ideas")
+    .update({
+      status,
+      processed_at: status === "inbox" ? null : new Date().toISOString()
+    })
+    .eq("id", ideaId)
+    .eq("user_id", currentUser.id);
+
+  if (error) {
+    alert("更新失敗：" + error.message);
+    return;
+  }
+
+  await loadIdeas();
+
+}
+
+
+async function deleteIdea(ideaId) {
+
+  const ok = confirm("刪除這個想法？");
+
+  if (!ok) return;
+
+  const { error } = await db
+    .from("ideas")
+    .delete()
+    .eq("id", ideaId)
+    .eq("user_id", currentUser.id);
+
+  if (error) {
+    alert("刪除失敗：" + error.message);
+    return;
+  }
+
+  await loadIdeas();
+
+}
+
+
+async function convertIdeaToTask(ideaId) {
+
+  const idea = ideas.find(row => Number(row.id) === Number(ideaId));
+
+  if (!idea) return;
+
+  const answer = prompt(
+    "轉成今日任務，任務名稱可以先改得更具體：",
+    idea.content
+  );
+
+  if (answer === null) return;
+
+  const title = answer.trim();
+
+  if (!title) {
+    alert("任務名稱不能是空的");
+    return;
+  }
+
+
+  try {
+
+    const reward = getTaskReward("normal");
+
+    const { data: task, error: taskError } = await db
+      .from("tasks")
+      .insert({
+        user_id: currentUser.id,
+        title,
+        category: IDEA_TO_TASK_CATEGORY[idea.category] || "personal",
+        difficulty: "normal",
+        exp_reward: reward.exp,
+        gold_reward: reward.gold,
+        task_date: getToday(),
+        completed: false
+      })
+      .select()
+      .single();
+
+    if (taskError) throw taskError;
+
+
+    const { error: ideaError } = await db
+      .from("ideas")
+      .update({
+        status: "converted",
+        task_id: task ? task.id : null,
+        processed_at: new Date().toISOString()
+      })
+      .eq("id", ideaId)
+      .eq("user_id", currentUser.id);
+
+    if (ideaError) throw ideaError;
+
+
+    showToast("✅ 已加入今日任務");
+
+    await loadIdeas();
+    await loadTasks();
+    await loadTaskManagement();
+
+  } catch (error) {
+
+    console.error("轉成任務失敗：", error);
+
+    alert("轉成任務失敗：" + error.message);
+
+  }
+
+}
+
+
+/* =========================================================
+   5. 給 HTML onclick 使用
+========================================================= */
+
+Object.assign(window, {
+
+  /* 晨間打卡 */
+  toggleMorningEdit,
+  toggleMorningItem,
+  applyDefaultMorningItems,
+  addMorningItem,
+  renameMorningItem,
+  toggleMorningEnabled,
+  deleteMorningItem,
+  moveMorningItem,
+
+  /* 專注 */
+  setFocusMode,
+  setFocusMinutes,
+  onFocusCustomMinutes,
+  onFocusSubjectChange,
+  startFocus,
+  pauseFocus,
+  resumeFocus,
+  finishFocus,
+  discardFocus,
+  deleteFocusSession,
+
+  /* 想法庫 */
+  setIdeaFilter,
+  toggleIdeaShowProcessed,
+  setIdeaCaptureCategory,
+  openIdeaCapture,
+  closeIdeaCapture,
+  onIdeaCaptureKey,
+  saveIdeaFromCapture,
+  setIdeaStatus,
+  deleteIdea,
+  convertIdeaToTask,
+
+  /* 給 script.js */
+  loadTodayModules,
+  resetTodayModules,
+  getMorningStats,
+  getFocusStats,
+  getIdeaStats,
+  formatDuration
+
+});
+
+
+console.log("✅ 晨間打卡 / 專注 / 想法庫 載入完成");
