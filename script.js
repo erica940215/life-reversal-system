@@ -450,7 +450,11 @@ function showLoggedOutUI() {
 
   if (authSection) {
 
-    authSection.style.display = "block";
+    /*
+      清掉 inline 樣式，讓 CSS 的 display:flex 生效（才會置中）。
+      原本設成 "block" 會蓋掉 flex，卡片就跑到左上角。
+    */
+    authSection.style.display = "";
 
   }
 
