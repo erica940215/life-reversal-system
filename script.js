@@ -499,19 +499,15 @@ function showAuthMessage(message, isError = false) {
 
 function getToday() {
 
-  const now = new Date();
+  /*
+    固定用台灣時間，和資料庫的 generate_daily_tasks 一致
+    （sv-SE 格式剛好是 YYYY-MM-DD）
+  */
 
-  const year =
-    now.getFullYear();
-
-  const month =
-    String(now.getMonth() + 1).padStart(2, "0");
-
-  const day =
-    String(now.getDate()).padStart(2, "0");
-
-
-  return `${year}-${month}-${day}`;
+  return new Date().toLocaleDateString(
+    "sv-SE",
+    { timeZone: "Asia/Taipei" }
+  );
 
 }
 
@@ -817,12 +813,12 @@ async function loadTasks() {
     const {
       error
     } = await db.rpc(
-      "generate_daily_tasks",
-      {
-        p_user_id: currentUser.id,
-        p_date: today
-      }
+      "generate_daily_tasks"
     );
+    /*
+      資料庫版本不需要參數：
+      使用者用 auth.uid() 判斷，日期用台灣時間
+    */
 
 
     if (error) {
@@ -1176,14 +1172,14 @@ async function addTask() {
 
   const repeatTypeElement =
     document.querySelector(
-      'input[name="repeat-type"]:checked'
+      'select[name="repeat-type"]'
     );
 
 
   const repeatType =
     repeatTypeElement
       ? repeatTypeElement.value
-      : null;
+      : "daily";
 
 
   const repeatDayElement =
@@ -1215,42 +1211,83 @@ async function addTask() {
     建立任務
   */
 
+  const reward =
+    getTaskReward(difficulty);
+
+
+  /*
+    單次任務 → 直接存進 tasks（今天的任務）
+    重複任務 → 存進 task_templates（範本），
+              由 generate_daily_tasks 每天照範本產生當天任務
+  */
+
   try {
 
-    const {
-      data,
-      error
-    } = await db
-      .from("tasks")
-      .insert({
+    let data;
+    let error;
 
-        user_id: currentUser.id,
 
-        title,
+    if (repeat === "repeat") {
 
-        category,
+      ({ data, error } = await db
+        .from("task_templates")
+        .insert({
 
-        difficulty,
+          user_id: currentUser.id,
 
-        task_date: getToday(),
+          title,
 
-        completed: false,
+          category,
 
-        is_recurring:
-          repeat === "repeat",
+          difficulty,
 
-        repeat_type:
-          repeatType,
+          exp_reward: reward.exp,
 
-        repeat_day:
-          repeatDay,
+          gold_reward: reward.gold,
 
-        repeat_end_date:
-          repeatEndDate
+          repeat_enabled: true,
 
-      })
-      .select()
-      .single();
+          repeat_type: repeatType,
+
+          /* 星期一 = 1 ... 星期日 = 7 */
+          repeat_days:
+            repeatType === "weekly"
+              ? [Number(repeatDay)]
+              : [],
+
+          repeat_end_date: repeatEndDate
+
+        })
+        .select()
+        .single());
+
+    } else {
+
+      ({ data, error } = await db
+        .from("tasks")
+        .insert({
+
+          user_id: currentUser.id,
+
+          title,
+
+          category,
+
+          difficulty,
+
+          exp_reward: reward.exp,
+
+          gold_reward: reward.gold,
+
+          task_date: getToday(),
+
+          completed: false
+
+        })
+        .select()
+        .single());
+
+    }
 
 
     if (error) {
@@ -1825,7 +1862,7 @@ function renderTaskManagement(tasks) {
 
     filtered =
       filtered.filter(
-        task => !task.is_recurring
+        task => !task.template_id
       );
 
   }
@@ -1837,7 +1874,7 @@ function renderTaskManagement(tasks) {
 
     filtered =
       filtered.filter(
-        task => task.is_recurring
+        task => task.template_id
       );
 
   }
@@ -1881,7 +1918,7 @@ function renderTaskManagement(tasks) {
 
                 <span>
                   ${
-                    task.is_recurring
+                    task.template_id
                       ? "🔄 重複"
                       : "📌 單次"
                   }
@@ -2106,6 +2143,31 @@ function updateRepeatUI() {
 
     repeatOptions.style.display =
       "none";
+
+  }
+
+
+  /*
+    只有「每週」才需要選星期
+  */
+
+  const repeatTypeElement =
+    document.querySelector(
+      'select[name="repeat-type"]'
+    );
+
+  const repeatDayItem =
+    document.getElementById(
+      "repeat-day-item"
+    );
+
+
+  if (repeatTypeElement && repeatDayItem) {
+
+    repeatDayItem.style.display =
+      repeatTypeElement.value === "weekly"
+        ? "block"
+        : "none";
 
   }
 
