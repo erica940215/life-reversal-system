@@ -1213,6 +1213,7 @@
 
                 <select
                   name="repeat-type"
+                  onchange="updateRepeatUI()"
                 >
 
                   <option value="daily">
@@ -1228,7 +1229,11 @@
               </div>
 
 
-              <div class="form-item">
+              <div
+                class="form-item"
+                id="repeat-day-item"
+                style="display:none;"
+              >
 
                 <label>
                   星期
@@ -1262,7 +1267,7 @@
                     星期六
                   </option>
 
-                  <option value="0">
+                  <option value="7">
                     星期日
                   </option>
 
