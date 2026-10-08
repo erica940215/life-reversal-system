@@ -432,6 +432,24 @@ async function showLoggedInUI() {
 
   }
 
+
+  /*
+    載入今天的每日結算（如果已經結算過）
+  */
+
+  try {
+
+    await loadDailyReport();
+
+  } catch (error) {
+
+    console.error(
+      "每日結算載入失敗：",
+      error
+    );
+
+  }
+
 }
 
 
@@ -736,6 +754,32 @@ function getTaskReward(difficulty) {
 }
 
 
+/*
+  任務「實際」會給的獎勵：
+  以資料庫存的 exp_reward / gold_reward 為準
+  （complete_task 就是用這兩欄發獎勵），
+  舊資料沒有這兩欄時才退回用難度計算
+*/
+
+function getActualReward(task) {
+
+  const fallback =
+    getTaskReward(task.difficulty);
+
+
+  return {
+
+    exp:
+      task.exp_reward ?? fallback.exp,
+
+    gold:
+      task.gold_reward ?? fallback.gold
+
+  };
+
+}
+
+
 /* =========================================================
    15. 難度文字
 ========================================================= */
@@ -949,7 +993,7 @@ function renderTasks() {
     .map(task => {
 
       const reward =
-        getTaskReward(task.difficulty);
+        getActualReward(task);
 
 
       return `
@@ -1757,9 +1801,7 @@ function updateSummary() {
     if (task.completed) {
 
       const reward =
-        getTaskReward(
-          task.difficulty
-        );
+        getActualReward(task);
 
 
       todayExp += reward.exp;
@@ -2280,6 +2322,300 @@ window.clearManagementList =
 
 window.updateRepeatUI =
   updateRepeatUI;
+
+window.dailyWrapUp =
+  dailyWrapUp;
+
+
+/* =========================================================
+   38. 每日收尾 / 今日結算
+   - 按下自評按鈕 → 結算今天 → 存進 daily_reports
+   - 一天只留一筆，再按一次會用最新的數字覆蓋
+   - 目前只結算任務、EXP、Gold；
+     主線 / 晨間打卡 / 專注 / 想法 做好後再接上
+========================================================= */
+
+const SELF_RATING_LABELS = {
+
+  good: "⭐ 今天表現不錯",
+
+  normal: "🙂 普通的一天",
+
+  bad: "🔥 明天重新開始"
+
+};
+
+
+function buildDailyReport(selfRating) {
+
+  const total =
+    currentTasks.length;
+
+  const doneTasks =
+    currentTasks.filter(
+      task => task.completed
+    );
+
+
+  let exp = 0;
+  let gold = 0;
+
+
+  doneTasks.forEach(task => {
+
+    const reward =
+      getActualReward(task);
+
+    exp += reward.exp;
+
+    gold += reward.gold;
+
+  });
+
+
+  return {
+
+    user_id: currentUser.id,
+
+    report_date: getToday(),
+
+    tasks_total: total,
+
+    tasks_done: doneTasks.length,
+
+    completion_rate:
+      total === 0
+        ? 0
+        : Math.round(
+            (doneTasks.length / total) * 100
+          ),
+
+    exp_gained: exp,
+
+    gold_gained: gold,
+
+    self_rating: selfRating,
+
+    updated_at:
+      new Date().toISOString()
+
+  };
+
+}
+
+
+async function dailyWrapUp(selfRating) {
+
+  if (!currentUser) return;
+
+
+  const box =
+    document.getElementById(
+      "daily-wrapup-message"
+    );
+
+
+  if (box) {
+
+    box.textContent =
+      "結算中...";
+
+  }
+
+
+  try {
+
+    /*
+      先重新載入今天的任務，確保結算用的是最新數字
+    */
+
+    await loadTasks();
+
+
+    const report =
+      buildDailyReport(selfRating);
+
+
+    const {
+      data,
+      error
+    } = await db
+      .from("daily_reports")
+      .upsert(
+        report,
+        { onConflict: "user_id,report_date" }
+      )
+      .select()
+      .single();
+
+
+    if (error) {
+
+      throw error;
+
+    }
+
+
+    renderDailyReport(
+      data || report
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      "每日結算失敗：",
+      error
+    );
+
+
+    if (box) {
+
+      box.textContent =
+        "❌ 結算失敗：" + error.message;
+
+      box.style.color =
+        "#ff6b6b";
+
+    }
+
+  }
+
+}
+
+
+async function loadDailyReport() {
+
+  if (!currentUser) return;
+
+
+  const box =
+    document.getElementById(
+      "daily-wrapup-message"
+    );
+
+
+  const {
+    data,
+    error
+  } = await db
+    .from("daily_reports")
+    .select("*")
+    .eq("user_id", currentUser.id)
+    .eq("report_date", getToday())
+    .maybeSingle();
+
+
+  if (error) {
+
+    console.warn(
+      "讀取今日結算失敗：",
+      error
+    );
+
+    return;
+
+  }
+
+
+  if (data) {
+
+    renderDailyReport(data);
+
+  } else if (box) {
+
+    box.innerHTML = "";
+
+    highlightRatingButton(null);
+
+  }
+
+}
+
+
+function renderDailyReport(report) {
+
+  const box =
+    document.getElementById(
+      "daily-wrapup-message"
+    );
+
+
+  if (!box) return;
+
+
+  box.style.color = "";
+
+
+  box.innerHTML = `
+
+    <div class="report-card">
+
+      <div class="report-title">
+        🌙 今日結算｜${escapeHtml(report.report_date)}
+      </div>
+
+
+      <div class="report-grid">
+
+        <div class="report-label">📋 任務</div>
+        <div class="report-value">
+          ${Number(report.tasks_done)} / ${Number(report.tasks_total)}
+        </div>
+
+        <div class="report-label">🎮 EXP</div>
+        <div class="report-value">
+          +${Number(report.exp_gained)}
+        </div>
+
+        <div class="report-label">💰 Gold</div>
+        <div class="report-value">
+          +${Number(report.gold_gained)}
+        </div>
+
+        <div class="report-label">📝 自評</div>
+        <div class="report-value">
+          ${SELF_RATING_LABELS[report.self_rating] || "—"}
+        </div>
+
+      </div>
+
+
+      <div class="report-rate">
+        今日完成度：${Number(report.completion_rate)}%
+      </div>
+
+
+      <div class="report-note">
+        ✅ 已儲存。今天之內再按一次，會用最新的數字更新這筆紀錄。
+      </div>
+
+    </div>
+
+  `;
+
+
+  highlightRatingButton(
+    report.self_rating
+  );
+
+}
+
+
+function highlightRatingButton(selfRating) {
+
+  document
+    .querySelectorAll(".wrapup-btn")
+    .forEach(btn => {
+
+      btn.classList.toggle(
+        "selected",
+        btn.dataset.rating === selfRating
+      );
+
+    });
+
+}
 
 
 /* =========================================================
