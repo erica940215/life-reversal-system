@@ -1,2793 +1,1174 @@
-// ======================================================
-// 神級人生逆襲系統
-// RPG 任務系統 V2
-// ======================================================
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+  <title>神級人生逆襲系統</title>
 
-// ======================================================
-// 1. Supabase
-// ======================================================
-
-const SUPABASE_URL =
-  "https://smlaokhqhgzjhnxeqfen.supabase.co";
-
-const SUPABASE_KEY =
-  "sb_publishable_2uJS9Kex4YSTQh1Bbh3H-w_4cPPW25j";
-
-const supabaseClient =
-  window.supabase.createClient(
-    SUPABASE_URL,
-    SUPABASE_KEY
-  );
-
-
-// ======================================================
-// 2. 全域資料
-// ======================================================
-
-let currentUser = null;
-
-let currentProfile = null;
-
-let currentTasks = [];
-
-let currentFilter = "all";
-
-
-// ======================================================
-// 3. 網頁載入
-// ======================================================
-
-document.addEventListener(
-  "DOMContentLoaded",
-  async function () {
-
-    console.log(
-      "神級人生逆襲系統 JavaScript 載入成功"
-    );
-
-    await checkSession();
-
-  }
-);
-
-
-// ======================================================
-// 4. 檢查登入狀態
-// ======================================================
-
-async function checkSession() {
-
-  try {
-
-    const {
-      data,
-      error
-    } =
-      await supabaseClient.auth.getSession();
-
-
-    if (error) {
-
-      console.error(
-        "取得登入狀態失敗：",
-        error
-      );
-
-      showAuthMessage(
-        "⚠️ 無法取得登入狀態"
-      );
-
-      return;
-
+  <style>
+    * {
+      box-sizing: border-box;
     }
 
+    body {
+      margin: 0;
+      font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        "Microsoft JhengHei",
+        sans-serif;
 
-    currentUser =
-      data.session
-        ? data.session.user
-        : null;
-
-
-    if (currentUser) {
-
-      await showLoggedInUI();
-
-      await loadPlayer();
-
-      await loadTasks();
-
-    } else {
-
-      showLoggedOutUI();
-
-    }
-
-  } catch (error) {
-
-    console.error(
-      "Session 錯誤：",
-      error
-    );
-
-  }
-
-}
-
-
-// ======================================================
-// 5. 登入
-// ======================================================
-
-window.loginUser =
-  async function () {
-
-    const emailInput =
-      document.getElementById(
-        "auth-email"
-      );
-
-    const passwordInput =
-      document.getElementById(
-        "auth-password"
-      );
-
-
-    const email =
-      emailInput
-        ? emailInput.value.trim()
-        : "";
-
-
-    const password =
-      passwordInput
-        ? passwordInput.value
-        : "";
-
-
-    if (!email || !password) {
-
-      showAuthMessage(
-        "⚠️ 請輸入 Email 和密碼"
-      );
-
-      return;
-
-    }
-
-
-    showAuthMessage(
-      "🔄 登入中……"
-    );
-
-
-    try {
-
-      const {
-        data,
-        error
-      } =
-        await supabaseClient.auth.signInWithPassword({
-
-          email,
-
-          password
-
-        });
-
-
-      if (error) {
-
-        console.error(
-          "登入失敗：",
-          error
+      background:
+        radial-gradient(
+          circle at top,
+          #1b1b2f 0%,
+          #0d0d16 45%,
+          #08080d 100%
         );
 
-        showAuthMessage(
-          "❌ 登入失敗：" +
-          error.message
-        );
+      color: #f2f2f2;
+      min-height: 100vh;
+    }
 
-        return;
+    .container {
+      width: min(1100px, 94%);
+      margin: 0 auto;
+      padding: 30px 0 60px;
+    }
 
+    h1,
+    h2,
+    h3 {
+      margin-top: 0;
+    }
+
+    .title {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .title h1 {
+      font-size: 32px;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      opacity: 0.65;
+    }
+
+    .card {
+      background: rgba(25, 25, 38, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      padding: 22px;
+      margin-bottom: 20px;
+      box-shadow: 0 10px 35px rgba(0, 0, 0, 0.25);
+    }
+
+    /* =========================
+       登入
+    ========================= */
+
+    #auth-form {
+      max-width: 500px;
+      margin: 50px auto;
+    }
+
+    .input-group {
+      margin-bottom: 15px;
+    }
+
+    .input-group label {
+      display: block;
+      margin-bottom: 7px;
+      opacity: 0.8;
+    }
+
+    input,
+    select {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: #11111b;
+      color: white;
+      outline: none;
+    }
+
+    input:focus,
+    select:focus {
+      border-color: rgba(255,255,255,0.35);
+    }
+
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 15px;
+      cursor: pointer;
+      background: #27273a;
+      color: white;
+      transition: 0.15s;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      background: #34344c;
+    }
+
+    .primary-btn {
+      background: #5865f2;
+    }
+
+    .primary-btn:hover {
+      background: #6975ff;
+    }
+
+    .danger-btn {
+      background: #7d3030;
+    }
+
+    .auth-buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    .auth-buttons button {
+      flex: 1;
+    }
+
+    #auth-message {
+      margin-top: 15px;
+      min-height: 24px;
+      text-align: center;
+    }
+
+    /* =========================
+       玩家資訊
+    ========================= */
+
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 15px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+
+    #user-email {
+      opacity: 0.7;
+      font-size: 14px;
+    }
+
+    .player-grid {
+      display: grid;
+      grid-template-columns:
+        repeat(3, 1fr);
+      gap: 15px;
+    }
+
+    .stat-box {
+      background: #11111b;
+      border-radius: 14px;
+      padding: 18px;
+      text-align: center;
+    }
+
+    .stat-label {
+      font-size: 13px;
+      opacity: 0.6;
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-size: 28px;
+      font-weight: bold;
+    }
+
+    .exp-section {
+      margin-top: 18px;
+    }
+
+    .exp-text {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 14px;
+      opacity: 0.8;
+    }
+
+    .progress {
+      height: 12px;
+      background: #0b0b12;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    #exp-bar,
+    #rate-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(
+        90deg,
+        #5865f2,
+        #8d94ff
+      );
+      transition: width 0.3s;
+    }
+
+    /* =========================
+       今日統計
+    ========================= */
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns:
+        repeat(4, 1fr);
+      gap: 12px;
+    }
+
+    .summary-box {
+      background: #11111b;
+      border-radius: 12px;
+      padding: 15px;
+      text-align: center;
+    }
+
+    .summary-value {
+      font-size: 22px;
+      font-weight: bold;
+      margin-top: 5px;
+    }
+
+    .summary-label {
+      opacity: 0.6;
+      font-size: 13px;
+    }
+
+    .rate-section {
+      margin-top: 18px;
+    }
+
+    #rate-text {
+      display: block;
+      margin-bottom: 8px;
+      opacity: 0.7;
+    }
+
+    /* =========================
+       任務篩選
+    ========================= */
+
+    .filter-buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 15px;
+    }
+
+    .filter-btn.active,
+    .management-filter.active {
+      background: #5865f2;
+    }
+
+    /* =========================
+       任務列表
+    ========================= */
+
+    .task-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .task-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+
+      padding: 15px;
+      margin-bottom: 10px;
+
+      background: #11111b;
+      border-radius: 13px;
+
+      border: 1px solid transparent;
+    }
+
+    .task-item:hover {
+      border-color: rgba(255,255,255,0.1);
+    }
+
+    .task-item.completed {
+      opacity: 0.55;
+    }
+
+    .task-checkbox {
+      font-size: 25px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .task-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .task-info small {
+      display: block;
+      opacity: 0.5;
+      margin-bottom: 4px;
+    }
+
+    .task-name {
+      display: block;
+      font-size: 16px;
+      margin-bottom: 5px;
+      word-break: break-word;
+    }
+
+    .difficulty {
+      display: inline-block;
+      font-size: 12px;
+      padding: 3px 7px;
+      border-radius: 6px;
+      background: #29293a;
+      opacity: 0.85;
+    }
+
+    .difficulty.easy {
+      background: #24452f;
+    }
+
+    .difficulty.normal {
+      background: #45402a;
+    }
+
+    .difficulty.hard {
+      background: #512d2d;
+    }
+
+    .reward {
+      display: flex;
+      flex-direction: column;
+      text-align: right;
+      font-size: 13px;
+      white-space: nowrap;
+      opacity: 0.8;
+    }
+
+    .task-actions {
+      display: flex;
+      gap: 5px;
+    }
+
+    .task-actions button {
+      padding: 7px 9px;
+      font-size: 13px;
+    }
+
+    /* =========================
+       新增任務
+    ========================= */
+
+    .repeat-options,
+    .weekday-options {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .radio-option,
+    .checkbox-option {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+    }
+
+    .radio-option input,
+    .checkbox-option input {
+      width: auto;
+    }
+
+    #repeat-settings {
+      margin-top: 15px;
+      padding: 15px;
+      border-radius: 12px;
+      background: #11111b;
+    }
+
+    #weekday-settings {
+      margin-top: 12px;
+    }
+
+    .add-task-row {
+      display: grid;
+      grid-template-columns:
+        2fr 1fr 1fr;
+      gap: 10px;
+    }
+
+    .add-task-button {
+      margin-top: 15px;
+    }
+
+    #add-task-message {
+      margin-top: 10px;
+      min-height: 22px;
+      opacity: 0.8;
+    }
+
+    /* =========================
+       任務管理
+    ========================= */
+
+    .management-filter {
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .management-task {
+      background: #11111b;
+      border-radius: 12px;
+      padding: 15px;
+      margin-bottom: 10px;
+    }
+
+    /* =========================
+       RWD
+    ========================= */
+
+    @media (max-width: 700px) {
+
+      .player-grid {
+        grid-template-columns: 1fr;
       }
 
-
-      currentUser =
-        data.user;
-
-
-      showAuthMessage(
-        "✅ 登入成功！"
-      );
-
-
-      await showLoggedInUI();
-
-      await loadPlayer();
-
-      await loadTasks();
-
-
-    } catch (error) {
-
-      console.error(error);
-
-      showAuthMessage(
-        "❌ 登入發生錯誤"
-      );
-
-    }
-
-  };
-
-
-// ======================================================
-// 6. 註冊
-// ======================================================
-
-window.registerUser =
-  async function () {
-
-    const emailInput =
-      document.getElementById(
-        "auth-email"
-      );
-
-    const passwordInput =
-      document.getElementById(
-        "auth-password"
-      );
-
-
-    const email =
-      emailInput
-        ? emailInput.value.trim()
-        : "";
-
-
-    const password =
-      passwordInput
-        ? passwordInput.value
-        : "";
-
-
-    if (!email || !password) {
-
-      showAuthMessage(
-        "⚠️ 請輸入 Email 和密碼"
-      );
-
-      return;
-
-    }
-
-
-    if (password.length < 6) {
-
-      showAuthMessage(
-        "⚠️ 密碼至少需要 6 碼"
-      );
-
-      return;
-
-    }
-
-
-    showAuthMessage(
-      "🔄 註冊中……"
-    );
-
-
-    try {
-
-      const {
-        data,
-        error
-      } =
-        await supabaseClient.auth.signUp({
-
-          email,
-
-          password
-
-        });
-
-
-      if (error) {
-
-        console.error(
-          "註冊失敗：",
-          error
-        );
-
-        showAuthMessage(
-          "❌ 註冊失敗：" +
-          error.message
-        );
-
-        return;
-
+      .summary-grid {
+        grid-template-columns:
+          repeat(2, 1fr);
       }
 
-
-      if (data.session) {
-
-        currentUser =
-          data.user;
-
-
-        showAuthMessage(
-          "✅ 註冊成功並已登入！"
-        );
-
-
-        await showLoggedInUI();
-
-        await loadPlayer();
-
-        await loadTasks();
-
-
-      } else {
-
-        showAuthMessage(
-          "✅ 註冊成功！請確認 Email 後再登入。"
-        );
-
+      .add-task-row {
+        grid-template-columns: 1fr;
       }
 
-
-    } catch (error) {
-
-      console.error(error);
-
-      showAuthMessage(
-        "❌ 註冊發生錯誤"
-      );
-
-    }
-
-  };
-
-
-// ======================================================
-// 7. 登出
-// ======================================================
-
-window.logoutUser =
-  async function () {
-
-    try {
-
-      const {
-        error
-      } =
-        await supabaseClient.auth.signOut();
-
-
-      if (error) {
-
-        showAuthMessage(
-          "❌ 登出失敗"
-        );
-
-        return;
-
+      .task-item {
+        align-items: flex-start;
       }
 
-
-      currentUser = null;
-
-      currentProfile = null;
-
-      currentTasks = [];
-
-
-      showLoggedOutUI();
-
-      updateSummary();
-
-
-      const taskList =
-        document.querySelector(
-          ".task-list"
-        );
-
-
-      if (taskList) {
-
-        taskList.innerHTML = "";
-
+      .reward {
+        display: none;
       }
 
-
-    } catch (error) {
-
-      console.error(error);
-
-    }
-
-  };
-
-
-// ======================================================
-// 8. 登入 UI
-// ======================================================
-
-async function showLoggedInUI() {
-
-  const authForm =
-    document.getElementById(
-      "auth-form"
-    );
-
-
-  const loggedInAreas =
-    document.querySelectorAll(
-      "#logged-in-area"
-    );
-
-
-  const userEmail =
-    document.getElementById(
-      "user-email"
-    );
-
-
-  if (authForm) {
-
-    authForm.style.display =
-      "none";
-
-  }
-
-
-  loggedInAreas.forEach(
-    function (area) {
-
-      area.style.display =
-        "block";
-
-    }
-  );
-
-
-  if (
-    userEmail &&
-    currentUser
-  ) {
-
-    userEmail.textContent =
-      "👤 玩家：" +
-      currentUser.email;
-
-  }
-
-}
-
-
-// ======================================================
-// 9. 登出 UI
-// ======================================================
-
-function showLoggedOutUI() {
-
-  const authForm =
-    document.getElementById(
-      "auth-form"
-    );
-
-
-  const loggedInAreas =
-    document.querySelectorAll(
-      "#logged-in-area"
-    );
-
-
-  if (authForm) {
-
-    authForm.style.display =
-      "block";
-
-  }
-
-
-  loggedInAreas.forEach(
-    function (area) {
-
-      area.style.display =
-        "none";
-
-    }
-  );
-
-}
-
-
-// ======================================================
-// 10. Auth 訊息
-// ======================================================
-
-function showAuthMessage(
-  message
-) {
-
-  const element =
-    document.getElementById(
-      "auth-message"
-    );
-
-
-  if (element) {
-
-    element.textContent =
-      message;
-
-  }
-
-}
-
-
-// ======================================================
-// 11. 玩家資料
-// ======================================================
-
-async function loadPlayer() {
-
-  if (!currentUser) {
-
-    return;
-
-  }
-
-
-  try {
-
-    const {
-      data,
-      error
-    } =
-      await supabaseClient
-        .from("profiles")
-        .select("*")
-        .eq(
-          "id",
-          currentUser.id
-        )
-        .single();
-
-
-    if (error) {
-
-      console.error(
-        "載入玩家資料失敗：",
-        error
-      );
-
-      return;
-
-    }
-
-
-    currentProfile =
-      data;
-
-
-    renderPlayer();
-
-
-  } catch (error) {
-
-    console.error(error);
-
-  }
-
-}
-
-
-// ======================================================
-// 12. 玩家畫面
-// ======================================================
-
-function renderPlayer() {
-
-  if (!currentProfile) {
-
-    return;
-
-  }
-
-
-  const level =
-    Number(
-      currentProfile.level
-    );
-
-
-  const exp =
-    Number(
-      currentProfile.exp
-    );
-
-
-  const gold =
-    Number(
-      currentProfile.gold
-    );
-
-
-  const requiredExp =
-    100 +
-    (level - 1) * 50;
-
-
-  const levelElements =
-    document.querySelectorAll(
-      "#player-level"
-    );
-
-
-  const goldElements =
-    document.querySelectorAll(
-      "#player-gold"
-    );
-
-
-  const expElements =
-    document.querySelectorAll(
-      "#current-exp"
-    );
-
-
-  const requiredElements =
-    document.querySelectorAll(
-      "#required-exp"
-    );
-
-
-  const expBar =
-    document.getElementById(
-      "exp-bar"
-    );
-
-
-  levelElements.forEach(
-    function (element) {
-
-      element.textContent =
-        "Lv." + level;
-
-    }
-  );
-
-
-  goldElements.forEach(
-    function (element) {
-
-      element.textContent =
-        gold;
-
-    }
-  );
-
-
-  expElements.forEach(
-    function (element) {
-
-      element.textContent =
-        exp;
-
-    }
-  );
-
-
-  requiredElements.forEach(
-    function (element) {
-
-      element.textContent =
-        requiredExp;
-
-    }
-  );
-
-
-  if (expBar) {
-
-    const percentage =
-      Math.min(
-        100,
-        Math.max(
-          0,
-          (exp / requiredExp) * 100
-        )
-      );
-
-
-    expBar.style.width =
-      percentage + "%";
-
-  }
-
-}
-
-
-// ======================================================
-// 13. 今日日期
-// ======================================================
-
-function getToday() {
-
-  const now =
-    new Date();
-
-
-  const year =
-    now.getFullYear();
-
-
-  const month =
-    String(
-      now.getMonth() + 1
-    ).padStart(
-      2,
-      "0"
-    );
-
-
-  const day =
-    String(
-      now.getDate()
-    ).padStart(
-      2,
-      "0"
-    );
-
-
-  return (
-    year +
-    "-" +
-    month +
-    "-" +
-    day
-  );
-
-}
-
-
-// ======================================================
-// 14. 產生今天的重複任務
-// ======================================================
-
-async function generateDailyTasks() {
-
-  if (!currentUser) {
-
-    return;
-
-  }
-
-
-  try {
-
-    const {
-      data,
-      error
-    } =
-      await supabaseClient
-        .rpc(
-          "generate_daily_tasks"
-        );
-
-
-    if (error) {
-
-      console.error(
-        "產生今日重複任務失敗：",
-        error
-      );
-
-      return;
-
-    }
-
-
-    console.log(
-      "今日重複任務：",
-      data
-    );
-
-
-  } catch (error) {
-
-    console.error(
-      "產生今日任務錯誤：",
-      error
-    );
-
-  }
-
-}
-
-
-// ======================================================
-// 15. 載入今日任務
-// ======================================================
-
-async function loadTasks() {
-
-  if (!currentUser) {
-
-    return;
-
-  }
-
-
-  try {
-
-    // 先產生今天應該出現的重複任務
-
-    await generateDailyTasks();
-
-
-    // 再讀取今天任務
-
-    const {
-      data,
-      error
-    } =
-      await supabaseClient
-        .from("tasks")
-        .select("*")
-        .eq(
-          "user_id",
-          currentUser.id
-        )
-        .eq(
-          "task_date",
-          getToday()
-        )
-        .order(
-          "id",
-          {
-            ascending: true
-          }
-        );
-
-
-    if (error) {
-
-      console.error(
-        "載入任務失敗：",
-        error
-      );
-
-      return;
-
-    }
-
-
-    currentTasks =
-      data || [];
-
-
-    console.log(
-      "今日任務載入成功：",
-      currentTasks
-    );
-
-
-    renderTasks();
-
-    updateSummary();
-
-
-  } catch (error) {
-
-    console.error(
-      "任務系統錯誤：",
-      error
-    );
-
-  }
-
-}
-
-
-// ======================================================
-// 16. 顯示任務
-// ======================================================
-
-function renderTasks() {
-
-  const taskList =
-    document.querySelector(
-      ".task-list"
-    );
-
-
-  if (!taskList) {
-
-    return;
-
-  }
-
-
-  taskList.innerHTML = "";
-
-
-  currentTasks.forEach(
-    function (task) {
-
-      const li =
-        document.createElement(
-          "li"
-        );
-
-
-      li.className =
-        "task-item";
-
-
-      li.dataset.category =
-        task.category;
-
-
-      li.dataset.difficulty =
-        task.difficulty;
-
-
-      li.dataset.taskId =
-        task.id;
-
-
-      if (task.completed) {
-
-        li.classList.add(
-          "completed"
-        );
-
+      .task-actions {
+        flex-direction: column;
       }
-
-
-      // --------------------------
-      // 勾選
-      // --------------------------
-
-      const checkbox =
-        document.createElement(
-          "span"
-        );
-
-
-      checkbox.className =
-        "task-checkbox";
-
-
-      checkbox.textContent =
-        task.completed
-          ? "☑"
-          : "☐";
-
-
-      // --------------------------
-      // 任務資訊
-      // --------------------------
-
-      const taskInfo =
-        document.createElement(
-          "div"
-        );
-
-
-      taskInfo.className =
-        "task-info";
-
-
-      const category =
-        document.createElement(
-          "small"
-        );
-
-
-      category.textContent =
-        getCategoryLabel(
-          task.category
-        );
-
-
-      const name =
-        document.createElement(
-          "span"
-        );
-
-
-      name.className =
-        "task-name";
-
-
-      name.textContent =
-        task.title;
-
-
-      const difficulty =
-        document.createElement(
-          "span"
-        );
-
-
-      difficulty.className =
-        "difficulty " +
-        task.difficulty;
-
-
-      difficulty.textContent =
-        getDifficultyLabel(
-          task.difficulty
-        );
-
-
-      taskInfo.appendChild(
-        category
-      );
-
-
-      taskInfo.appendChild(
-        name
-      );
-
-
-      taskInfo.appendChild(
-        difficulty
-      );
-
-
-      // --------------------------
-      // 獎勵
-      // --------------------------
-
-      const reward =
-        document.createElement(
-          "div"
-        );
-
-
-      reward.className =
-        "reward";
-
-
-      const expReward =
-        document.createElement(
-          "span"
-        );
-
-
-      expReward.textContent =
-        "+" +
-        task.exp_reward +
-        " EXP";
-
-
-      const goldReward =
-        document.createElement(
-          "span"
-        );
-
-
-      goldReward.className =
-        "gold-reward";
-
-
-      goldReward.textContent =
-        "+" +
-        task.gold_reward +
-        " 💰";
-
-
-      reward.appendChild(
-        expReward
-      );
-
-
-      reward.appendChild(
-        goldReward
-      );
-
-
-      // --------------------------
-      // 按鈕
-      // --------------------------
-
-      const actions =
-        document.createElement(
-          "div"
-        );
-
-
-      actions.className =
-        "task-actions";
-
-
-      actions.style.display =
-        "flex";
-
-
-      actions.style.gap =
-        "6px";
-
-
-      actions.style.marginLeft =
-        "8px";
-
-
-      // 編輯
-
-      const editButton =
-        document.createElement(
-          "button"
-        );
-
-
-      editButton.type =
-        "button";
-
-
-      editButton.textContent =
-        "✏️";
-
-
-      editButton.title =
-        "編輯任務";
-
-
-      editButton.onclick =
-        function (event) {
-
-          event.stopPropagation();
-
-          editTask(
-            task.id
-          );
-
-        };
-
-
-      // 刪除
-
-      const deleteButton =
-        document.createElement(
-          "button"
-        );
-
-
-      deleteButton.type =
-        "button";
-
-
-      deleteButton.textContent =
-        "🗑️";
-
-
-      deleteButton.title =
-        "刪除任務";
-
-
-      deleteButton.onclick =
-        function (event) {
-
-          event.stopPropagation();
-
-          deleteTask(
-            task.id
-          );
-
-        };
-
-
-      actions.appendChild(
-        editButton
-      );
-
-
-      actions.appendChild(
-        deleteButton
-      );
-
-
-      // --------------------------
-      // 組合
-      // --------------------------
-
-      li.appendChild(
-        checkbox
-      );
-
-
-      li.appendChild(
-        taskInfo
-      );
-
-
-      li.appendChild(
-        reward
-      );
-
-
-      li.appendChild(
-        actions
-      );
-
-
-      // --------------------------
-      // 點擊完成
-      // --------------------------
-
-      li.onclick =
-        function () {
-
-          toggleTask(
-
-            li,
-
-            Number(
-              task.exp_reward
-            ),
-
-            Number(
-              task.gold_reward
-            ),
-
-            task.id
-
-          );
-
-        };
-
-
-      taskList.appendChild(
-        li
-      );
-
     }
-  );
+  </style>
+</head>
 
+<body>
 
-  applyCurrentFilter();
+<div class="container">
 
-}
+  <!-- ==================================================
+       標題
+  ================================================== -->
 
+  <div class="title">
+    <h1>⚔️ 神級人生逆襲系統</h1>
+    <div class="subtitle">
+      把每天的人生，變成一場可以升級的 RPG。
+    </div>
+  </div>
 
-// ======================================================
-// 17. 類別名稱
-// ======================================================
 
-function getCategoryLabel(
-  category
-) {
+  <!-- ==================================================
+       登入
+  ================================================== -->
 
-  const labels = {
+  <section id="auth-form" class="card">
 
-    study:
-      "📚 學習",
+    <h2>🔐 玩家登入</h2>
 
-    toeic:
-      "🇬🇧 多益",
+    <div class="input-group">
+      <label for="auth-email">
+        Email
+      </label>
 
-    focus:
-      "🎯 專注",
+      <input
+        type="email"
+        id="auth-email"
+        placeholder="輸入 Email"
+        autocomplete="email"
+      >
+    </div>
 
-    health:
-      "❤️ 健康"
+    <div class="input-group">
+      <label for="auth-password">
+        密碼
+      </label>
 
-  };
+      <input
+        type="password"
+        id="auth-password"
+        placeholder="至少 6 碼"
+        autocomplete="current-password"
+      >
+    </div>
 
+    <div class="auth-buttons">
 
-  return (
-    labels[category] ||
-    "📌 其他"
-  );
+      <button
+        type="button"
+        class="primary-btn"
+        onclick="loginUser()"
+      >
+        登入
+      </button>
 
-}
+      <button
+        type="button"
+        onclick="registerUser()"
+      >
+        註冊
+      </button>
 
+    </div>
 
-// ======================================================
-// 18. 難度名稱
-// ======================================================
+    <div id="auth-message"></div>
 
-function getDifficultyLabel(
-  difficulty
-) {
+  </section>
 
-  const labels = {
 
-    easy:
-      "🟢 簡單",
+  <!-- ==================================================
+       登入後區域
+  ================================================== -->
 
-    normal:
-      "🔵 普通",
+  <main id="logged-in-area" style="display: none;">
 
-    hard:
-      "🟣 困難"
+    <!-- ==================================================
+         玩家資訊
+    ================================================== -->
 
-  };
+    <section class="card">
 
+      <div class="top-bar">
 
-  return (
-    labels[difficulty] ||
-    "🔵 普通"
-  );
+        <div>
+          <h2 style="margin-bottom: 5px;">
+            👤 玩家資料
+          </h2>
 
-}
+          <div id="user-email">
+            👤 玩家：
+          </div>
+        </div>
 
+        <button
+          type="button"
+          class="danger-btn"
+          onclick="logoutUser()"
+        >
+          登出
+        </button>
 
-// ======================================================
-// 19. 難度獎勵
-// ======================================================
+      </div>
 
-function getRewardByDifficulty(
-  difficulty
-) {
 
-  if (
-    difficulty === "easy"
-  ) {
+      <div class="player-grid">
 
-    return {
+        <div class="stat-box">
 
-      exp: 20,
+          <div class="stat-label">
+            等級
+          </div>
 
-      gold: 15
+          <div
+            class="stat-value"
+            id="player-level"
+          >
+            Lv.1
+          </div>
 
-    };
+        </div>
 
-  }
 
+        <div class="stat-box">
 
-  if (
-    difficulty === "hard"
-  ) {
+          <div class="stat-label">
+            金幣
+          </div>
 
-    return {
+          <div
+            class="stat-value"
+            id="player-gold"
+          >
+            100
+          </div>
 
-      exp: 50,
+        </div>
 
-      gold: 35
 
-    };
+        <div class="stat-box">
 
-  }
+          <div class="stat-label">
+            經驗值
+          </div>
 
+          <div
+            class="stat-value"
+            id="current-exp"
+          >
+            50
+          </div>
 
-  return {
+        </div>
 
-    exp: 30,
+      </div>
 
-    gold: 20
 
-  };
+      <div class="exp-section">
 
-}
+        <div class="exp-text">
 
+          <span>
+            EXP
+          </span>
 
-// ======================================================
-// 20. 取得重複設定
-// ======================================================
+          <span>
+            <span id="current-exp">50</span>
+            /
+            <span id="required-exp">100</span>
+          </span>
 
-function getRepeatSettings() {
+        </div>
 
-  const repeatRadio =
-    document.querySelector(
-      'input[name="new-task-repeat"]:checked'
-    );
+        <div class="progress">
+          <div id="exp-bar"></div>
+        </div>
 
+      </div>
 
-  if (
-    !repeatRadio ||
-    repeatRadio.value === "none"
-  ) {
+    </section>
 
-    return {
 
-      repeatEnabled: false,
+    <!-- ==================================================
+         今日統計
+    ================================================== -->
 
-      repeatType: "none",
+    <section class="card">
 
-      repeatDays: [],
+      <h2>📊 今日統計</h2>
 
-      repeatEndDate: null
+      <div class="summary-grid">
 
-    };
+        <div class="summary-box">
 
-  }
+          <div class="summary-label">
+            完成任務
+          </div>
 
+          <div
+            class="summary-value"
+            id="completed-count"
+          >
+            0 / 0
+          </div>
 
-  const typeRadio =
-    document.querySelector(
-      'input[name="repeat-type"]:checked'
-    );
+        </div>
 
 
-  const repeatType =
-    typeRadio
-      ? typeRadio.value
-      : "daily";
+        <div class="summary-box">
 
+          <div class="summary-label">
+            完成率
+          </div>
 
-  let repeatDays = [];
+          <div
+            class="summary-value"
+            id="summary-rate"
+          >
+            0%
+          </div>
 
+        </div>
 
-  if (
-    repeatType === "weekly"
-  ) {
 
-    const checkedDays =
-      document.querySelectorAll(
-        'input[name="repeat-day"]:checked'
-      );
+        <div class="summary-box">
 
+          <div class="summary-label">
+            今日 EXP
+          </div>
 
-    repeatDays =
-      Array.from(
-        checkedDays
-      ).map(
-        function (element) {
+          <div
+            class="summary-value"
+            id="today-exp"
+          >
+            +0
+          </div>
 
-          return Number(
-            element.value
-          );
+        </div>
 
-        }
-      );
 
+        <div class="summary-box">
 
-  }
+          <div class="summary-label">
+            今日金幣
+          </div>
 
+          <div
+            class="summary-value"
+            id="today-gold"
+          >
+            +0
+          </div>
 
-  const endDateInput =
-    document.getElementById(
-      "repeat-end-date"
-    );
+        </div>
 
+      </div>
 
-  const repeatEndDate =
-    endDateInput &&
-    endDateInput.value
-      ? endDateInput.value
-      : null;
 
+      <div class="rate-section">
 
-  return {
+        <span id="rate-text">
+          今日完成率：0%
+        </span>
 
-    repeatEnabled: true,
+        <div class="progress">
+          <div id="rate-bar"></div>
+        </div>
 
-    repeatType,
+      </div>
 
-    repeatDays,
+    </section>
 
-    repeatEndDate
 
-  };
+    <!-- ==================================================
+         今日任務
+    ================================================== -->
 
-}
+    <section class="card">
 
+      <h2>📋 今日任務</h2>
 
-// ======================================================
-// 21. 新增任務
-// ======================================================
+      <div class="filter-buttons">
 
-window.addTask =
-  async function () {
+        <button
+          type="button"
+          class="filter-btn active"
+          onclick="filterTasks('all', this)"
+        >
+          全部
+        </button>
 
-    if (!currentUser) {
-      setAddTaskMessage(
-        "⚠️ 請先登入"
-      );
-      return;
-    }
+        <button
+          type="button"
+          class="filter-btn"
+          onclick="filterTasks('study', this)"
+        >
+          📚 學習
+        </button>
 
-    const titleInput =
-      document.getElementById(
-        "new-task-title"
-      );
+        <button
+          type="button"
+          class="filter-btn"
+          onclick="filterTasks('toeic', this)"
+        >
+          📝 多益
+        </button>
 
-    const categoryInput =
-      document.getElementById(
-        "new-task-category"
-      );
+        <button
+          type="button"
+          class="filter-btn"
+          onclick="filterTasks('focus', this)"
+        >
+          🎯 專注
+        </button>
 
-    const difficultyInput =
-      document.getElementById(
-        "new-task-difficulty"
-      );
+        <button
+          type="button"
+          class="filter-btn"
+          onclick="filterTasks('health', this)"
+        >
+          ❤️ 健康
+        </button>
 
-    const title =
-      titleInput
-        ? titleInput.value.trim()
-        : "";
+        <button
+          type="button"
+          class="filter-btn"
+          onclick="filterTasks('other', this)"
+        >
+          📌 其他
+        </button>
 
-    const category =
-      categoryInput
-        ? categoryInput.value
-        : "study";
+      </div>
 
-    const difficulty =
-      difficultyInput
-        ? difficultyInput.value
-        : "normal";
 
-    if (!title) {
-      setAddTaskMessage(
-        "⚠️ 請輸入任務名稱"
-      );
-      return;
-    }
+      <ul class="task-list">
+        <!-- JavaScript 會自動產生任務 -->
+      </ul>
 
-    if (title.length > 100) {
-      setAddTaskMessage(
-        "⚠️ 任務名稱不能超過 100 字"
-      );
-      return;
-    }
+    </section>
 
-    // ==================================================
-    // 取得重複設定
-    // ==================================================
 
-    const repeat =
-      getRepeatSettings();
+    <!-- ==================================================
+         新增任務
+    ================================================== -->
 
+    <section class="card">
 
-    // ==================================================
-    // 檢查指定星期
-    // ==================================================
+      <h2>➕ 新增任務</h2>
 
-    if (
-      repeat.repeatEnabled &&
-      repeat.repeatType === "weekly" &&
-      repeat.repeatDays.length === 0
-    ) {
+      <div class="add-task-row">
 
-      setAddTaskMessage(
-        "⚠️ 請至少選擇一個星期"
-      );
+        <input
+          type="text"
+          id="new-task-title"
+          placeholder="輸入任務名稱"
+          maxlength="100"
+        >
 
-      return;
-    }
 
+        <select id="new-task-category">
 
-    // ==================================================
-    // 檢查結束日期
-    // ==================================================
+          <option value="study">
+            📚 學習
+          </option>
 
-    if (
-      repeat.repeatEndDate &&
-      repeat.repeatEndDate < getToday()
-    ) {
+          <option value="toeic">
+            📝 多益
+          </option>
 
-      setAddTaskMessage(
-        "⚠️ 結束日期不能早於今天"
-      );
+          <option value="focus">
+            🎯 專注
+          </option>
 
-      return;
-    }
+          <option value="health">
+            ❤️ 健康
+          </option>
 
+          <option value="other">
+            📌 其他
+          </option>
 
-    const reward =
-      getRewardByDifficulty(
-        difficulty
-      );
+        </select>
 
 
-    setAddTaskMessage(
-      "🔄 正在建立任務……"
-    );
+        <select id="new-task-difficulty">
 
+          <option value="easy">
+            🟢 簡單
+          </option>
 
-    try {
+          <option value="normal" selected>
+            🟡 普通
+          </option>
 
-      // ==================================================
-      // A. 重複任務
-      // ==================================================
+          <option value="hard">
+            🔴 困難
+          </option>
 
-      if (
-        repeat.repeatEnabled
-      ) {
+        </select>
 
-        const {
-          data,
-          error
-        } =
-          await supabaseClient
-            .from(
-              "task_templates"
-            )
-            .insert({
+      </div>
 
-              user_id:
-                currentUser.id,
 
-              title:
-                title,
+      <!-- =========================
+           是否重複
+      ========================== -->
 
-              category:
-                category,
+      <div style="margin-top: 18px;">
 
-              difficulty:
-                difficulty,
+        <strong>
+          重複方式
+        </strong>
 
-              exp_reward:
-                reward.exp,
+        <div class="repeat-options">
 
-              gold_reward:
-                reward.gold,
+          <label class="radio-option">
 
-              repeat_type:
-                repeat.repeatType,
+            <input
+              type="radio"
+              name="new-task-repeat"
+              value="none"
+              checked
+              onchange="toggleRepeatSettings()"
+            >
 
-              repeat_days:
-                repeat.repeatDays,
+            不重複
 
-              repeat_enabled:
-                true,
+          </label>
 
-              repeat_end_date:
-                repeat.repeatEndDate
 
-            })
-            .select()
-            .single();
+          <label class="radio-option">
 
+            <input
+              type="radio"
+              name="new-task-repeat"
+              value="repeat"
+              onchange="toggleRepeatSettings()"
+            >
 
-        if (error) {
+            🔁 重複任務
 
-          console.error(
-            "建立任務模板失敗：",
-            error
-          );
+          </label>
 
-          setAddTaskMessage(
-            "❌ 建立重複任務失敗：" +
-            error.message
-          );
+        </div>
 
-          return;
-        }
+      </div>
 
 
-        console.log(
-          "任務模板建立成功：",
-          data
-        );
+      <!-- =========================
+           重複設定
+      ========================== -->
 
+      <div
+        id="repeat-settings"
+        style="display: none;"
+      >
 
-        // 建立今天應該出現的任務
+        <strong>
+          重複週期
+        </strong>
 
-        await generateDailyTasks();
+        <div class="repeat-options">
 
+          <label class="radio-option">
 
-        // 重新載入今日任務
+            <input
+              type="radio"
+              name="repeat-type"
+              value="daily"
+              checked
+              onchange="toggleWeekdaySettings()"
+            >
 
-        await loadTasks();
+            每天
 
-      }
+          </label>
 
 
-      // ==================================================
-      // B. 一次性任務
-      // ==================================================
+          <label class="radio-option">
 
-      else {
+            <input
+              type="radio"
+              name="repeat-type"
+              value="weekly"
+              onchange="toggleWeekdaySettings()"
+            >
 
-        const {
-          data,
-          error
-        } =
-          await supabaseClient
-            .from("tasks")
-            .insert({
+            指定星期
 
-              user_id:
-                currentUser.id,
+          </label>
 
-              title:
-                title,
+        </div>
 
-              category:
-                category,
 
-              difficulty:
-                difficulty,
+        <!-- =========================
+             星期
+        ========================== -->
 
-              exp_reward:
-                reward.exp,
+        <div
+          id="weekday-settings"
+          style="display: none;"
+        >
 
-              gold_reward:
-                reward.gold,
+          <div style="margin-top: 12px;">
+            選擇星期：
+          </div>
 
-              completed:
-                false,
+          <div class="weekday-options">
 
-              task_date:
-                getToday(),
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="repeat-day"
+                value="1"
+              >
+              一
+            </label>
 
-              repeat_type:
-                "none",
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="repeat-day"
+                value="2"
+              >
+              二
+            </label>
 
-              repeat_days:
-                [],
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="repeat-day"
+                value="3"
+              >
+              三
+            </label>
 
-              repeat_enabled:
-                false,
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="repeat-day"
+                value="4"
+              >
+              四
+            </label>
 
-              repeat_end_date:
-                null
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="repeat-day"
+                value="5"
+              >
+              五
+            </label>
 
-            })
-            .select()
-            .single();
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="repeat-day"
+                value="6"
+              >
+              六
+            </label>
 
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="repeat-day"
+                value="7"
+              >
+              日
+            </label>
 
-        if (error) {
+          </div>
 
-          console.error(
-            "新增一次性任務失敗：",
-            error
-          );
+        </div>
 
-          setAddTaskMessage(
-            "❌ 新增失敗：" +
-            error.message
-          );
 
-          return;
-        }
+        <!-- =========================
+             結束日期
+        ========================== -->
 
+        <div style="margin-top: 15px;">
 
-        currentTasks.push(
-          data
-        );
+          <label for="repeat-end-date">
+            結束日期（可不填）
+          </label>
 
-        renderTasks();
+          <input
+            type="date"
+            id="repeat-end-date"
+            style="margin-top: 7px;"
+          >
 
-        updateSummary();
+        </div>
 
-      }
+      </div>
 
 
-      // ==================================================
-      // 清空表單
-      // ==================================================
+      <button
+        type="button"
+        class="primary-btn add-task-button"
+        onclick="addTask()"
+      >
+        ➕ 建立任務
+      </button>
 
-      if (titleInput) {
-        titleInput.value = "";
-      }
 
+      <div id="add-task-message"></div>
 
-      // 重設「不重複」
+    </section>
 
-      const repeatNone =
-        document.querySelector(
-          'input[name="new-task-repeat"][value="none"]'
-        );
 
+    <!-- ==================================================
+         任務管理
+    ================================================== -->
 
-      if (repeatNone) {
-        repeatNone.checked = true;
-      }
+    <section class="card task-management-card">
 
+      <h2>🗂️ 任務管理</h2>
 
-      // 隱藏重複設定
+      <p style="opacity: 0.7; margin-top: -5px;">
+        管理你的所有任務與重複任務設定
+      </p>
 
-      const repeatSettings =
-        document.getElementById(
-          "repeat-settings"
-        );
+      <div
+        style="
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin-bottom: 15px;
+        "
+      >
 
+        <button
+          type="button"
+          class="management-filter active"
+          onclick="filterManagedTasks('all', this)"
+        >
+          全部
+        </button>
 
-      if (repeatSettings) {
-        repeatSettings.style.display =
-          "none";
-      }
+        <button
+          type="button"
+          class="management-filter"
+          onclick="filterManagedTasks('once', this)"
+        >
+          📌 一次性
+        </button>
 
+        <button
+          type="button"
+          class="management-filter"
+          onclick="filterManagedTasks('repeat', this)"
+        >
+          🔁 重複任務
+        </button>
 
-      // 重設「每天」
+      </div>
 
-      const dailyRadio =
-        document.querySelector(
-          'input[name="repeat-type"][value="daily"]'
-        );
 
+      <div id="task-management-list">
 
-      if (dailyRadio) {
-        dailyRadio.checked = true;
-      }
+        <div
+          style="
+            padding: 20px;
+            text-align: center;
+            opacity: 0.6;
+          "
+        >
+          尚未載入任務
+        </div>
 
+      </div>
 
-      // 隱藏星期
+    </section>
 
-      const weekdaySettings =
-        document.getElementById(
-          "weekday-settings"
-        );
+  </main>
 
+</div>
 
-      if (weekdaySettings) {
-        weekdaySettings.style.display =
-          "none";
-      }
 
+<!-- ==================================================
+     Supabase CDN
+================================================== -->
 
-      // 清除星期
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-      const dayCheckboxes =
-        document.querySelectorAll(
-          'input[name="repeat-day"]'
-        );
 
+<!-- ==================================================
+     你的原本 script.js
+================================================== -->
 
-      dayCheckboxes.forEach(
-        function (checkbox) {
+<script src="script.js"></script>
 
-          checkbox.checked =
-            false;
-
-        }
-      );
-
-
-      // 清除結束日期
-
-      const endDateInput =
-        document.getElementById(
-          "repeat-end-date"
-        );
-
-
-      if (endDateInput) {
-
-        endDateInput.value = "";
-
-      }
-
-
-      setAddTaskMessage(
-        "✅ 任務建立成功！"
-      );
-
-
-      setTimeout(
-        function () {
-
-          setAddTaskMessage("");
-
-        },
-        3000
-      );
-
-
-    } catch (error) {
-
-      console.error(
-        "新增任務錯誤：",
-        error
-      );
-
-      setAddTaskMessage(
-        "❌ 建立任務時發生錯誤"
-      );
-
-    }
-
-  };
-
-
-// ======================================================
-// 22. 新增任務訊息
-// ======================================================
-
-function setAddTaskMessage(
-  message
-) {
-
-  const element =
-    document.getElementById(
-      "add-task-message"
-    );
-
-  if (element) {
-
-    element.textContent =
-      message;
-
-  }
-
-}
-
-
-// ======================================================
-// 23. 重複設定 UI
-// ======================================================
-
-window.toggleRepeatSettings =
-  function () {
-
-    const repeatRadio =
-      document.querySelector(
-        'input[name="new-task-repeat"]:checked'
-      );
-
-    const repeatSettings =
-      document.getElementById(
-        "repeat-settings"
-      );
-
-    if (
-      !repeatRadio ||
-      !repeatSettings
-    ) {
-
-      return;
-
-    }
-
-
-    if (
-      repeatRadio.value === "repeat"
-    ) {
-
-      repeatSettings.style.display =
-        "block";
-
-    } else {
-
-      repeatSettings.style.display =
-        "none";
-
-    }
-
-  };
-
-
-// ======================================================
-// 24. 每天 / 指定星期
-// ======================================================
-
-window.toggleWeekdaySettings =
-  function () {
-
-    const repeatType =
-      document.querySelector(
-        'input[name="repeat-type"]:checked'
-      );
-
-    const weekdaySettings =
-      document.getElementById(
-        "weekday-settings"
-      );
-
-    if (
-      !repeatType ||
-      !weekdaySettings
-    ) {
-
-      return;
-
-    }
-
-
-    if (
-      repeatType.value === "weekly"
-    ) {
-
-      weekdaySettings.style.display =
-        "block";
-
-    } else {
-
-      weekdaySettings.style.display =
-        "none";
-
-    }
-
-  };
-
-
-// ======================================================
-// 25. 編輯任務
-// ======================================================
-
-window.editTask =
-  async function (taskId) {
-
-    if (!currentUser) {
-
-      alert(
-        "⚠️ 請先登入"
-      );
-
-      return;
-
-    }
-
-
-    const task =
-      currentTasks.find(
-        function (item) {
-
-          return (
-            Number(item.id) ===
-            Number(taskId)
-          );
-
-        }
-      );
-
-
-    if (!task) {
-
-      alert(
-        "❌ 找不到這個任務"
-      );
-
-      return;
-
-    }
-
-
-    const newTitle =
-      prompt(
-        "✏️ 修改任務名稱",
-        task.title
-      );
-
-
-    if (
-      newTitle === null
-    ) {
-
-      return;
-
-    }
-
-
-    const title =
-      newTitle.trim();
-
-
-    if (!title) {
-
-      alert(
-        "⚠️ 任務名稱不能為空"
-      );
-
-      return;
-
-    }
-
-
-    if (title.length > 100) {
-
-      alert(
-        "⚠️ 任務名稱不能超過 100 字"
-      );
-
-      return;
-
-    }
-
-
-    const newDifficulty =
-      prompt(
-        "請輸入難度：easy / normal / hard",
-        task.difficulty
-      );
-
-
-    if (
-      newDifficulty === null
-    ) {
-
-      return;
-
-    }
-
-
-    const difficulty =
-      newDifficulty
-        .trim()
-        .toLowerCase();
-
-
-    if (
-      ![
-        "easy",
-        "normal",
-        "hard"
-      ].includes(
-        difficulty
-      )
-    ) {
-
-      alert(
-        "⚠️ 難度只能是：easy、normal、hard"
-      );
-
-      return;
-
-    }
-
-
-    const reward =
-      getRewardByDifficulty(
-        difficulty
-      );
-
-
-    try {
-
-      const {
-        data,
-        error
-      } =
-        await supabaseClient
-          .from("tasks")
-          .update({
-
-            title:
-              title,
-
-            difficulty:
-              difficulty,
-
-            exp_reward:
-              reward.exp,
-
-            gold_reward:
-              reward.gold
-
-          })
-          .eq(
-            "id",
-            taskId
-          )
-          .eq(
-            "user_id",
-            currentUser.id
-          )
-          .select()
-          .single();
-
-
-      if (error) {
-
-        console.error(
-          "編輯任務失敗：",
-          error
-        );
-
-        alert(
-          "❌ 編輯失敗：" +
-          error.message
-        );
-
-        return;
-
-      }
-
-
-      const index =
-        currentTasks.findIndex(
-          function (item) {
-
-            return (
-              Number(item.id) ===
-              Number(taskId)
-            );
-
-          }
-        );
-
-
-      if (index !== -1) {
-
-        currentTasks[index] =
-          data;
-
-      }
-
-
-      renderTasks();
-
-      updateSummary();
-
-
-      alert(
-        "✅ 任務修改成功！"
-      );
-
-
-    } catch (error) {
-
-      console.error(error);
-
-      alert(
-        "❌ 編輯任務時發生錯誤"
-      );
-
-    }
-
-  };
-
-
-// ======================================================
-// 26. 刪除任務
-// ======================================================
-
-window.deleteTask =
-  async function (taskId) {
-
-    if (!currentUser) {
-
-      alert(
-        "⚠️ 請先登入"
-      );
-
-      return;
-
-    }
-
-
-    const task =
-      currentTasks.find(
-        function (item) {
-
-          return (
-            Number(item.id) ===
-            Number(taskId)
-          );
-
-        }
-      );
-
-
-    if (!task) {
-
-      alert(
-        "❌ 找不到這個任務"
-      );
-
-      return;
-
-    }
-
-
-    const confirmed =
-      confirm(
-
-        "確定要刪除這個任務嗎？\n\n" +
-
-        task.title +
-
-        "\n\n" +
-
-        "只會刪除今天的任務。"
-
-      );
-
-
-    if (!confirmed) {
-
-      return;
-
-    }
-
-
-    try {
-
-      const {
-        error
-      } =
-        await supabaseClient
-          .from("tasks")
-          .delete()
-          .eq(
-            "id",
-            taskId
-          )
-          .eq(
-            "user_id",
-            currentUser.id
-          );
-
-
-      if (error) {
-
-        console.error(
-          "刪除任務失敗：",
-          error
-        );
-
-        alert(
-          "❌ 刪除失敗：" +
-          error.message
-        );
-
-        return;
-
-      }
-
-
-      currentTasks =
-        currentTasks.filter(
-          function (item) {
-
-            return (
-              Number(item.id) !==
-              Number(taskId)
-            );
-
-          }
-        );
-
-
-      renderTasks();
-
-      updateSummary();
-
-
-      alert(
-        "🗑️ 今日任務已刪除！"
-      );
-
-
-    } catch (error) {
-
-      console.error(error);
-
-      alert(
-        "❌ 刪除任務時發生錯誤"
-      );
-
-    }
-
-  };
-
-
-// ======================================================
-// 27. 完成任務
-// ======================================================
-
-window.toggleTask =
-  async function (
-    element,
-    exp,
-    gold,
-    taskId
-  ) {
-
-    if (!currentUser) {
-
-      alert(
-        "⚠️ 請先登入"
-      );
-
-      return;
-
-    }
-
-
-    const task =
-      currentTasks.find(
-        function (item) {
-
-          return (
-            Number(item.id) ===
-            Number(taskId)
-          );
-
-        }
-      );
-
-
-    if (!task) {
-
-      return;
-
-    }
-
-
-    if (task.completed) {
-
-      return;
-
-    }
-
-
-    try {
-
-      element.style.pointerEvents =
-        "none";
-
-
-      const {
-        data,
-        error
-      } =
-        await supabaseClient
-          .rpc(
-            "complete_task",
-            {
-              p_task_id:
-                Number(taskId)
-            }
-          );
-
-
-      if (error) {
-
-        console.error(
-          "完成任務失敗：",
-          error
-        );
-
-        alert(
-          "❌ 任務完成失敗：" +
-          error.message
-        );
-
-        element.style.pointerEvents =
-          "";
-
-        return;
-
-      }
-
-
-      if (
-        !data ||
-        data.success !== true
-      ) {
-
-        alert(
-          data?.message ||
-          "⚠️ 任務沒有完成"
-        );
-
-        element.style.pointerEvents =
-          "";
-
-        return;
-
-      }
-
-
-      const oldLevel =
-        Number(
-          currentProfile.level
-        );
-
-
-      currentProfile.level =
-        Number(data.level);
-
-
-      currentProfile.exp =
-        Number(data.exp);
-
-
-      currentProfile.gold =
-        Number(data.gold);
-
-
-      task.completed =
-        true;
-
-
-      task.completed_at =
-        new Date().toISOString();
-
-
-      renderPlayer();
-
-      renderTasks();
-
-      updateSummary();
-
-
-      if (
-        Number(data.level) >
-        oldLevel
-      ) {
-
-        alert(
-
-          "🎉 升級成功！\n\n" +
-
-          "現在等級：Lv." +
-          data.level
-
-        );
-
-      } else {
-
-        alert(
-
-          "✅ 任務完成！\n\n" +
-
-          "+" +
-          data.task_exp +
-          " EXP\n" +
-
-          "+" +
-          data.task_gold +
-          " 💰"
-
-        );
-
-      }
-
-
-    } catch (error) {
-
-      console.error(error);
-
-      alert(
-        "❌ 完成任務時發生錯誤"
-      );
-
-      element.style.pointerEvents =
-        "";
-
-    }
-
-  };
-
-
-// ======================================================
-// 28. 篩選任務
-// ======================================================
-
-window.filterTasks =
-  function (
-    category,
-    button
-  ) {
-
-    const buttons =
-      document.querySelectorAll(
-        ".filter-btn"
-      );
-
-
-    buttons.forEach(
-      function (btn) {
-
-        btn.classList.remove(
-          "active"
-        );
-
-      }
-    );
-
-
-    if (button) {
-
-      button.classList.add(
-        "active"
-      );
-
-    }
-
-
-    currentFilter =
-      category;
-
-
-    applyCurrentFilter();
-
-  };
-
-
-// ======================================================
-// 29. 套用篩選
-// ======================================================
-
-function applyCurrentFilter() {
-
-  const items =
-    document.querySelectorAll(
-      ".task-item"
-    );
-
-
-  items.forEach(
-    function (item) {
-
-      const category =
-        item.dataset.category;
-
-
-      if (
-        currentFilter === "all" ||
-        category === currentFilter
-      ) {
-
-        item.style.display =
-          "";
-
-      } else {
-
-        item.style.display =
-          "none";
-
-      }
-
-    }
-  );
-
-}
-
-
-// ======================================================
-// 30. 今日統計
-// ======================================================
-
-function updateSummary() {
-
-  const total =
-    currentTasks.length;
-
-
-  const completedTasks =
-    currentTasks.filter(
-      function (task) {
-
-        return task.completed;
-
-      }
-    );
-
-
-  const completedCount =
-    completedTasks.length;
-
-
-  const totalExp =
-    completedTasks.reduce(
-      function (
-        sum,
-        task
-      ) {
-
-        return (
-          sum +
-          Number(
-            task.exp_reward || 0
-          )
-        );
-
-      },
-      0
-    );
-
-
-  const totalGold =
-    completedTasks.reduce(
-      function (
-        sum,
-        task
-      ) {
-
-        return (
-          sum +
-          Number(
-            task.gold_reward || 0
-          )
-        );
-
-      },
-      0
-    );
-
-
-  const rate =
-    total > 0
-      ? Math.round(
-          (
-            completedCount /
-            total
-          ) * 100
-        )
-      : 0;
-
-
-  const completedElement =
-    document.getElementById(
-      "completed-count"
-    );
-
-
-  const rateElement =
-    document.getElementById(
-      "summary-rate"
-    );
-
-
-  const todayExpElement =
-    document.getElementById(
-      "today-exp"
-    );
-
-
-  const todayGoldElement =
-    document.getElementById(
-      "today-gold"
-    );
-
-
-  const rateTextElement =
-    document.getElementById(
-      "rate-text"
-    );
-
-
-  const rateBar =
-    document.getElementById(
-      "rate-bar"
-    );
-
-
-  if (completedElement) {
-
-    completedElement.textContent =
-      completedCount +
-      " / " +
-      total;
-
-  }
-
-
-  if (rateElement) {
-
-    rateElement.textContent =
-      rate + "%";
-
-  }
-
-
-  if (todayExpElement) {
-
-    todayExpElement.textContent =
-      "+" +
-      totalExp;
-
-  }
-
-
-  if (todayGoldElement) {
-
-    todayGoldElement.textContent =
-      "+" +
-      totalGold;
-
-  }
-
-
-  if (rateTextElement) {
-
-    rateTextElement.textContent =
-      rate + "%";
-
-  }
-
-
-  if (rateBar) {
-
-    rateBar.style.width =
-      rate + "%";
-
-  }
-
-      }
-
-    
+</body>
+</html>
