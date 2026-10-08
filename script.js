@@ -450,6 +450,17 @@ async function showLoggedInUI() {
 
   }
 
+
+  /*
+    載入晨間打卡 / 專注 / 想法庫（today.js）
+  */
+
+  if (typeof loadTodayModules === "function") {
+
+    await loadTodayModules();
+
+  }
+
 }
 
 
@@ -480,6 +491,17 @@ function showLoggedOutUI() {
   if (appSection) {
 
     appSection.style.display = "none";
+
+  }
+
+
+  /*
+    停止專注計時的畫面更新、清掉今日模組的資料
+  */
+
+  if (typeof resetTodayModules === "function") {
+
+    resetTodayModules();
 
   }
 
@@ -2372,11 +2394,43 @@ function buildDailyReport(selfRating) {
   });
 
 
+  /*
+    晨間打卡 / 專注 / 想法（today.js 載入時才有）
+  */
+
+  const morning =
+    typeof getMorningStats === "function"
+      ? getMorningStats()
+      : { done: 0, total: 0 };
+
+  const focus =
+    typeof getFocusStats === "function"
+      ? getFocusStats()
+      : { seconds: 0, bySubject: {} };
+
+  const idea =
+    typeof getIdeaStats === "function"
+      ? getIdeaStats()
+      : { added: 0, converted: 0 };
+
+
   return {
 
     user_id: currentUser.id,
 
     report_date: getToday(),
+
+    morning_done: morning.done,
+
+    morning_total: morning.total,
+
+    focus_seconds: focus.seconds,
+
+    focus_by_subject: focus.bySubject,
+
+    ideas_added: idea.added,
+
+    ideas_converted: idea.converted,
 
     tasks_total: total,
 
@@ -2429,6 +2483,12 @@ async function dailyWrapUp(selfRating) {
     */
 
     await loadTasks();
+
+    if (typeof loadTodayModules === "function") {
+
+      await loadTodayModules();
+
+    }
 
 
     const report =
@@ -2572,6 +2632,22 @@ function renderDailyReport(report) {
           +${Number(report.gold_gained)}
         </div>
 
+        <div class="report-label">🌅 晨間打卡</div>
+        <div class="report-value">
+          ${Number(report.morning_done || 0)} / ${Number(report.morning_total || 0)}
+        </div>
+
+        <div class="report-label">⏱️ 專注</div>
+        <div class="report-value">
+          ${formatReportDuration(report.focus_seconds)}
+          ${formatReportSubjects(report.focus_by_subject)}
+        </div>
+
+        <div class="report-label">💡 想法</div>
+        <div class="report-value">
+          新增 ${Number(report.ideas_added || 0)}・轉任務 ${Number(report.ideas_converted || 0)}
+        </div>
+
         <div class="report-label">📝 自評</div>
         <div class="report-value">
           ${SELF_RATING_LABELS[report.self_rating] || "—"}
@@ -2597,6 +2673,36 @@ function renderDailyReport(report) {
   highlightRatingButton(
     report.self_rating
   );
+
+}
+
+
+function formatReportDuration(seconds) {
+
+  const s = Number(seconds || 0);
+
+  return typeof formatDuration === "function"
+    ? formatDuration(s)
+    : `${Math.round(s / 60)}m`;
+
+}
+
+
+function formatReportSubjects(bySubject) {
+
+  const entries = Object.entries(bySubject || {})
+    .filter(([, s]) => Number(s) > 0)
+    .sort((a, b) => b[1] - a[1]);
+
+  if (entries.length === 0) return "";
+
+  const text = entries
+    .map(([subject, s]) =>
+      `${escapeHtml(subject)} ${formatReportDuration(s)}`
+    )
+    .join("・");
+
+  return `<div class="small-note" style="font-weight:normal;">${text}</div>`;
 
 }
 
