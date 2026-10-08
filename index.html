@@ -246,7 +246,7 @@
     ============================== */
 
     main {
-      padding: 30px 0 60px;
+      padding: 30px 0 110px;   /* 底部留位置給右下角 💡 按鈕 */
     }
 
 
@@ -764,6 +764,729 @@
 
 
     /* ==============================
+       今日模組共用
+    ============================== */
+
+    .card-head {
+
+      display: flex;
+
+      align-items: center;
+
+      justify-content: space-between;
+
+      gap: 10px;
+
+      flex-wrap: wrap;
+
+      margin-bottom: 14px;
+    }
+
+
+    .card-head h2 {
+
+      margin: 0;
+    }
+
+
+    .card-head-right {
+
+      display: flex;
+
+      align-items: center;
+
+      gap: 8px;
+    }
+
+
+    .pill {
+
+      background: #10131a;
+
+      border: 1px solid #343b4b;
+
+      border-radius: 999px;
+
+      padding: 4px 11px;
+
+      font-size: 13px;
+
+      font-weight: bold;
+    }
+
+
+    .btn-small {
+
+      padding: 7px 12px;
+
+      font-size: 13px;
+    }
+
+
+    .mini-bar {
+
+      height: 8px;
+
+      background: #0b0d12;
+
+      border-radius: 20px;
+
+      overflow: hidden;
+
+      margin-bottom: 14px;
+    }
+
+
+    .mini-bar > div {
+
+      width: 0%;
+
+      height: 100%;
+
+      background:
+        linear-gradient(90deg, #42d392, #79e6a8);
+
+      transition: width .3s ease;
+    }
+
+
+    .chip-row {
+
+      display: flex;
+
+      flex-wrap: wrap;
+
+      gap: 6px;
+    }
+
+
+    .chip {
+
+      border: 1px solid #343b4b;
+
+      background: #10131a;
+
+      color: #fff;
+
+      border-radius: 999px;
+
+      padding: 6px 12px;
+
+      font-size: 13px;
+    }
+
+
+    .chip.active {
+
+      background: #5865f2;
+
+      border-color: #5865f2;
+    }
+
+
+    .small-note {
+
+      font-size: 13px;
+
+      opacity: .6;
+    }
+
+
+    .data-table {
+
+      width: 100%;
+
+      border-collapse: collapse;
+
+      font-size: 14px;
+    }
+
+
+    .data-table th,
+    .data-table td {
+
+      text-align: left;
+
+      padding: 8px 6px;
+
+      border-bottom: 1px solid #272d3a;
+    }
+
+
+    .data-table th {
+
+      font-size: 12px;
+
+      opacity: .6;
+
+      font-weight: normal;
+    }
+
+
+    .data-table td.num,
+    .data-table th.num {
+
+      text-align: right;
+
+      white-space: nowrap;
+    }
+
+
+    .icon-btn {
+
+      border: 0;
+
+      background: #252b38;
+
+      color: #fff;
+
+      border-radius: 7px;
+
+      padding: 6px 8px;
+
+      font-size: 13px;
+    }
+
+
+    .icon-btn:disabled {
+
+      opacity: .35;
+
+      cursor: default;
+    }
+
+
+    /* ==============================
+       🌅 晨間打卡
+    ============================== */
+
+    #morning-progress-bar {
+      width: 0%;
+    }
+
+
+    .morning-item {
+
+      display: flex;
+
+      align-items: center;
+
+      gap: 12px;
+
+      padding: 12px 14px;
+
+      margin-bottom: 8px;
+
+      background: #10131a;
+
+      border: 1px solid #272d3a;
+
+      border-radius: 12px;
+
+      cursor: pointer;
+    }
+
+
+    .morning-item input {
+
+      width: 20px;
+
+      height: 20px;
+
+      flex-shrink: 0;
+    }
+
+
+    .morning-item.done span {
+
+      opacity: .5;
+
+      text-decoration: line-through;
+    }
+
+
+    .morning-complete {
+
+      margin-top: 10px;
+
+      padding: 12px;
+
+      border-radius: 12px;
+
+      background: rgba(66, 211, 146, .12);
+
+      color: #7bed9f;
+
+      text-align: center;
+
+      font-weight: bold;
+    }
+
+
+    .morning-edit-row {
+
+      display: flex;
+
+      align-items: center;
+
+      gap: 6px;
+
+      padding: 10px 12px;
+
+      margin-bottom: 8px;
+
+      background: #10131a;
+
+      border: 1px solid #272d3a;
+
+      border-radius: 12px;
+    }
+
+
+    .morning-edit-row .title {
+
+      flex: 1;
+
+      min-width: 0;
+
+      word-break: break-word;
+    }
+
+
+    .morning-edit-row.disabled .title {
+
+      opacity: .4;
+    }
+
+
+    .add-row {
+
+      display: flex;
+
+      gap: 8px;
+
+      margin-top: 12px;
+    }
+
+
+    .add-row input,
+    .focus-row select,
+    .focus-row input {
+
+      flex: 1;
+
+      min-width: 0;
+
+      padding: 10px 12px;
+
+      border: 1px solid #343b4b;
+
+      border-radius: 10px;
+
+      background: #10131a;
+
+      color: #fff;
+
+      outline: none;
+    }
+
+
+    /* ==============================
+       ⏱️ 專注
+    ============================== */
+
+    .segmented {
+
+      display: inline-flex;
+
+      background: #10131a;
+
+      border: 1px solid #343b4b;
+
+      border-radius: 10px;
+
+      padding: 3px;
+
+      margin-bottom: 12px;
+    }
+
+
+    .seg-btn {
+
+      border: 0;
+
+      background: transparent;
+
+      color: #fff;
+
+      padding: 8px 18px;
+
+      border-radius: 8px;
+    }
+
+
+    .seg-btn.active {
+
+      background: #5865f2;
+    }
+
+
+    .focus-row {
+
+      display: flex;
+
+      align-items: center;
+
+      flex-wrap: wrap;
+
+      gap: 8px;
+
+      margin-bottom: 10px;
+    }
+
+
+    .focus-row label {
+
+      width: 40px;
+
+      font-size: 13px;
+
+      opacity: .7;
+    }
+
+
+    .focus-row #focus-custom-minutes {
+
+      flex: 0 0 110px;
+    }
+
+
+    .focus-now {
+
+      text-align: center;
+
+      margin-top: 8px;
+
+      min-height: 22px;
+
+      opacity: .75;
+    }
+
+
+    .focus-clock {
+
+      text-align: center;
+
+      font-size: 64px;
+
+      font-weight: bold;
+
+      font-variant-numeric: tabular-nums;
+
+      letter-spacing: 2px;
+
+      margin: 6px 0 14px;
+    }
+
+
+    .focus-clock.running {
+
+      color: #9b6cff;
+    }
+
+
+    .focus-buttons {
+
+      display: flex;
+
+      justify-content: center;
+
+      flex-wrap: wrap;
+
+      gap: 10px;
+
+      margin-bottom: 18px;
+    }
+
+
+    .focus-buttons .btn {
+
+      min-width: 110px;
+    }
+
+
+    .focus-log-title {
+
+      margin: 18px 0 6px;
+
+      font-weight: bold;
+    }
+
+
+    /* ==============================
+       💡 想法庫
+    ============================== */
+
+    #idea-filters {
+
+      margin-bottom: 10px;
+    }
+
+
+    .toggle-line {
+
+      display: flex;
+
+      align-items: center;
+
+      gap: 6px;
+
+      font-size: 13px;
+
+      opacity: .75;
+
+      margin-bottom: 12px;
+    }
+
+
+    .idea-item {
+
+      padding: 12px 14px;
+
+      margin-bottom: 8px;
+
+      background: #10131a;
+
+      border: 1px solid #272d3a;
+
+      border-radius: 12px;
+    }
+
+
+    .idea-item.processed {
+
+      opacity: .55;
+    }
+
+
+    .idea-top {
+
+      display: flex;
+
+      gap: 10px;
+
+      align-items: flex-start;
+    }
+
+
+    .idea-cat {
+
+      flex-shrink: 0;
+
+      font-size: 12px;
+
+      background: #202532;
+
+      border-radius: 6px;
+
+      padding: 3px 7px;
+    }
+
+
+    .idea-content {
+
+      flex: 1;
+
+      min-width: 0;
+
+      word-break: break-word;
+
+      line-height: 1.5;
+    }
+
+
+    .idea-bottom {
+
+      display: flex;
+
+      align-items: center;
+
+      justify-content: space-between;
+
+      gap: 8px;
+
+      flex-wrap: wrap;
+
+      margin-top: 8px;
+    }
+
+
+    .idea-actions {
+
+      display: flex;
+
+      gap: 5px;
+    }
+
+
+    #idea-fab {
+
+      position: fixed;
+
+      right: 20px;
+
+      bottom: calc(20px + env(safe-area-inset-bottom));
+
+      z-index: 50;
+
+      width: 58px;
+
+      height: 58px;
+
+      border: 0;
+
+      border-radius: 50%;
+
+      background:
+        linear-gradient(135deg, #5865f2, #9b6cff);
+
+      color: #fff;
+
+      font-size: 26px;
+
+      box-shadow:
+        0 8px 24px rgba(88, 101, 242, .45);
+    }
+
+
+    .idea-capture {
+
+      position: fixed;
+
+      inset: 0;
+
+      z-index: 100;
+
+      background: rgba(0, 0, 0, .55);
+
+      display: flex;
+
+      align-items: flex-start;
+
+      justify-content: center;
+
+      padding: 12vh 16px 16px;
+    }
+
+
+    .idea-capture-box {
+
+      width: 100%;
+
+      max-width: 480px;
+
+      background: #181c26;
+
+      border: 1px solid #2c3342;
+
+      border-radius: 16px;
+
+      padding: 20px;
+
+      box-shadow:
+        0 15px 50px rgba(0, 0, 0, .45);
+    }
+
+
+    .idea-capture-title {
+
+      font-weight: bold;
+
+      margin-bottom: 12px;
+    }
+
+
+    #idea-capture-input {
+
+      width: 100%;
+
+      padding: 12px;
+
+      margin-bottom: 12px;
+
+      border: 1px solid #343b4b;
+
+      border-radius: 10px;
+
+      background: #10131a;
+
+      color: #fff;
+
+      font-size: 16px;
+
+      outline: none;
+    }
+
+
+    #idea-capture-input:focus {
+
+      border-color: #6c7cff;
+    }
+
+
+    .idea-capture-actions {
+
+      display: flex;
+
+      justify-content: flex-end;
+
+      gap: 8px;
+
+      margin-top: 16px;
+    }
+
+
+    #toast {
+
+      position: fixed;
+
+      left: 50%;
+
+      bottom: calc(92px + env(safe-area-inset-bottom));
+
+      z-index: 200;
+
+      transform: translateX(-50%) translateY(10px);
+
+      max-width: calc(100% - 32px);
+
+      background: #2b3142;
+
+      border: 1px solid #3b4357;
+
+      border-radius: 10px;
+
+      padding: 10px 16px;
+
+      font-size: 14px;
+
+      opacity: 0;
+
+      pointer-events: none;
+
+      transition: opacity .2s ease, transform .2s ease;
+    }
+
+
+    #toast.show {
+
+      opacity: 1;
+
+      transform: translateX(-50%) translateY(0);
+    }
+
+
+    /* ==============================
        RWD
     ============================== */
 
@@ -799,11 +1522,57 @@
       }
 
 
+      /* 手機：頁首縮成一行，不要佔掉太多畫面 */
+
       .header-inner {
 
-        flex-direction: column;
+        min-height: 56px;
 
-        padding: 12px 0;
+        gap: 10px;
+
+      }
+
+
+      .logo {
+
+        font-size: 16px;
+
+        white-space: nowrap;
+
+      }
+
+
+      .user-area {
+
+        gap: 8px;
+
+        min-width: 0;
+
+      }
+
+
+      .user-area > span {
+
+        font-size: 12px;
+
+        opacity: .7;
+
+        max-width: 110px;
+
+        overflow: hidden;
+
+        text-overflow: ellipsis;
+
+        white-space: nowrap;
+
+      }
+
+
+      .user-area .btn {
+
+        padding: 7px 12px;
+
+        font-size: 13px;
 
       }
 
@@ -811,6 +1580,20 @@
       .task-main {
 
         align-items: flex-start;
+
+      }
+
+
+      .focus-clock {
+
+        font-size: 52px;
+
+      }
+
+
+      .card {
+
+        padding: 18px 14px;
 
       }
 
@@ -1128,6 +1911,224 @@
         </div>
 
 
+      </div>
+
+    </section>
+
+
+
+    <!-- ==============================
+         🌅 晨間打卡
+    ============================== -->
+
+    <section class="card" id="morning-card">
+
+      <div class="card-head">
+
+        <h2>
+          🌅 晨間打卡
+        </h2>
+
+        <div class="card-head-right">
+
+          <span
+            class="pill"
+            id="morning-progress-text"
+          >
+            0 / 0
+          </span>
+
+          <button
+            class="btn btn-small"
+            id="morning-edit-btn"
+            onclick="toggleMorningEdit()"
+          >
+            ✏️ 編輯清單
+          </button>
+
+        </div>
+
+      </div>
+
+
+      <div class="mini-bar">
+        <div id="morning-progress-bar"></div>
+      </div>
+
+
+      <div id="morning-list">
+        <div class="empty-state">
+          載入中...
+        </div>
+      </div>
+
+    </section>
+
+
+
+    <!-- ==============================
+         ⏱️ 專注
+    ============================== -->
+
+    <section class="card" id="focus-card">
+
+      <div class="card-head">
+
+        <h2>
+          ⏱️ 專注
+        </h2>
+
+        <span
+          class="pill"
+          id="focus-today-total"
+        >
+          今日 0m
+        </span>
+
+      </div>
+
+
+      <div id="focus-setup">
+
+        <div class="segmented">
+
+          <button
+            class="seg-btn active"
+            data-mode="up"
+            onclick="setFocusMode('up')"
+          >
+            正計時
+          </button>
+
+          <button
+            class="seg-btn"
+            data-mode="down"
+            onclick="setFocusMode('down')"
+          >
+            倒計時
+          </button>
+
+        </div>
+
+
+        <div class="focus-row">
+
+          <label for="focus-subject">
+            科目
+          </label>
+
+          <select
+            id="focus-subject"
+            onchange="onFocusSubjectChange()"
+          ></select>
+
+          <input
+            type="text"
+            id="focus-custom-subject"
+            placeholder="輸入新科目，例如：統計"
+            maxlength="30"
+            style="display:none;"
+          >
+
+        </div>
+
+
+        <div
+          class="focus-row"
+          id="focus-minutes-row"
+          style="display:none;"
+        >
+
+          <label>
+            時間
+          </label>
+
+          <div class="chip-row" id="focus-presets"></div>
+
+          <input
+            type="number"
+            id="focus-custom-minutes"
+            min="1"
+            max="600"
+            placeholder="自訂分鐘"
+            oninput="onFocusCustomMinutes()"
+          >
+
+        </div>
+
+      </div>
+
+
+      <div class="focus-now" id="focus-now"></div>
+
+
+      <div class="focus-clock" id="focus-clock">
+        00:00
+      </div>
+
+
+      <div class="focus-buttons" id="focus-buttons"></div>
+
+
+      <div id="focus-log"></div>
+
+    </section>
+
+
+
+    <!-- ==============================
+         💡 想法庫
+    ============================== -->
+
+    <section class="card" id="ideas-card">
+
+      <div class="card-head">
+
+        <h2>
+          💡 想法庫
+        </h2>
+
+        <div class="card-head-right">
+
+          <span
+            class="pill"
+            id="ideas-inbox-count"
+          >
+            收件匣 0
+          </span>
+
+          <button
+            class="btn btn-small btn-primary"
+            onclick="openIdeaCapture()"
+          >
+            ＋ 記下想法
+          </button>
+
+        </div>
+
+      </div>
+
+
+      <div class="chip-row" id="idea-filters"></div>
+
+
+      <label class="toggle-line">
+
+        <input
+          type="checkbox"
+          id="idea-show-processed"
+          onchange="toggleIdeaShowProcessed(this.checked)"
+        >
+
+        顯示已處理 / 已轉任務
+
+      </label>
+
+
+      <div id="idea-list">
+        <div class="empty-state">
+          載入中...
+        </div>
       </div>
 
     </section>
@@ -1596,6 +2597,68 @@
 
   </div>
 
+
+  <!-- ==============================
+       💡 隨時記下想法（右下角按鈕）
+  ============================== -->
+
+  <button
+    id="idea-fab"
+    title="記下想法，回到主線"
+    onclick="openIdeaCapture()"
+  >
+    💡
+  </button>
+
+
+  <div
+    id="idea-capture"
+    class="idea-capture"
+    style="display:none;"
+    onclick="if (event.target === this) closeIdeaCapture()"
+  >
+
+    <div class="idea-capture-box">
+
+      <div class="idea-capture-title">
+        💡 先記下來，回到主線
+      </div>
+
+      <input
+        type="text"
+        id="idea-capture-input"
+        maxlength="500"
+        placeholder="想到什麼？例如：研究網站登入功能"
+        onkeydown="onIdeaCaptureKey(event)"
+      >
+
+      <div class="chip-row" id="idea-capture-categories"></div>
+
+      <div class="idea-capture-actions">
+
+        <button
+          class="btn"
+          onclick="closeIdeaCapture()"
+        >
+          取消（Esc）
+        </button>
+
+        <button
+          class="btn btn-primary"
+          onclick="saveIdeaFromCapture()"
+        >
+          記下（Enter）
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+
+
+  <div id="toast"></div>
+
 </main>
 
 
@@ -1612,6 +2675,9 @@
 ================================================== -->
 
 <script src="script.js"></script>
+
+<!-- 晨間打卡 / 專注 / 想法庫 -->
+<script src="today.js"></script>
 
 
 </body>
