@@ -678,6 +678,92 @@
 
 
     /* ==============================
+       每日收尾 / 今日結算
+    ============================== */
+
+    .wrapup-btn.selected {
+
+      background: #5865f2;
+
+      box-shadow:
+        0 0 0 2px rgba(155,108,255,.45);
+    }
+
+
+    .report-card {
+
+      background: #10131a;
+
+      border:
+        1px solid #272d3a;
+
+      border-radius: 12px;
+
+      padding: 18px;
+    }
+
+
+    .report-title {
+
+      font-weight: bold;
+
+      margin-bottom: 14px;
+    }
+
+
+    .report-grid {
+
+      display: grid;
+
+      grid-template-columns:
+        auto 1fr;
+
+      gap: 10px 24px;
+
+      align-items: center;
+    }
+
+
+    .report-label {
+
+      opacity: .7;
+
+      font-size: 14px;
+    }
+
+
+    .report-value {
+
+      font-weight: bold;
+    }
+
+
+    .report-rate {
+
+      margin-top: 16px;
+
+      padding-top: 14px;
+
+      border-top:
+        1px solid #272d3a;
+
+      font-size: 18px;
+
+      font-weight: bold;
+    }
+
+
+    .report-note {
+
+      margin-top: 10px;
+
+      font-size: 12px;
+
+      opacity: .55;
+    }
+
+
+    /* ==============================
        RWD
     ============================== */
 
@@ -1472,7 +1558,8 @@
       >
 
         <button
-          class="btn"
+          class="btn wrapup-btn"
+          data-rating="good"
           onclick="dailyWrapUp('good')"
         >
           ⭐ 今天表現不錯
@@ -1480,7 +1567,8 @@
 
 
         <button
-          class="btn"
+          class="btn wrapup-btn"
+          data-rating="normal"
           onclick="dailyWrapUp('normal')"
         >
           🙂 普通的一天
@@ -1488,7 +1576,8 @@
 
 
         <button
-          class="btn"
+          class="btn wrapup-btn"
+          data-rating="bad"
           onclick="dailyWrapUp('bad')"
         >
           🔥 明天重新開始
