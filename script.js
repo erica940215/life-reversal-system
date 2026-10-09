@@ -3535,6 +3535,8 @@ function buildDailyReport(selfRating) {
 
     meal_cost: mealReport.cost,
 
+    fortune_level: getFortuneReportLevel(),
+
     mainline_title:
       todayMainline ? todayMainline.title : null,
 
@@ -3749,7 +3751,7 @@ function renderDailyReport(report) {
         <div class="report-value">
           +${Number(report.exp_gained)}
           ${Number(report.bonus_exp || 0) > 0
-            ? `<div class="small-note" style="font-weight:normal;">其中額外獎勵 +${Number(report.bonus_exp)}（晨間 / 專注 / 主線 / 習慣 / 作息）</div>`
+            ? `<div class="small-note" style="font-weight:normal;">其中額外獎勵 +${Number(report.bonus_exp)}（晨間 / 專注 / 主線 / 習慣 / 作息 / 抽籤）</div>`
             : ""}
         </div>
 
@@ -3766,6 +3768,11 @@ function renderDailyReport(report) {
         <div class="report-label">📅 習慣</div>
         <div class="report-value">
           ${Number(report.habits_done || 0)} / ${Number(report.habits_total || 0)}
+        </div>
+
+        <div class="report-label">🎴 運勢</div>
+        <div class="report-value">
+          ${report.fortune_level ? escapeHtml(report.fortune_level) : "今天沒抽籤"}
         </div>
 
         <div class="report-label">😴 作息</div>
@@ -3864,7 +3871,6 @@ function highlightRatingButton(selfRating) {
     });
 
 }
-
 
 /* =========================================================
    37. Debug
@@ -4025,6 +4031,7 @@ async function loadTodayModules() {
     loadIdeas,
     loadSleep,
     loadMeals,
+    loadFortune,
     loadTodayRewards
   ]) {
 
@@ -4073,6 +4080,9 @@ function resetTodayModules() {
   );
   taskCategoriesFromDb = false;
   currentTaskCategoryFilter = "all";
+  fortuneDraws = [];
+  fortuneLoadError = null;
+  habitChartSelection = "all";
 
   document.title = ORIGINAL_TITLE;
 
@@ -4083,6 +4093,7 @@ function resetTodayModules() {
   closeIdeaCapture();
 
 }
+
 
 /* =========================================================
    2. 🌅 晨間打卡
@@ -5503,7 +5514,14 @@ const IDEA_TO_TASK_CATEGORY = {
 
 let ideas = [];
 let ideaFilter = "all";
-let ideaShowProcessed = false;
+let ideaStatusFilter = "all";   // all / inbox / done / converted
+
+const IDEA_STATUS_FILTERS = [
+  { key: "all",       label: "全部" },
+  { key: "inbox",     label: "📥 待處理" },
+  { key: "done",      label: "✓ 已處理" },
+  { key: "converted", label: "→ 已轉任務" }
+];
 let ideaCaptureCategory = "idea";
 
 
@@ -5525,7 +5543,7 @@ async function loadIdeas() {
     .select("*")
     .eq("user_id", currentUser.id)
     .order("created_at", { ascending: false })
-    .limit(300);
+    .limit(1000);
 
   if (error) {
 
@@ -5582,13 +5600,32 @@ function renderIdeas() {
   updateNavBadges();
 
 
-  /* 分類篩選 */
+  /* 狀態篩選：全部 / 待處理 / 已處理 / 已轉任務（預設全部，已處理的也看得到） */
+
+  const statusOk = idea =>
+    ideaStatusFilter === "all" || idea.status === ideaStatusFilter;
+
+  const statusCount = key =>
+    ideas.filter(idea => key === "all" || idea.status === key).length;
+
+  document.getElementById("idea-status-filters").innerHTML =
+    IDEA_STATUS_FILTERS
+      .map(item => `
+        <button
+          class="chip ${ideaStatusFilter === item.key ? "active" : ""}"
+          onclick="setIdeaStatusFilter('${item.key}')"
+        >${item.label} <span class="chip-count">${statusCount(item.key)}</span></button>
+      `)
+      .join("");
+
+
+  /* 分類篩選（數量跟著狀態篩選） */
 
   const countIn = key =>
-    inbox.filter(idea => key === "all" || idea.category === key).length;
+    ideas.filter(idea => statusOk(idea) && (key === "all" || idea.category === key)).length;
 
   document.getElementById("idea-filters").innerHTML =
-    [{ key: "all", label: "全部" }, ...IDEA_CATEGORIES]
+    [{ key: "all", label: "全部分類" }, ...IDEA_CATEGORIES]
       .map(category => `
         <button
           class="chip ${ideaFilter === category.key ? "active" : ""}"
@@ -5598,11 +5635,11 @@ function renderIdeas() {
       .join("");
 
 
-  /* 清單 */
+  /* 清單：待處理在上面，已處理 / 已轉任務在下面（都是新的在前） */
 
   const visible = ideas.filter(idea =>
-    (ideaFilter === "all" || idea.category === ideaFilter) &&
-    (ideaShowProcessed || idea.status === "inbox")
+    statusOk(idea) &&
+    (ideaFilter === "all" || idea.category === ideaFilter)
   );
 
 
@@ -5612,7 +5649,9 @@ function renderIdeas() {
       <div class="empty-state">
         ${ideas.length === 0
           ? "還沒有想法。想到什麼，就按右下角的 💡 先記下來"
-          : "這裡沒有待處理的想法 👍"}
+          : ideaStatusFilter === "inbox"
+          ? "這裡沒有待處理的想法 👍"
+          : "這個篩選沒有想法"}
       </div>
     `;
 
@@ -5621,11 +5660,14 @@ function renderIdeas() {
   }
 
 
-  list.innerHTML = visible
-    .map(idea => {
+  const renderIdea = idea => {
 
       const id = Number(idea.id);
       const processed = idea.status !== "inbox";
+
+      const processedDate = idea.processed_at
+        ? formatShortDate(toTaipeiDate(idea.processed_at))
+        : "";
 
       let statusText = "";
       let actions = "";
@@ -5643,7 +5685,7 @@ function renderIdeas() {
 
       } else if (idea.status === "done") {
 
-        statusText = "・已處理";
+        statusText = `<span class="idea-status done">✓ 已處理${processedDate ? " " + processedDate : ""}</span>`;
 
         actions = `
           <button class="icon-btn" onclick="setIdeaStatus(${id}, 'inbox')">↩ 放回收件匣</button>
@@ -5652,7 +5694,7 @@ function renderIdeas() {
 
       } else {
 
-        statusText = "・已轉成任務";
+        statusText = `<span class="idea-status converted">→ 已轉成任務${processedDate ? " " + processedDate : ""}</span>`;
 
         actions = `
           <button class="icon-btn" title="刪除" onclick="deleteIdea(${id})">🗑️</button>
@@ -5670,16 +5712,30 @@ function renderIdeas() {
 
           <div class="idea-bottom">
             <span class="small-note">
-              ${escapeHtml(idea.idea_date)} ${formatTimeOfDay(idea.created_at)}${statusText}
+              ${escapeHtml(idea.idea_date)} ${formatTimeOfDay(idea.created_at)}
             </span>
+            ${statusText}
             <div class="idea-actions">${actions}</div>
           </div>
 
         </div>
       `;
 
-    })
-    .join("");
+  };
+
+
+  const open = visible.filter(idea => idea.status === "inbox");
+
+  const closed = visible.filter(idea => idea.status !== "inbox");
+
+  const section = (title, rows) => rows.length === 0 ? "" : `
+    <div class="idea-section-title">${title}<span class="small-note"> ${rows.length}</span></div>
+    ${rows.map(renderIdea).join("")}
+  `;
+
+  list.innerHTML = ideaStatusFilter === "all"
+    ? section("📥 待處理", open) + section("✅ 已處理 / 已轉任務", closed)
+    : visible.map(renderIdea).join("");
 
 }
 
@@ -5693,9 +5749,9 @@ function setIdeaFilter(key) {
 }
 
 
-function toggleIdeaShowProcessed(checked) {
+function setIdeaStatusFilter(key) {
 
-  ideaShowProcessed = checked;
+  ideaStatusFilter = key;
 
   renderIdeas();
 
@@ -5980,7 +6036,7 @@ Object.assign(window, {
 
   /* 想法庫 */
   setIdeaFilter,
-  toggleIdeaShowProcessed,
+  setIdeaStatusFilter,
   setIdeaCaptureCategory,
   openIdeaCapture,
   closeIdeaCapture,
@@ -6492,6 +6548,7 @@ async function deleteCountdown(id) {
   await loadCountdowns();
 
 }
+
 
 
 /* =========================================================
@@ -7422,6 +7479,9 @@ function describeHabitRule(habit) {
 
 function renderHabits() {
 
+  /* 📊 紀錄頁的習慣圖表也跟著更新 */
+  scheduleHabitCharts();
+
   const list = document.getElementById("habits-list");
 
   if (!list) return;
@@ -7613,6 +7673,7 @@ async function syncHabitReward(habitId) {
   );
 
 }
+
 
 /* =========================================================
    H3. 管理習慣
@@ -8339,6 +8400,9 @@ function applyPage(name) {
   });
 
   storageSet("lastPage", name);
+
+  /* 圖表要量寬度，切到紀錄頁才畫 */
+  if (name === "records") setTimeout(() => scheduleHabitCharts(), 0);
 
 }
 
@@ -9388,7 +9452,6 @@ function shortDateWithWeekday(dateText) {
 
 }
 
-
 /* =========================================================
    L1. 😴 作息
    一晚一筆（night_date = 睡覺那天的日期）：
@@ -9842,7 +9905,8 @@ async function recordWake(options = {}) {
 
   const existing = findSleepLog(night);
 
-  if (options.auto && taipeiNow().time >= "12:00") return;
+  /* 自動記錄只在早上 04:00～12:00（半夜或下午才勾，記下來的通常不是真的起床時間） */
+  if (options.auto && (taipeiNow().time < "04:00" || taipeiNow().time >= "12:00")) return;
 
   if (existing && existing.wake_at) {
 
@@ -10752,3 +10816,1282 @@ async function deleteMealFromEditor() {
 
 
 console.log("✅ 任務分類 / 生活（作息・三餐）載入完成");
+
+
+
+/* #########################################################
+   📈 習慣圖表 / 🎴 每日抽籤
+######################################################### */
+
+
+/* =========================================================
+   V0. 圖表共用（SVG 自己畫，不用外部套件）
+========================================================= */
+
+const VIZ = {
+  surface: "#181c26",
+  accent: "#3987e5",
+  accentWash: "rgba(57, 135, 229, .14)",
+  context: "#6b7385",
+  good: "#0ca30c",
+  warning: "#fab219",
+  track: "#343b4d",
+  grid: "#2a3040",
+  axis: "#3a4152",
+  muted: "#8a93a8",
+  ink: "#e6e9f2"
+};
+
+
+/* 0.8 → "80%" */
+function pct(ratio) {
+
+  return ratio === null || ratio === undefined ? "—" : `${Math.round(ratio * 100)}%`;
+
+}
+
+
+/* 滑過去 / 點一下顯示數字（[data-tip] 都適用） */
+function vizTipElement() {
+
+  let tip = document.getElementById("viz-tip");
+
+  if (!tip) {
+    tip = document.createElement("div");
+    tip.id = "viz-tip";
+    tip.className = "viz-tip";
+    document.body.appendChild(tip);
+  }
+
+  return tip;
+
+}
+
+
+function showVizTip(target, x, y) {
+
+  const tip = vizTipElement();
+
+  tip.textContent = target.getAttribute("data-tip");
+
+  tip.classList.add("show");
+
+  const box = tip.getBoundingClientRect();
+
+  const left = Math.min(Math.max(8, x - box.width / 2), window.innerWidth - box.width - 8);
+
+  const top = y - box.height - 14 < 8 ? y + 18 : y - box.height - 14;
+
+  tip.style.left = `${left}px`;
+  tip.style.top = `${top}px`;
+
+}
+
+
+function hideVizTip() {
+
+  const tip = document.getElementById("viz-tip");
+
+  if (tip) tip.classList.remove("show");
+
+}
+
+
+document.addEventListener("pointermove", event => {
+
+  const target = event.target.closest && event.target.closest("[data-tip]");
+
+  if (target) {
+    showVizTip(target, event.clientX, event.clientY);
+  } else if (event.pointerType === "mouse") {
+    hideVizTip();
+  }
+
+});
+
+document.addEventListener("pointerdown", event => {
+
+  const target = event.target.closest && event.target.closest("[data-tip]");
+
+  if (target) {
+    showVizTip(target, event.clientX, event.clientY);
+  } else {
+    hideVizTip();
+  }
+
+});
+
+document.addEventListener("focusin", event => {
+
+  const target = event.target.closest && event.target.closest("[data-tip]");
+
+  if (!target) return;
+
+  const box = target.getBoundingClientRect();
+
+  showVizTip(target, box.left + box.width / 2, box.top);
+
+});
+
+document.addEventListener("focusout", hideVizTip);
+
+window.addEventListener("scroll", hideVizTip, { passive: true });
+
+
+/*
+  🕸️ 雷達圖
+  axes: ["閱讀", …]、series: [{ name, values: [0~1 或 null], color, wash, tips: [...] }]
+*/
+function svgRadar(axes, series) {
+
+  const W = 320, H = 270, cx = 160, cy = 132, R = 92;
+
+  const n = axes.length;
+
+  const point = (i, ratio) => {
+    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+    return [cx + Math.cos(angle) * R * ratio, cy + Math.sin(angle) * R * ratio];
+  };
+
+  const ring = ratio => axes.map((_, i) => point(i, ratio).map(v => v.toFixed(1)).join(",")).join(" ");
+
+  let out = `<svg class="viz-svg radar" viewBox="0 0 ${W} ${H}" role="img">`;
+
+  /* 格線（25 / 50 / 75 / 100%）和放射線 */
+  [0.25, 0.5, 0.75, 1].forEach(r => {
+    out += `<polygon points="${ring(r)}" fill="none" stroke="${VIZ.grid}" stroke-width="1"/>`;
+  });
+
+  axes.forEach((_, i) => {
+    const [x, y] = point(i, 1);
+    out += `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${VIZ.grid}" stroke-width="1"/>`;
+  });
+
+
+  /* 軸名稱 */
+  axes.forEach((label, i) => {
+    const [x, y] = point(i, 1.17);
+    const anchor = Math.abs(x - cx) < 6 ? "middle" : x > cx ? "start" : "end";
+    const short = Array.from(label).length > 6 ? Array.from(label).slice(0, 6).join("") + "…" : label;
+    out += `<text x="${x.toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="${anchor}" class="viz-label">${escapeHtml(short)}</text>`;
+  });
+
+  /* 資料（後面的畫在下面：先畫對照組） */
+  [...series].reverse().forEach(item => {
+
+    const pts = item.values.map((v, i) => point(i, Math.max(0, Math.min(1, v || 0))));
+
+    out += `<polygon points="${pts.map(p => p.map(v => v.toFixed(1)).join(",")).join(" ")}"
+      fill="${item.wash || "none"}" stroke="${item.color}" stroke-width="2" stroke-linejoin="round"/>`;
+
+    pts.forEach(([x, y], i) => {
+      out += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="${item.color}"
+        stroke="${VIZ.surface}" stroke-width="2"/>`;
+      out += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="12" fill="transparent" tabindex="0"
+        data-tip="${escapeHtml(item.tips ? item.tips[i] : `${axes[i]}：${pct(item.values[i])}`)}"/>`;
+    });
+
+  });
+
+  return out + `</svg>`;
+
+}
+
+
+/*
+  📈 折線圖（0~100%）
+  labels: ["9/22", …]、values: [0~1 或 null]、tips: [...]
+*/
+function svgLine(labels, values, tips, width) {
+
+  const W = Math.max(280, Math.round(width)), H = 200;
+
+  const left = 38, right = 40, top = 14, bottom = 28;
+
+  const plotW = W - left - right, plotH = H - top - bottom;
+
+  const n = labels.length;
+
+  const x = i => left + (n === 1 ? plotW / 2 : (i * plotW) / (n - 1));
+
+  const y = v => top + plotH * (1 - v);
+
+  let out = `<svg class="viz-svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img">`;
+
+  /* 格線 0 / 50 / 100% */
+  [0, 0.5, 1].forEach(v => {
+    out += `<line x1="${left}" x2="${W - right}" y1="${y(v)}" y2="${y(v)}" stroke="${v === 0 ? VIZ.axis : VIZ.grid}" stroke-width="1"/>`;
+    out += `<text x="${left - 6}" y="${y(v) + 4}" text-anchor="end" class="viz-tick">${v * 100}%</text>`;
+  });
+
+  /* x 軸：太擠就隔幾個顯示 */
+  const every = Math.ceil(n / Math.max(2, Math.floor(plotW / 46)));
+
+  labels.forEach((label, i) => {
+    if (i % every !== 0 && i !== n - 1) return;
+    out += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" class="viz-tick">${escapeHtml(label)}</text>`;
+  });
+
+  /* 線（沒有資料的週斷開） */
+  const segments = [];
+  let current = [];
+
+  values.forEach((v, i) => {
+    if (v === null) {
+      if (current.length) segments.push(current);
+      current = [];
+    } else {
+      current.push([x(i), y(v)]);
+    }
+  });
+
+  if (current.length) segments.push(current);
+
+  segments.forEach(seg => {
+    const line = seg.map(([px, py], i) => `${i ? "L" : "M"}${px.toFixed(1)},${py.toFixed(1)}`).join(" ");
+    if (seg.length > 1) {
+      out += `<path d="${line} L${seg[seg.length - 1][0].toFixed(1)},${y(0)} L${seg[0][0].toFixed(1)},${y(0)} Z" fill="${VIZ.accentWash}"/>`;
+    }
+    out += `<path d="${line}" fill="none" stroke="${VIZ.accent}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    if (seg.length === 1) {
+      out += `<circle cx="${seg[0][0]}" cy="${seg[0][1]}" r="4" fill="${VIZ.accent}"/>`;
+    }
+  });
+
+  /* 最後一個點 + 數字 */
+  const lastIndex = values.map(v => v !== null).lastIndexOf(true);
+
+  if (lastIndex >= 0) {
+    out += `<circle cx="${x(lastIndex)}" cy="${y(values[lastIndex])}" r="4.5" fill="${VIZ.accent}" stroke="${VIZ.surface}" stroke-width="2"/>`;
+    out += `<text x="${x(lastIndex) + 8}" y="${y(values[lastIndex]) + 4}" class="viz-value">${pct(values[lastIndex])}</text>`;
+  }
+
+  /* 滑過去：直線 + 數字 */
+  const band = n === 1 ? plotW : plotW / (n - 1);
+
+  values.forEach((v, i) => {
+    out += `<g class="viz-hover">
+      <line x1="${x(i)}" x2="${x(i)}" y1="${top}" y2="${y(0)}" stroke="${VIZ.muted}" stroke-width="1"/>
+      <rect x="${(x(i) - band / 2).toFixed(1)}" y="${top}" width="${band.toFixed(1)}" height="${plotH}"
+        fill="transparent" tabindex="0" data-tip="${escapeHtml(tips[i])}"/>
+    </g>`;
+  });
+
+  return out + `</svg>`;
+
+}
+
+
+/*
+  📊 直條圖
+  labels、values（數字）、max、format(v)、tips
+*/
+function svgBars(labels, values, max, format, tips, width) {
+
+  const W = Math.max(280, Math.round(width)), H = 190;
+
+  const left = 38, right = 12, top = 22, bottom = 28;
+
+  const plotW = W - left - right, plotH = H - top - bottom;
+
+  const n = labels.length;
+
+  const slot = plotW / n;
+
+  const barW = Math.min(24, slot - 6);
+
+  const y = v => top + plotH * (1 - (max ? v / max : 0));
+
+  let out = `<svg class="viz-svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img">`;
+
+  [0, 0.5, 1].forEach(r => {
+    const v = max * r;
+    out += `<line x1="${left}" x2="${W - right}" y1="${y(v)}" y2="${y(v)}" stroke="${r === 0 ? VIZ.axis : VIZ.grid}" stroke-width="1"/>`;
+    out += `<text x="${left - 6}" y="${y(v) + 4}" text-anchor="end" class="viz-tick">${escapeHtml(format(v))}</text>`;
+  });
+
+  const best = values.reduce((bi, v, i) => (v !== null && (bi === -1 || v > values[bi]) ? i : bi), -1);
+
+  labels.forEach((label, i) => {
+
+    const cx = left + slot * i + slot / 2;
+
+    const v = values[i];
+
+    out += `<text x="${cx}" y="${H - 8}" text-anchor="middle" class="viz-tick">${escapeHtml(label)}</text>`;
+
+    if (v !== null && v > 0) {
+
+      const x0 = cx - barW / 2, x1 = cx + barW / 2;
+      const yTop = y(v), yBase = y(0);
+      const r = Math.min(4, (yBase - yTop) / 2, barW / 2);
+
+      out += `<path d="M${x0},${yBase} L${x0},${yTop + r} Q${x0},${yTop} ${x0 + r},${yTop} L${x1 - r},${yTop} Q${x1},${yTop} ${x1},${yTop + r} L${x1},${yBase} Z"
+        fill="${VIZ.accent}"/>`;
+
+      if (i === best) {
+        out += `<text x="${cx}" y="${yTop - 6}" text-anchor="middle" class="viz-value">${escapeHtml(format(v))}</text>`;
+      }
+
+    }
+
+    out += `<rect x="${(left + slot * i).toFixed(1)}" y="${top}" width="${slot.toFixed(1)}" height="${plotH}"
+      fill="transparent" tabindex="0" class="viz-hit" data-tip="${escapeHtml(tips[i])}"/>`;
+
+  });
+
+  return out + `</svg>`;
+
+}
+
+
+/*
+  🍩 甜甜圈（部分 / 整體）
+  segments: [{ label, value, color, icon }]，中間顯示 centerText / centerLabel
+*/
+function svgDonut(segments, centerText, centerLabel) {
+
+  const size = 168, c = size / 2, r = 64, stroke = 18;
+
+  const total = segments.reduce((sum, s) => sum + s.value, 0);
+
+  const circumference = 2 * Math.PI * r;
+
+  const visible = segments.filter(s => s.value > 0);
+
+  const gap = visible.length > 1 ? 2 : 0;
+
+  let offset = 0;
+
+  let out = `<svg class="viz-svg donut" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img">`;
+
+  out += `<circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${VIZ.track}" stroke-width="${stroke}" opacity="${total ? 0 : 1}"/>`;
+
+  visible.forEach(s => {
+
+    const length = (s.value / total) * circumference;
+
+    const drawn = Math.max(0, length - gap);
+
+    out += `<circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${s.color}" stroke-width="${stroke}"
+      stroke-dasharray="${drawn.toFixed(2)} ${(circumference - drawn).toFixed(2)}"
+      stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 ${c} ${c})"
+      tabindex="0" data-tip="${escapeHtml(`${s.icon} ${s.label}：${s.value} 天（${Math.round((s.value / total) * 100)}%）`)}"/>`;
+
+    offset += length;
+
+  });
+
+  out += `<text x="${c}" y="${c + 4}" text-anchor="middle" class="viz-center">${escapeHtml(centerText)}</text>`;
+  out += `<text x="${c}" y="${c + 24}" text-anchor="middle" class="viz-tick">${escapeHtml(centerLabel)}</text>`;
+
+  return out + `</svg>`;
+
+}
+
+
+/* =========================================================
+   V1. 📈 習慣統計
+========================================================= */
+
+const HABIT_CHART_WEEKS = 12;
+
+const HABIT_CHART_DAYS = 30;
+
+const HABIT_RADAR_MAX = 8;
+
+let habitChartSelection = "all";   // "all" 或習慣 id
+
+let habitChartTimer = null;
+
+
+/* 這一天這個習慣的狀態：done / makeup / miss / pending（今天還沒打）/ off（不用做） */
+function habitDayState(habit, dateText, today) {
+
+  if (dateText > today) return "future";
+
+  const key = habitKey(habit.id, dateText);
+
+  if (habitLogSet.has(key)) return habitMakeupSet.has(key) ? "makeup" : "done";
+
+  if (!habitScheduledByRule(habit, dateText)) return "off";
+
+  if (dateText === today) return "pending";
+
+  if (dateText < habit.start_date || !habit.active) return "off";
+
+  return "miss";
+
+}
+
+
+/* 一段日期內的統計（list = 一個或多個習慣） */
+function habitRangeStats(list, from, to) {
+
+  const today = getToday();
+
+  const result = { done: 0, makeup: 0, miss: 0 };
+
+  for (let day = from; day <= to; day = shiftDate(day, 1)) {
+
+    list.forEach(habit => {
+      const state = habitDayState(habit, day, today);
+      if (state in result) result[state] += 1;
+    });
+
+  }
+
+  const due = result.done + result.makeup + result.miss;
+
+  return { ...result, due, rate: due ? (result.done + result.makeup) / due : null };
+
+}
+
+
+/* 最長連續（補打卡也算；不用做的日子跳過；今天還沒打不算斷） */
+function habitBestStreak(habit) {
+
+  const today = getToday();
+
+  let best = 0, current = 0;
+
+  for (let i = HABIT_HISTORY_DAYS; i >= 0; i--) {
+
+    const state = habitDayState(habit, shiftDate(today, -i), today);
+
+    if (state === "done" || state === "makeup") {
+      current += 1;
+      best = Math.max(best, current);
+    } else if (state === "miss") {
+      current = 0;
+    }
+
+  }
+
+  return best;
+
+}
+
+
+function habitTotalLogs(habit) {
+
+  let count = 0;
+
+  habitLogSet.forEach(key => {
+    if (key.startsWith(`${Number(habit.id)}|`)) count += 1;
+  });
+
+  return count;
+
+}
+
+
+/* 最近 12 週，每週（一～日）的完成率 */
+function habitWeeklyRates(list) {
+
+  const today = getToday();
+
+  const thisMonday = shiftDate(today, -(weekdayOf(today) - 1));
+
+  const weeks = [];
+
+  for (let w = HABIT_CHART_WEEKS - 1; w >= 0; w--) {
+
+    const from = shiftDate(thisMonday, -7 * w);
+
+    const to = shiftDate(from, 6) > today ? today : shiftDate(from, 6);
+
+    const stats = habitRangeStats(list, from, to);
+
+    weeks.push({
+      label: formatShortDate(from),
+      rate: stats.rate,
+      tip: `${formatShortDate(from)} 那週：${stats.due ? `${pct(stats.rate)}（${stats.done + stats.makeup} / ${stats.due}）` : "沒有要做的日子"}${w === 0 ? "・本週到今天" : ""}`
+    });
+
+  }
+
+  return weeks;
+
+}
+
+
+/* 星期一～日的完成率（最近 12 週） */
+function habitWeekdayRates(list) {
+
+  const today = getToday();
+
+  const counts = [1, 2, 3, 4, 5, 6, 7].map(() => ({ done: 0, due: 0 }));
+
+  for (let i = 0; i < HABIT_CHART_WEEKS * 7; i++) {
+
+    const day = shiftDate(today, -i);
+
+    const slot = counts[weekdayOf(day) - 1];
+
+    list.forEach(habit => {
+      const state = habitDayState(habit, day, today);
+      if (state === "done" || state === "makeup") { slot.done += 1; slot.due += 1; }
+      if (state === "miss") slot.due += 1;
+    });
+
+  }
+
+  return counts.map((c, i) => ({
+    label: WEEKDAY_SHORT[(i + 1) % 7],
+    rate: c.due ? c.done / c.due : null,
+    tip: `星期${WEEKDAY_SHORT[(i + 1) % 7]}：${c.due ? `${pct(c.done / c.due)}（${c.done} / ${c.due}）` : "不用做"}`
+  }));
+
+}
+
+
+/* 最近 6 個月，每月打卡次數 */
+function habitMonthlyCounts(habit) {
+
+  const today = getToday();
+
+  const months = [];
+
+  for (let m = 5; m >= 0; m--) {
+
+    const [y, mo] = today.split("-").map(Number);
+
+    const date = new Date(Date.UTC(y, mo - 1 - m, 1));
+
+    const key = date.toISOString().slice(0, 7);
+
+    let count = 0;
+
+    habitLogSet.forEach(k => {
+      const [id, day] = k.split("|");
+      if (Number(id) === Number(habit.id) && day.startsWith(key)) count += 1;
+    });
+
+    months.push({ label: `${date.getUTCMonth() + 1}月`, count, tip: `${date.getUTCMonth() + 1} 月：打卡 ${count} 次` });
+
+  }
+
+  return months;
+
+}
+
+
+/* =========================================================
+   V2. 📈 習慣圖表（📊 紀錄頁）
+========================================================= */
+
+/* 習慣有變動就排一次重畫（同一輪只畫一次） */
+function scheduleHabitCharts() {
+
+  clearTimeout(habitChartTimer);
+
+  habitChartTimer = setTimeout(renderHabitCharts, 30);
+
+}
+
+
+window.addEventListener("resize", () => {
+
+  clearTimeout(habitChartTimer);
+
+  habitChartTimer = setTimeout(renderHabitCharts, 150);
+
+});
+
+
+function setHabitChartSelection(value) {
+
+  habitChartSelection = value === "all" ? "all" : Number(value);
+
+  renderHabitCharts();
+
+}
+
+
+function vizTile(label, value, note) {
+
+  return `
+    <div class="viz-tile">
+      <div class="viz-tile-label">${label}</div>
+      <div class="viz-tile-value">${value}</div>
+      ${note ? `<div class="viz-tile-note">${note}</div>` : ""}
+    </div>
+  `;
+
+}
+
+
+function vizPanel(title, sub, body, extraClass = "") {
+
+  return `
+    <div class="viz-panel ${extraClass}">
+      <div class="viz-title">${title}</div>
+      ${sub ? `<div class="viz-sub">${sub}</div>` : ""}
+      ${body}
+    </div>
+  `;
+
+}
+
+
+function donutPanel(stats, title) {
+
+  const segments = [
+    { label: "當天完成", value: stats.done, color: VIZ.good, icon: "✓" },
+    { label: "補打卡", value: stats.makeup, color: VIZ.warning, icon: "補" },
+    { label: "沒做", value: stats.miss, color: VIZ.track, icon: "✕" }
+  ];
+
+  const legend = segments
+    .map(s => `
+      <div class="viz-legend-row">
+        <span class="viz-swatch" style="background:${s.color}"></span>
+        <span>${s.icon} ${s.label}</span>
+        <strong>${s.value} 天</strong>
+      </div>
+    `)
+    .join("");
+
+  return vizPanel(
+    title,
+    `最近 ${HABIT_CHART_DAYS} 天，要做的日子共 ${stats.due} 天`,
+    `<div class="viz-donut-wrap">
+      ${svgDonut(segments, stats.due ? pct(stats.rate) : "—", "完成率")}
+      <div class="viz-legend">${legend}</div>
+    </div>`
+  );
+
+}
+
+
+function renderHabitCharts() {
+
+  const box = document.getElementById("habit-charts");
+
+  const picker = document.getElementById("habit-chart-picker");
+
+  if (!box || !picker) return;
+
+
+  if (!habits || habits.length === 0) {
+
+    picker.innerHTML = "";
+
+    box.innerHTML = `
+      <div class="empty-state">
+        還沒有習慣。到「🏠 今日 → 📅 今日習慣」新增一個，就會開始有圖表。
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  /* 頁面沒顯示時量不到寬度，等切到紀錄頁再畫 */
+  const width = box.clientWidth;
+
+  if (!width) return;
+
+
+  const today = getToday();
+
+  const from30 = shiftDate(today, -(HABIT_CHART_DAYS - 1));
+
+  const prevFrom = shiftDate(from30, -HABIT_CHART_DAYS);
+
+  const prevTo = shiftDate(from30, -1);
+
+
+  if (habitChartSelection !== "all" && !habits.some(h => Number(h.id) === habitChartSelection)) {
+    habitChartSelection = "all";
+  }
+
+
+  /* 上面一排：全部 / 每個習慣 */
+
+  picker.innerHTML = [{ id: "all", title: "📊 全部習慣" }, ...habits]
+    .map(h => `
+      <button class="chip ${String(habitChartSelection) === String(h.id) ? "active" : ""}"
+        onclick="setHabitChartSelection('${h.id}')">${escapeHtml(h.title)}${h.active === false ? "（暫停）" : ""}</button>
+    `)
+    .join("");
+
+
+  const panelWidth = window.innerWidth > 800 ? (width - 14) / 2 : width;
+
+  const innerWidth = Math.max(260, panelWidth - 28);
+
+  const fullWidth = Math.max(260, width - 28);
+
+
+  if (habitChartSelection === "all") {
+
+    const list = habits.filter(h => h.active);
+
+    const pool = list.length ? list : habits;
+
+    const now = habitRangeStats(pool, from30, today);
+
+    const todayStats = getHabitStats();
+
+    const streaks = pool.map(h => ({ habit: h, streak: habitStreak(h) })).sort((a, b) => b.streak - a.streak);
+
+    const top = streaks[0];
+
+
+    /* 🕸️ 各習慣（最近 30 天 vs 前 30 天） */
+
+    const shown = pool.slice(0, HABIT_RADAR_MAX);
+
+    const nowRates = shown.map(h => habitRangeStats([h], from30, today));
+
+    const prevRates = shown.map(h => habitRangeStats([h], prevFrom, prevTo));
+
+    let compare;
+
+    if (shown.length >= 3) {
+
+      compare = vizPanel(
+        "🕸️ 各習慣完成率",
+        `最近 30 天（藍）和前 30 天（灰）比較，最外圈 = 100%${pool.length > HABIT_RADAR_MAX ? `・只顯示前 ${HABIT_RADAR_MAX} 個` : ""}`,
+        `${svgRadar(shown.map(h => h.title), [
+          {
+            name: "最近 30 天", color: VIZ.accent, wash: VIZ.accentWash,
+            values: nowRates.map(s => s.rate || 0),
+            tips: shown.map((h, i) => `${h.title}：最近 30 天 ${pct(nowRates[i].rate)}（${nowRates[i].done + nowRates[i].makeup} / ${nowRates[i].due}）`)
+          },
+          {
+            name: "前 30 天", color: VIZ.context,
+            values: prevRates.map(s => s.rate || 0),
+            tips: shown.map((h, i) => `${h.title}：前 30 天 ${pct(prevRates[i].rate)}（${prevRates[i].done + prevRates[i].makeup} / ${prevRates[i].due}）`)
+          }
+        ])}
+        <div class="viz-key">
+          <span><i style="background:${VIZ.accent}"></i>最近 30 天</span>
+          <span><i style="background:${VIZ.context}"></i>前 30 天</span>
+        </div>`
+      );
+
+    } else {
+
+      /* 習慣少於 3 個，雷達圖看不出形狀 → 用直條 */
+      compare = vizPanel(
+        "📊 各習慣完成率",
+        "最近 30 天（習慣有 3 個以上會變成雷達圖）",
+        svgBars(
+          shown.map(h => Array.from(h.title).slice(0, 5).join("")),
+          nowRates.map(s => s.rate),
+          1,
+          v => pct(v),
+          shown.map((h, i) => `${h.title}：${pct(nowRates[i].rate)}（${nowRates[i].done + nowRates[i].makeup} / ${nowRates[i].due}）`),
+          innerWidth
+        )
+      );
+
+    }
+
+
+    const weekly = habitWeeklyRates(pool);
+
+    const weekday = habitWeekdayRates(pool);
+
+
+    box.innerHTML = `
+
+      <div class="viz-tiles">
+        ${vizTile("最近 30 天完成率", pct(now.rate), `${now.done + now.makeup} / ${now.due} 次`)}
+        ${vizTile("今天", `${todayStats.done} / ${todayStats.total}`, todayStats.total && todayStats.done === todayStats.total ? "全部完成 🎉" : "")}
+        ${vizTile("連續最久", top && top.streak ? `🔥 ${top.streak} 天` : "—", top && top.streak ? escapeHtml(top.habit.title) : "")}
+        ${vizTile("補打卡", `${now.makeup} 次`, "最近 30 天")}
+      </div>
+
+      <div class="viz-grid">
+        ${compare}
+        ${donutPanel(now, "🍩 完成 / 補打卡 / 沒做")}
+      </div>
+
+      ${vizPanel("📈 每週完成率", `最近 ${HABIT_CHART_WEEKS} 週，全部習慣一起算`,
+        svgLine(weekly.map(w => w.label), weekly.map(w => w.rate), weekly.map(w => w.tip), fullWidth))}
+
+      ${vizPanel("📅 星期幾最常做到", `最近 ${HABIT_CHART_WEEKS} 週，每個星期幾的完成率`,
+        svgBars(weekday.map(d => d.label), weekday.map(d => d.rate), 1, v => pct(v), weekday.map(d => d.tip), fullWidth))}
+
+      <details class="viz-table">
+        <summary>📋 看數字</summary>
+        <table class="data-table">
+          <thead><tr><th>習慣</th><th class="num">最近 30 天</th><th class="num">前 30 天</th><th class="num">連續</th><th class="num">最長</th><th class="num">累計</th></tr></thead>
+          <tbody>
+            ${habits.map(h => {
+              const a = habitRangeStats([h], from30, today);
+              const b = habitRangeStats([h], prevFrom, prevTo);
+              return `<tr>
+                <td>${escapeHtml(h.title)}${h.active ? "" : ' <span class="small-note">暫停</span>'}</td>
+                <td class="num">${pct(a.rate)}</td>
+                <td class="num">${pct(b.rate)}</td>
+                <td class="num">${habitStreak(h)}</td>
+                <td class="num">${habitBestStreak(h)}</td>
+                <td class="num">${habitTotalLogs(h)}</td>
+              </tr>`;
+            }).join("")}
+          </tbody>
+        </table>
+      </details>
+
+    `;
+
+    return;
+
+  }
+
+
+  /* ---------- 單一習慣 ---------- */
+
+  const habit = habits.find(h => Number(h.id) === habitChartSelection);
+
+  const now = habitRangeStats([habit], from30, today);
+
+  const prev = habitRangeStats([habit], prevFrom, prevTo);
+
+  const weekly = habitWeeklyRates([habit]);
+
+  const weekday = habitWeekdayRates([habit]);
+
+  const months = habitMonthlyCounts(habit);
+
+  const diff = now.rate !== null && prev.rate !== null
+    ? Math.round((now.rate - prev.rate) * 100)
+    : null;
+
+
+  /* 🕸️ 星期雷達（每週只做幾天的習慣，只看要做的那幾天） */
+  const days = weekday.filter(d => d.rate !== null);
+
+  const weekdayChart = days.length >= 3
+    ? svgRadar(days.map(d => `星期${d.label}`), [{
+        name: "完成率", color: VIZ.accent, wash: VIZ.accentWash,
+        values: days.map(d => d.rate), tips: days.map(d => d.tip)
+      }])
+    : svgBars(weekday.map(d => d.label), weekday.map(d => d.rate), 1, v => pct(v), weekday.map(d => d.tip), innerWidth);
+
+
+  box.innerHTML = `
+
+    <div class="viz-tiles">
+      ${vizTile("目前連續", `🔥 ${habitStreak(habit)} 天`, "")}
+      ${vizTile("最長連續", `${habitBestStreak(habit)} 天`, `最近 ${HABIT_HISTORY_DAYS} 天內`)}
+      ${vizTile("最近 30 天", pct(now.rate),
+        diff === null ? "" : diff === 0 ? "和前 30 天一樣" : `比前 30 天 ${diff > 0 ? "▲" : "▼"} ${Math.abs(diff)}%`)}
+      ${vizTile("累計打卡", `${habitTotalLogs(habit)} 次`, describeHabitRule(habit))}
+    </div>
+
+    <div class="viz-grid">
+      ${vizPanel("🕸️ 星期幾最常做到", `最近 ${HABIT_CHART_WEEKS} 週，最外圈 = 100%${habit.repeat_type === "weekly" ? "・只看要做的那幾天" : ""}`, weekdayChart)}
+      ${donutPanel(now, "🍩 完成 / 補打卡 / 沒做")}
+    </div>
+
+    ${vizPanel("📈 每週完成率", `最近 ${HABIT_CHART_WEEKS} 週`,
+      svgLine(weekly.map(w => w.label), weekly.map(w => w.rate), weekly.map(w => w.tip), fullWidth))}
+
+    ${vizPanel("📊 每月打卡次數", "最近 6 個月（補打卡也算）",
+      svgBars(months.map(m => m.label), months.map(m => m.count),
+        Math.max(4, Math.ceil(Math.max(...months.map(m => m.count)) / 2) * 2), v => String(Math.round(v)), months.map(m => m.tip), fullWidth))}
+
+    <details class="viz-table">
+      <summary>📋 看數字</summary>
+      <table class="data-table">
+        <thead><tr><th>那一週</th><th class="num">完成率</th></tr></thead>
+        <tbody>
+          ${[...weekly].reverse().map(w => `<tr><td>${escapeHtml(w.label)} 起</td><td class="num">${pct(w.rate)}</td></tr>`).join("")}
+        </tbody>
+      </table>
+    </details>
+
+  `;
+
+}
+
+
+/* =========================================================
+   F1. 🎴 每日抽籤
+   - 一天一支，籤由資料庫用「帳號 + 日期」決定（重新整理、重抽都一樣）
+   - 抽了就有 EXP：大吉 +20、中吉 +15、小吉 +12、吉 +10、末吉 +8、逆風 +25（逆襲補給）
+   - 籤詩、宜忌、幸運色…由同一個數字推出來，所以每次打開都一樣
+========================================================= */
+
+const FORTUNE_LEVELS = {
+  great:    { name: "大吉", className: "f-great",    base: 4, note: "今天的運勢很旺，衝！" },
+  good:     { name: "中吉", className: "f-good",     base: 4, note: "順風的一天，穩穩前進。" },
+  small:    { name: "小吉", className: "f-small",    base: 3, note: "小小的好運，累積起來就很多。" },
+  fair:     { name: "吉",   className: "f-fair",     base: 3, note: "平穩的一天，把該做的做好。" },
+  late:     { name: "末吉", className: "f-late",     base: 2, note: "先苦後甘，撐過去就會變好。" },
+  headwind: { name: "逆風", className: "f-headwind", base: 2, note: "逆風局，正是逆襲的時候。" }
+};
+
+const FORTUNE_POEMS = {
+  great: [
+    ["晨光破曉照前程", "一步一階向上行", "今日所耕皆有果", "風帆正滿好啟程", "狀態正好，今天適合挑戰最難的那件事，做了就會有回報。"],
+    ["龍門在望浪推舟", "十年磨劍此時收", "莫因順境忘初志", "乘勢再登一層樓", "運勢很旺，但別鬆懈；主線做完，再多推進一步。"],
+    ["春雷一響萬物生", "心定自然百事成", "手中之事專一志", "金榜題名有前程", "專注力特別好，適合讀書、準備考試、需要深度思考的事。"]
+  ],
+  good: [
+    ["穩步前行莫心急", "水到渠成自有期", "今日多耕一寸土", "來日收成滿倉齊", "進度會比想像順，照計畫穩穩做就好。"],
+    ["雲開見月路分明", "貴人相助事易成", "有疑就問莫藏著", "一句請教勝十行", "今天適合請教別人、和人合作，卡住就開口問。"],
+    ["小舟輕過萬重山", "回首方知路已寬", "今日勤做三件事", "勝過空想一整天", "把任務拆小、一件一件完成，成就感會很高。"]
+  ],
+  small: [
+    ["細水長流不會停", "點滴積累自成形", "莫嫌今日步伐小", "回頭已過幾重嶺", "進展不大也沒關係，維持習慣就是今天的勝利。"],
+    ["半晴半雨好天氣", "可攻可守看心意", "先把小事收拾好", "大事自然有餘力", "先處理拖很久的小事，清出空間給重要的事。"],
+    ["燈下讀書夜未眠", "莫將精力耗無邊", "早睡早起精神好", "明朝再戰更爭先", "今天的重點是照顧好精神，早點睡，明天會更好。"]
+  ],
+  fair: [
+    ["平平穩穩過一天", "不求驚喜求安然", "守住習慣守住心", "平凡日子也是緣", "平穩的一天，把該做的做好，就是好運。"],
+    ["路有轉彎莫心慌", "換個角度見陽光", "計畫生變隨機應", "留些彈性不慌忙", "可能會有臨時變化，計畫留一點彈性。"],
+    ["花開需待好時節", "種子先埋土中藏", "今日耕耘人不見", "他日開花滿園香", "今天的努力不一定馬上看到成果，但都在累積。"]
+  ],
+  late: [
+    ["先苦後甘是常情", "黎明之前夜最深", "今日稍有不順意", "晚來轉機自然臨", "開頭可能不太順，撐過上午，下午會漸入佳境。"],
+    ["欲速反而事難成", "慢工細活見真功", "一次只做一件事", "心若分散易成空", "今天容易分心：一次只做一件事，手機放遠一點。"],
+    ["雲遮月色暫無光", "靜待風來雲自散", "莫與他人爭長短", "照顧自己最妥當", "別跟別人比較，照自己的節奏走就好。"]
+  ],
+  headwind: [
+    ["逆風方顯鷹飛高", "困境才知意志牢", "今日若能撐到底", "便是人生逆襲時", "今天可能比較難，但這正是逆襲的時候：完成主線就是勝利。"],
+    ["風急浪高船更穩", "夜深燈暗志更堅", "一關一關慢慢過", "回頭笑看昨日難", "把目標縮到最小的一步，做完就算贏。"],
+    ["烏雲壓頂莫低頭", "越是難時越要走", "今天只求不放棄", "明日自有晴空候", "今天只要求自己不放棄：完成一件任務、準時睡覺，就很棒了。"]
+  ]
+};
+
+const FORTUNE_GOOD = [
+  "背 30 個單字", "先做最難的任務", "開一個 25 分鐘專注", "早點上床", "整理桌面",
+  "喝足 2000cc 的水", "出門走 20 分鐘", "清空想法庫", "寫下明天的主線", "讀 10 頁書",
+  "和家人聊聊天", "做一件拖很久的小事", "伸展 10 分鐘", "好好吃一頓早餐", "練一回多益聽力"
+];
+
+const FORTUNE_BAD = [
+  "熬夜滑手機", "同時開一堆分頁", "邊吃飯邊滑手機", "拖到最後一刻", "空腹喝咖啡",
+  "跟別人比較", "把今天的事丟給明天", "睡前看短影音", "一直檢查訊息", "久坐超過 2 小時",
+  "衝動購物", "自責太久"
+];
+
+const FORTUNE_COLORS = [
+  { name: "紅色", hex: "#ff6b6b" }, { name: "橘色", hex: "#ff9f5a" }, { name: "金色", hex: "#ffd76a" },
+  { name: "綠色", hex: "#42d392" }, { name: "青色", hex: "#2dd4bf" }, { name: "藍色", hex: "#4fc3f7" },
+  { name: "紫色", hex: "#9b6cff" }, { name: "粉色", hex: "#f472b6" }, { name: "白色", hex: "#f2f4f8" },
+  { name: "黑色", hex: "#2b2f3a" }
+];
+
+const FORTUNE_ASPECTS = ["📚 學業", "🎯 專注", "💪 健康", "💰 財運"];
+
+let fortuneDraws = [];          // 最近 14 天
+let fortuneLoadError = null;
+let fortuneDrawing = false;
+
+
+/* 用同一個數字產生一串固定的亂數（同一支籤每次打開都一樣） */
+function seededRandom(seed) {
+
+  let t = Number(seed) >>> 0;
+
+  return () => {
+    t = (t + 0x6D2B79F5) >>> 0;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+
+}
+
+
+/* 從資料庫的那一筆，推出整支籤的內容 */
+function buildFortune(draw) {
+
+  const level = FORTUNE_LEVELS[draw.level] || FORTUNE_LEVELS.fair;
+
+  const random = seededRandom(draw.seed);
+
+  const pick = list => list[Math.floor(random() * list.length)];
+
+  const pickSome = (list, count) => {
+    const copy = [...list];
+    const out = [];
+    while (out.length < count && copy.length) {
+      out.push(copy.splice(Math.floor(random() * copy.length), 1)[0]);
+    }
+    return out;
+  };
+
+  const poem = pick(FORTUNE_POEMS[draw.level] || FORTUNE_POEMS.fair);
+
+  const good = pickSome(FORTUNE_GOOD, 2);
+
+  const bad = pickSome(FORTUNE_BAD, 2);
+
+  const aspects = FORTUNE_ASPECTS.map(name => ({
+    name,
+    stars: Math.max(1, Math.min(5, level.base + Math.floor(random() * 3) - 1))
+  }));
+
+  /* 大吉至少一項五顆星；逆風至少一項是轉機（四顆星以上） */
+  if (draw.level === "great" && !aspects.some(a => a.stars === 5)) {
+    aspects[Math.floor(random() * aspects.length)].stars = 5;
+  }
+
+  if (draw.level === "headwind" && !aspects.some(a => a.stars >= 4)) {
+    aspects[Math.floor(random() * aspects.length)].stars = 4;
+  }
+
+  return {
+    level,
+    levelKey: draw.level,
+    poem: poem.slice(0, 4),
+    meaning: poem[4],
+    good,
+    bad,
+    aspects,
+    color: pick(FORTUNE_COLORS),
+    number: 1 + Math.floor(random() * 99),
+    exp: Number(draw.exp || 0),
+    gold: Number(draw.gold || 0)
+  };
+
+}
+
+
+function todayFortune() {
+
+  return fortuneDraws.find(row => row.draw_date === getToday()) || null;
+
+}
+
+
+async function loadFortune() {
+
+  if (!currentUser) return;
+
+  const { data, error } = await db
+    .from("fortune_draws")
+    .select("*")
+    .eq("user_id", currentUser.id)
+    .gte("draw_date", shiftDate(getToday(), -13))
+    .order("draw_date", { ascending: false });
+
+  if (error) {
+    console.warn("抽籤紀錄載入失敗：", error);
+    fortuneLoadError = error.message;
+    fortuneDraws = [];
+  } else {
+    fortuneLoadError = null;
+    fortuneDraws = data || [];
+  }
+
+  renderFortune();
+
+}
+
+
+function starsText(count) {
+
+  return "★".repeat(count) + "☆".repeat(5 - count);
+
+}
+
+
+/* 今日頁的小卡片 */
+function renderFortune() {
+
+  const body = document.getElementById("fortune-body");
+
+  if (!body) return;
+
+  if (fortuneLoadError) {
+    body.innerHTML = `<span class="small-note">抽籤還沒設定好，請到 Supabase 執行「完整設定」SQL</span>`;
+    return;
+  }
+
+  const draw = todayFortune();
+
+  if (!draw) {
+
+    body.innerHTML = `
+      <div class="fortune-empty">
+        <span class="small-note">每天可以抽一支籤，看看今天的運勢。抽了就有 EXP（逆風最多）。</span>
+        <button class="btn btn-small btn-primary" onclick="drawFortune()">🎴 抽今日籤</button>
+      </div>
+    `;
+
+    return;
+
+  }
+
+  const f = buildFortune(draw);
+
+  body.innerHTML = `
+    <button class="fortune-summary" onclick="openFortuneDetail()">
+      <span class="fortune-badge ${f.level.className}">${f.level.name}</span>
+      <span class="fortune-lines">
+        <span class="fortune-poem-line">「${escapeHtml(f.poem[0])}，${escapeHtml(f.poem[1])}…」</span>
+        <span class="fortune-yiji">
+          <span><b class="yi">宜</b>${f.good.map(escapeHtml).join("・")}</span>
+          <span><b class="ji">忌</b>${f.bad.map(escapeHtml).join("・")}</span>
+        </span>
+      </span>
+      <span class="fortune-more">看籤詩 ›</span>
+    </button>
+  `;
+
+}
+
+
+/* 抽籤：搖一搖 → 資料庫決定 → 打開籤詩 */
+async function drawFortune() {
+
+  if (!currentUser || fortuneDrawing) return;
+
+  if (todayFortune()) {
+    openFortuneDetail();
+    return;
+  }
+
+  fortuneDrawing = true;
+
+  openModal({
+    title: "🎴 今日抽籤",
+    bodyHtml: `
+      <div class="fortune-shaking">
+        <div class="fortune-tube">🎴</div>
+        <p class="small-note">搖籤中…心裡想著今天最想完成的事</p>
+      </div>
+    `,
+    buttons: []
+  });
+
+  try {
+
+    const [result] = await Promise.all([
+      db.rpc("draw_fortune"),
+      new Promise(resolve => setTimeout(resolve, 1300))
+    ]);
+
+    if (result.error) throw result.error;
+
+    await loadFortune();
+
+    const delta = Number(result.data && result.data.delta_exp || 0);
+
+    if (delta !== 0) await afterRewardChange(result.data, null, null);
+
+    openFortuneDetail(true);
+
+    if (delta > 0) {
+      showToast(`🎴 ${FORTUNE_LEVELS[result.data.level].name}！+${delta} EXP / +${Number(result.data.delta_gold || 0)} 金幣`);
+    }
+
+  } catch (error) {
+
+    console.error("抽籤失敗：", error);
+
+    closeModal();
+
+    alert("抽籤失敗：" + error.message);
+
+  } finally {
+
+    fortuneDrawing = false;
+
+  }
+
+}
+
+
+function openFortuneDetail(justDrawn = false) {
+
+  const draw = todayFortune();
+
+  if (!draw) return;
+
+  const f = buildFortune(draw);
+
+  const history = fortuneDraws
+    .filter(row => row.draw_date !== getToday())
+    .slice(0, 13)
+    .map(row => {
+      const level = FORTUNE_LEVELS[row.level] || FORTUNE_LEVELS.fair;
+      return `<span class="fortune-history-chip ${level.className}" title="${row.draw_date}">${formatShortDate(row.draw_date)} ${level.name}</span>`;
+    })
+    .join("");
+
+
+  openModal({
+
+    title: justDrawn ? "🎴 抽到了！" : "🎴 今日運勢",
+
+    bodyHtml: `
+
+      <div class="fortune-card ${f.level.className} ${justDrawn ? "reveal" : ""}">
+
+        <div class="fortune-level">${f.level.name}</div>
+
+        <div class="fortune-note">${escapeHtml(f.level.note)}</div>
+
+        <div class="fortune-poem">
+          ${f.poem.map(line => `<div>${escapeHtml(line)}</div>`).join("")}
+        </div>
+
+        <div class="fortune-meaning"><b>解曰</b>${escapeHtml(f.meaning)}</div>
+
+        <div class="fortune-aspects">
+          ${f.aspects.map(a => `
+            <div class="fortune-aspect">
+              <span>${a.name}</span>
+              <span class="stars" aria-label="${a.stars} 顆星">${starsText(a.stars)}</span>
+            </div>
+          `).join("")}
+        </div>
+
+        <div class="fortune-yiji-box">
+          <div><b class="yi">宜</b>${f.good.map(escapeHtml).join("、")}</div>
+          <div><b class="ji">忌</b>${f.bad.map(escapeHtml).join("、")}</div>
+        </div>
+
+        <div class="fortune-lucky">
+          <span>幸運色 <i class="fortune-color" style="background:${f.color.hex}"></i>${f.color.name}</span>
+          <span>幸運數字 <b>${f.number}</b></span>
+        </div>
+
+        <div class="fortune-reward">🎁 抽籤獎勵 +${f.exp} EXP / +${f.gold} 金幣</div>
+
+      </div>
+
+      ${history ? `<div class="fortune-history"><div class="small-note">最近的籤</div>${history}</div>` : ""}
+
+      <p class="small-note" style="margin-top:10px;">每天一支，明天再來。籤只是參考，今天怎麼過還是看你自己 💪</p>
+
+    `,
+
+    buttons: [{ label: "好，開始今天", className: "btn btn-primary" }]
+
+  });
+
+}
+
+
+/* 給每日結算 */
+function getFortuneReportLevel() {
+
+  const draw = todayFortune();
+
+  return draw ? (FORTUNE_LEVELS[draw.level] || FORTUNE_LEVELS.fair).name : null;
+
+}
+
+
+Object.assign(window, {
+  setHabitChartSelection,
+  drawFortune,
+  openFortuneDetail
+});
+
+
+console.log("✅ 習慣圖表 / 每日抽籤 載入完成");
+
