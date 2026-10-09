@@ -2712,6 +2712,564 @@
 
 
     /* ==============================
+       彈出視窗：時間 / 數字 / 勾選
+    ============================== */
+
+    .modal-field input[type="time"],
+    .modal-field input[type="number"] {
+
+      width: 100%;
+
+      padding: 10px 12px;
+
+      border: 1px solid #343b4b;
+
+      border-radius: 10px;
+
+      background: #10131a;
+
+      color: #fff;
+
+      outline: none;
+
+      font-size: 15px;
+
+      color-scheme: dark;
+    }
+
+
+    .modal-field input:disabled {
+
+      opacity: .45;
+    }
+
+
+    .modal-field label.check-line {
+
+      display: flex;
+
+      align-items: center;
+
+      gap: 8px;
+
+      font-size: 15px;
+
+      opacity: 1;
+
+      margin: 0;
+
+      cursor: pointer;
+    }
+
+
+    .modal-field label.check-line input {
+
+      width: 18px;
+
+      height: 18px;
+    }
+
+
+    /* ==============================
+       🏷️ 任務分類
+    ============================== */
+
+    .cat-tag {
+
+      display: inline-flex;
+
+      align-items: center;
+
+      gap: 4px;
+
+      padding: 3px 9px;
+
+      border-radius: 999px;
+
+      font-size: 12px;
+
+      color: #fff;
+
+      background: color-mix(in srgb, var(--cat, #9ca5bd) 24%, #10131a);
+
+      border: 1px solid color-mix(in srgb, var(--cat, #9ca5bd) 55%, transparent);
+
+      white-space: nowrap;
+    }
+
+
+    .task-meta .cat-tag {
+
+      background: color-mix(in srgb, var(--cat, #9ca5bd) 24%, #10131a);
+
+      padding: 3px 8px;
+
+      border-radius: 999px;
+    }
+
+
+    .task-item {
+
+      border-left: 3px solid var(--cat, #272d3a);
+    }
+
+
+    .task-group {
+
+      margin-bottom: 14px;
+    }
+
+
+    .task-group-head {
+
+      display: flex;
+
+      align-items: center;
+
+      justify-content: space-between;
+
+      gap: 8px;
+
+      margin: 4px 2px 8px;
+
+      font-size: 14px;
+
+      font-weight: bold;
+
+      color: var(--cat, #bfc5d6);
+    }
+
+
+    .task-group-head .count {
+
+      font-size: 12px;
+
+      font-weight: normal;
+
+      color: #9ca5bd;
+    }
+
+
+    .task-cat-filter {
+
+      margin: -4px 0 14px;
+    }
+
+
+    .task-cat-filter:empty {
+
+      display: none;
+    }
+
+
+    .chip.cat-chip {
+
+      border-color: color-mix(in srgb, var(--cat) 55%, #343b4b);
+    }
+
+
+    .chip.cat-chip.active {
+
+      background: var(--cat);
+
+      border-color: var(--cat);
+
+      color: #10131a;
+
+      font-weight: bold;
+    }
+
+
+    .chip .chip-count {
+
+      opacity: .65;
+
+      margin-left: 2px;
+    }
+
+
+    .cat-usage {
+
+      margin-left: 6px;
+    }
+
+
+    .manage-add input.emoji-input,
+    .emoji-input {
+
+      flex: 0 0 64px;
+
+      width: 64px;
+
+      text-align: center;
+    }
+
+
+    .emoji-picks,
+    .color-picks {
+
+      display: flex;
+
+      flex-wrap: wrap;
+
+      gap: 6px;
+
+      margin-bottom: 12px;
+    }
+
+
+    .emoji-pick {
+
+      border: 1px solid #343b4b;
+
+      background: #10131a;
+
+      border-radius: 8px;
+
+      padding: 4px 7px;
+
+      font-size: 17px;
+    }
+
+
+    .color-pick {
+
+      position: relative;
+
+      display: inline-block !important;
+
+      margin: 0 !important;
+
+      opacity: 1 !important;
+
+      cursor: pointer;
+    }
+
+
+    .color-pick input {
+
+      position: absolute;
+
+      opacity: 0;
+
+      pointer-events: none;
+    }
+
+
+    .color-pick span {
+
+      display: block;
+
+      width: 30px;
+
+      height: 30px;
+
+      border-radius: 50%;
+
+      background: var(--cat);
+
+      border: 3px solid transparent;
+    }
+
+
+    .color-pick input:checked + span {
+
+      border-color: #fff;
+
+      box-shadow: 0 0 0 2px var(--cat);
+    }
+
+
+    /* ==============================
+       🌿 生活：😴 作息 / 🍱 三餐
+    ============================== */
+
+    .sleep-quick:empty {
+
+      display: none;
+    }
+
+
+    .sleep-quick {
+
+      display: flex;
+
+      align-items: center;
+
+      flex-wrap: wrap;
+
+      gap: 8px 10px;
+
+      margin: 10px 0 4px;
+
+      font-size: 14px;
+    }
+
+
+    .sleep-quick .done-text {
+
+      color: #c9d1e3;
+    }
+
+
+    .link-btn {
+
+      border: 0;
+
+      background: none;
+
+      color: #8f9bff;
+
+      padding: 0;
+
+      font-size: 13px;
+    }
+
+
+    .sleep-buttons {
+
+      display: grid;
+
+      grid-template-columns: 1fr 1fr;
+
+      gap: 10px;
+
+      margin-bottom: 14px;
+    }
+
+
+    .sleep-btn {
+
+      padding: 14px 10px;
+
+      font-size: 16px;
+
+      font-weight: bold;
+
+      border-radius: 12px;
+
+      border: 1px solid #343b4b;
+
+      background: #10131a;
+
+      color: #fff;
+    }
+
+
+    .sleep-btn.wake {
+
+      border-color: #ffd76a66;
+    }
+
+
+    .sleep-btn.bed {
+
+      border-color: #9b6cff66;
+    }
+
+
+    .sleep-btn.recorded {
+
+      font-weight: normal;
+
+      font-size: 14px;
+
+      color: #c9d1e3;
+    }
+
+
+    .sleep-stats {
+
+      display: grid;
+
+      grid-template-columns: repeat(3, 1fr);
+
+      gap: 8px;
+
+      margin-bottom: 6px;
+    }
+
+
+    .sleep-stat {
+
+      background: #10131a;
+
+      border: 1px solid #272d3a;
+
+      border-radius: 12px;
+
+      padding: 10px;
+
+      text-align: center;
+    }
+
+
+    .sleep-stat .label {
+
+      font-size: 12px;
+
+      opacity: .6;
+    }
+
+
+    .sleep-stat .value {
+
+      margin-top: 4px;
+
+      font-size: 20px;
+
+      font-weight: bold;
+
+      font-variant-numeric: tabular-nums;
+    }
+
+
+    .sub-title {
+
+      margin: 18px 0 6px;
+
+      font-size: 15px;
+    }
+
+
+    .table-wrap {
+
+      overflow-x: auto;
+    }
+
+
+    .data-table tr.clickable-row {
+
+      cursor: pointer;
+    }
+
+
+    .data-table tr.clickable-row:hover td {
+
+      background: rgba(255, 255, 255, .04);
+    }
+
+
+    .data-table tr.is-today td {
+
+      background: rgba(88, 101, 242, .08);
+    }
+
+
+    .data-table td .muted {
+
+      opacity: .4;
+    }
+
+
+    .meal-slots {
+
+      display: grid;
+
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+
+      gap: 10px;
+    }
+
+
+    .meal-slot {
+
+      display: block;
+
+      width: 100%;
+
+      font: inherit;
+
+      cursor: pointer;
+
+      text-align: left;
+
+      background: #10131a;
+
+      border: 1px solid #272d3a;
+
+      border-radius: 12px;
+
+      padding: 12px;
+
+      color: #fff;
+
+      min-height: 76px;
+    }
+
+
+    .meal-slot:hover {
+
+      border-color: #5865f2;
+    }
+
+
+    .meal-slot.empty {
+
+      border-style: dashed;
+    }
+
+
+    .meal-slot-head {
+
+      display: flex;
+
+      justify-content: space-between;
+
+      gap: 8px;
+
+      font-size: 13px;
+
+      opacity: .75;
+    }
+
+
+    .meal-slot-content {
+
+      display: block;
+
+      margin-top: 6px;
+
+      font-size: 15px;
+
+      word-break: break-word;
+    }
+
+
+    .meal-slot.empty .meal-slot-content,
+    .meal-slot.skipped .meal-slot-content {
+
+      opacity: .5;
+    }
+
+
+    .meal-table td.meal-cell {
+
+      max-width: 110px;
+
+      overflow: hidden;
+
+      text-overflow: ellipsis;
+
+      white-space: nowrap;
+
+      cursor: pointer;
+    }
+
+
+    .meal-chips {
+
+      display: flex;
+
+      flex-wrap: wrap;
+
+      gap: 6px;
+
+      margin: -4px 0 12px;
+    }
+
+
+    /* ==============================
        RWD
     ============================== */
 
@@ -2951,6 +3509,65 @@
 
     }
 
+    @media (max-width: 500px) {
+
+      .sleep-stat .value {
+
+        font-size: 17px;
+
+      }
+
+
+      .meal-slots {
+
+        grid-template-columns: 1fr 1fr;
+
+      }
+
+
+      .meal-slot {
+
+        padding: 10px;
+
+      }
+
+
+      .meal-table td.meal-cell {
+
+        max-width: 72px;
+
+      }
+
+
+      /* 分類管理：手機也維持一行（名稱在左、按鈕在右） */
+      .manage-row.cat-row {
+
+        flex-direction: row;
+
+        align-items: center;
+
+      }
+
+
+      .cat-usage {
+
+        display: block;
+
+        margin: 4px 0 0;
+
+        font-size: 12px;
+
+      }
+
+
+      .cat-row .manage-actions .icon-btn {
+
+        padding: 6px 7px;
+
+      }
+
+    }
+
   </style>
 
 </head>
@@ -3113,6 +3730,11 @@
       <span class="tab-badge" id="nav-ideas-badge"></span>
     </button>
 
+    <button class="tab-btn" data-page="life" onclick="showPage('life')">
+      <span class="tab-icon">🌿</span>
+      <span class="tab-label">生活</span>
+    </button>
+
     <button class="tab-btn" data-page="records" onclick="showPage('records')">
       <span class="tab-icon">📊</span>
       <span class="tab-label">紀錄</span>
@@ -3241,6 +3863,10 @@
       </div>
 
 
+      <!-- ☀️ 起床時間（詳細在「🌿 生活」頁） -->
+      <div class="sleep-quick" id="wake-quick"></div>
+
+
       <div id="morning-list">
         <div class="empty-state">
           載入中...
@@ -3301,6 +3927,10 @@
 
 
       </div>
+
+
+      <!-- 🏷️ 分類篩選（今天有 2 個以上分類才會出現） -->
+      <div class="chip-row task-cat-filter" id="task-category-filter"></div>
 
 
       <div id="task-list">
@@ -3410,6 +4040,10 @@
         </button>
 
       </div>
+
+
+      <!-- 🌙 上床時間（詳細在「🌿 生活」頁） -->
+      <div class="sleep-quick" id="bed-quick"></div>
 
 
       <div
@@ -3743,6 +4377,56 @@
 
 
 
+    <!-- ==============================
+         🏷️ 任務分類
+    ============================== -->
+
+    <section class="card" id="category-card">
+
+      <h2>
+        🏷️ 任務分類
+      </h2>
+
+      <p class="small-note" style="margin-top:-5px;">
+        今日任務會照分類分組。可以新增、改名、換圖示和顏色、調整順序；
+        刪除時要選一個分類接手原本的任務。
+      </p>
+
+      <div id="category-manager-list" style="margin-top:12px;">
+        <div class="empty-state">
+          載入中...
+        </div>
+      </div>
+
+      <div class="manage-add" id="category-add-row">
+
+        <input
+          type="text"
+          id="cat-new-emoji"
+          class="emoji-input"
+          maxlength="8"
+          placeholder="📌"
+          aria-label="圖示"
+        >
+
+        <input
+          type="text"
+          id="cat-new-label"
+          maxlength="20"
+          placeholder="新分類，例如：工作"
+          onkeydown="if (event.key === 'Enter') addCategory()"
+        >
+
+        <button class="btn btn-primary" onclick="addCategory()">
+          ＋ 新增分類
+        </button>
+
+      </div>
+
+    </section>
+
+
+
 
     </div>
 
@@ -3938,6 +4622,92 @@
 
 
 
+
+    </div>
+
+
+    <!-- ================= 📄 分頁：life ================= -->
+    <div class="page" data-page="life">
+
+    <div class="page-title">
+
+      <h1>
+        🌿 生活
+      </h1>
+
+      <p>
+        作息和三餐，記下來就好。
+      </p>
+
+    </div>
+
+
+    <!-- ==============================
+         😴 作息
+    ============================== -->
+
+    <section class="card" id="sleep-card">
+
+      <div class="card-head">
+
+        <h2>
+          😴 作息
+        </h2>
+
+        <div class="card-head-right">
+
+          <button class="btn btn-small" onclick="openSleepSettings()">
+            🎯 目標
+          </button>
+
+          <button class="btn btn-small" onclick="openSleepEditor()">
+            ＋ 補填
+          </button>
+
+        </div>
+
+      </div>
+
+      <div id="sleep-body">
+        <div class="empty-state">
+          載入中...
+        </div>
+      </div>
+
+    </section>
+
+
+    <!-- ==============================
+         🍱 三餐
+    ============================== -->
+
+    <section class="card" id="meals-card">
+
+      <div class="card-head">
+
+        <h2>
+          🍱 三餐
+        </h2>
+
+        <div class="card-head-right">
+
+          <span class="pill" id="meals-cost-pill"></span>
+
+          <button class="btn btn-small" onclick="openMealEditor()">
+            ＋ 補記
+          </button>
+
+        </div>
+
+      </div>
+
+      <div id="meals-body">
+        <div class="empty-state">
+          載入中...
+        </div>
+      </div>
+
+    </section>
 
     </div>
 
