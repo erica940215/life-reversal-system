@@ -3960,7 +3960,7 @@ function resetTodayModules() {
 
   if (typeof closeModal === "function") closeModal();
 
-  toggleAddTaskPanel(false);
+  updateNavBadges();
 
   closeIdeaCapture();
 
@@ -4766,6 +4766,9 @@ function renderFocusClock() {
     ? `${focusTimer.status === "running" ? "⏱" : "⏸"} ${text}・${ORIGINAL_TITLE}`
     : ORIGINAL_TITLE;
 
+  /* 換到別的分頁時，導覽列也看得到計時 */
+  updateNavBadges();
+
 }
 
 
@@ -4858,8 +4861,13 @@ function renderFocusLog() {
         <td>${formatTimeOfDay(session.started_at)}</td>
         <td>${escapeHtml(session.subject)}</td>
         <td class="num">${formatDuration(session.duration_seconds)}</td>
-        <td>${session.mode === "down" ? "倒計時" : "正計時"}</td>
-        <td class="num">
+        <td>
+          ${session.is_manual ? "補記" : session.mode === "down" ? "倒計時" : "正計時"}
+          ${session.edited_at ? '<span class="small-note">・已修改</span>' : ""}
+        </td>
+        <td class="num nowrap">
+          <button class="icon-btn" title="修改這筆"
+            onclick="openFocusEditor(${Number(session.id)})">✏️</button>
           <button class="icon-btn" title="刪除這筆"
             onclick="deleteFocusSession(${Number(session.id)})">🗑️</button>
         </td>
@@ -5443,6 +5451,8 @@ function renderIdeas() {
   document.getElementById("ideas-inbox-count").textContent =
     `收件匣 ${inbox.length}`;
 
+  updateNavBadges();
+
 
   /* 分類篩選 */
 
@@ -5920,32 +5930,12 @@ function shiftDate(dateText, n) {
 
 
 /* ＋ 新增任務面板 */
+/* 新增任務的表單現在固定在「📋 任務」頁；保留這個名字給舊的呼叫用 */
 function toggleAddTaskPanel(forceOpen) {
 
-  const panel = document.getElementById("add-task-panel");
-  const button = document.getElementById("add-task-toggle");
+  if (forceOpen === false) return;
 
-  if (!panel) return;
-
-  const open =
-    typeof forceOpen === "boolean"
-      ? forceOpen
-      : panel.style.display === "none";
-
-  panel.style.display = open ? "block" : "none";
-
-  if (button) {
-    button.textContent = open ? "✕ 收起" : "＋ 新增任務";
-    button.classList.toggle("btn-primary", !open);
-  }
-
-  if (open) {
-
-    const input = document.getElementById("new-task-title");
-
-    if (input) setTimeout(() => input.focus(), 30);
-
-  }
+  goToAddTask();
 
 }
 
@@ -6748,7 +6738,7 @@ function startFocusFromMainline() {
   }
 
 
-  card.scrollIntoView({ behavior: "smooth", block: "start" });
+  showPage("focus");
 
   card.classList.remove("flash");
   void card.offsetWidth;   // 讓動畫可以重播
@@ -6819,8 +6809,7 @@ async function setMainlineFromIdea(ideaId) {
 
   await loadMainline();
 
-  document.getElementById("mainline-card")
-    .scrollIntoView({ behavior: "smooth", block: "start" });
+  showPage("today");
 
 }
 
@@ -7090,7 +7079,7 @@ let habitMakeupSet = new Set();     // 補打卡的那幾筆
 let morningDoneSet = new Set();     // 晨間全部完成的日子（從獎勵紀錄來）
 let habitEditing = false;
 
-let habitCalendarOpen = false;
+let habitCalendarOpen = true;     // 在「📊 紀錄」頁，預設打開
 let habitCalendarMonth = null;      // "2026-10"
 
 
@@ -7391,7 +7380,7 @@ function renderHabits() {
     })
     .join("") + `
       <div class="reward-hint">
-        🎁 當天打卡每個 +5 EXP / +3 金幣・沒打到的日子可以到 🗓️ 習慣月曆 補打卡（不給獎勵，連續天數照算）
+        🎁 當天打卡每個 +5 EXP / +3 金幣・沒打到的日子可以到「📊 紀錄 → 🗓️ 習慣月曆」補打卡（不給獎勵，連續天數照算）
       </div>
     `;
 
@@ -7944,6 +7933,10 @@ async function renderHabitCalendar() {
 
   if (!box || !habitCalendarOpen) return;
 
+  if (!habitCalendarMonth) {
+    habitCalendarMonth = getToday().slice(0, 7);
+  }
+
 
   const today = getToday();
   const [year, month] = habitCalendarMonth.split("-").map(Number);
@@ -8183,4 +8176,416 @@ Object.assign(window, {
 
 
 console.log("✅ 習慣追蹤 載入完成");
+
+
+/* #########################################################
+   📄 分頁 / ⏱️ 專注編輯與補記
+######################################################### */
+
+
+/* =========================================================
+   P1. 分頁（網址後面的 #today、#focus… 會記住目前在哪一頁）
+========================================================= */
+
+const PAGES = ["today", "tasks", "focus", "ideas", "records"];
+
+
+function currentPageFromHash() {
+
+  const name = (location.hash || "").replace("#", "");
+
+  return PAGES.includes(name) ? name : null;
+
+}
+
+
+function applyPage(name) {
+
+  if (!PAGES.includes(name)) name = "today";
+
+  document.querySelectorAll(".page").forEach(page => {
+    page.classList.toggle("active", page.dataset.page === name);
+  });
+
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.page === name);
+  });
+
+  storageSet("lastPage", name);
+
+}
+
+
+function showPage(name) {
+
+  if (!PAGES.includes(name)) return;
+
+  if (currentPageFromHash() !== name) {
+
+    /* 改網址 → hashchange 會切換頁面，瀏覽器的「上一頁」也能用 */
+    location.hash = name;
+
+  } else {
+
+    applyPage(name);
+
+  }
+
+  window.scrollTo(0, 0);
+
+}
+
+
+window.addEventListener("hashchange", () => {
+
+  applyPage(currentPageFromHash() || "today");
+
+});
+
+
+/* 一打開網頁就先決定在哪一頁 */
+applyPage(currentPageFromHash() || storageGet("lastPage") || "today");
+
+
+/* 「今日任務」的＋新增任務 → 到任務頁 */
+function goToAddTask() {
+
+  showPage("tasks");
+
+  setTimeout(() => {
+    const input = document.getElementById("new-task-title");
+    if (input) input.focus();
+  }, 50);
+
+}
+
+
+/* 導覽列：專注計時中顯示時間、想法收件匣數量 */
+function updateNavBadges() {
+
+  const focusLabel = document.getElementById("nav-focus-label");
+  const focusBtn = document.querySelector('.tab-btn[data-page="focus"]');
+
+  if (focusLabel && focusBtn) {
+
+    if (typeof focusTimer !== "undefined" && focusTimer) {
+
+      const clock = document.getElementById("focus-clock");
+
+      focusLabel.textContent =
+        (focusTimer.status === "paused" ? "⏸ " : "") +
+        (clock ? clock.textContent.trim() : "專注");
+
+      focusBtn.classList.add("running");
+
+    } else {
+
+      focusLabel.textContent = "專注";
+
+      focusBtn.classList.remove("running");
+
+    }
+
+  }
+
+
+  const ideasBadge = document.getElementById("nav-ideas-badge");
+
+  if (ideasBadge && typeof ideas !== "undefined") {
+
+    const inbox = ideas.filter(idea => idea.status === "inbox").length;
+
+    ideasBadge.textContent = inbox > 0 ? String(inbox) : "";
+
+  }
+
+}
+
+
+/* =========================================================
+   P2. ⏱️ 編輯專注紀錄 / 補記
+   - 今天的修改、補記：專注獎勵照算
+   - 前幾天的：可以改，但不影響獎勵
+========================================================= */
+
+const FOCUS_MAX_MINUTES = 720;   // 單筆最長 12 小時
+
+
+/* 2026-10-09 + 14:30 → ISO 時間（台灣時間） */
+function taipeiToIso(dateText, timeText) {
+
+  return new Date(`${dateText}T${timeText}:00+08:00`).toISOString();
+
+}
+
+
+/* ISO → 台灣時間 HH:MM（24 小時制） */
+function isoToTaipeiTime(iso) {
+
+  return new Date(iso).toLocaleTimeString("sv-SE", {
+    timeZone: "Asia/Taipei",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+
+}
+
+
+function focusSubjectOptionsHtml(selected) {
+
+  const subjects = [...new Set([
+    ...focusKnownSubjects,
+    ...(selected ? [selected] : [])
+  ])];
+
+  return subjects
+    .map(subject => `
+      <option value="${escapeHtml(subject)}" ${subject === selected ? "selected" : ""}>
+        ${escapeHtml(subject)}
+      </option>
+    `)
+    .join("") + `<option value="__custom__">＋ 自訂科目…</option>`;
+
+}
+
+
+/*
+  sessionId 有給 → 編輯那一筆
+  沒給 → 補記新的一筆
+*/
+function openFocusEditor(sessionId) {
+
+  const session = sessionId
+    ? focusSessions.find(row => Number(row.id) === Number(sessionId))
+    : null;
+
+  if (sessionId && !session) return;
+
+
+  const today = getToday();
+
+  const now = new Date();
+
+  const defaultMinutes = 25;
+
+  const defaultStart = new Date(now.getTime() - defaultMinutes * 60000);
+
+
+  const subject = session
+    ? session.subject
+    : (document.getElementById("focus-subject").value !== "__custom__"
+        ? document.getElementById("focus-subject").value
+        : focusKnownSubjects[0]);
+
+  const dateText = session ? session.session_date : today;
+
+  const timeText = session
+    ? isoToTaipeiTime(session.started_at)
+    : isoToTaipeiTime(defaultStart.toISOString());
+
+  const minutes = session
+    ? Math.max(1, Math.round(Number(session.duration_seconds) / 60))
+    : defaultMinutes;
+
+
+  openModal({
+
+    title: session ? "✏️ 修改專注紀錄" : "＋ 補記專注",
+
+    bodyHtml: `
+
+      <div class="modal-field">
+        <label for="fe-subject">科目</label>
+        <select id="fe-subject"
+          onchange="document.getElementById('fe-custom').style.display = this.value === '__custom__' ? 'block' : 'none'">
+          ${focusSubjectOptionsHtml(subject)}
+        </select>
+        <input type="text" id="fe-custom" maxlength="30" placeholder="輸入新科目"
+          style="display:none; margin-top:8px;">
+      </div>
+
+      <div class="modal-row">
+
+        <div class="modal-field">
+          <label for="fe-date">日期</label>
+          <input type="date" id="fe-date" value="${escapeHtml(dateText)}" max="${today}"
+            ${session ? "disabled" : ""}>
+        </div>
+
+        <div class="modal-field">
+          <label for="fe-time">開始時間</label>
+          <input type="time" id="fe-time" value="${escapeHtml(timeText)}">
+        </div>
+
+      </div>
+
+      <div class="modal-field">
+        <label for="fe-minutes">專注了幾分鐘</label>
+        <input type="number" id="fe-minutes" min="1" max="${FOCUS_MAX_MINUTES}" value="${minutes}">
+      </div>
+
+      <p class="small-note">
+        ${session
+          ? "日期不能改；要改到別天，請刪掉這筆再補記一筆。"
+          : "忘記開計時器的時候用。"}
+        今天的修改和補記，專注獎勵照算；前幾天的可以改，但不影響獎勵。
+      </p>
+
+    `,
+
+    buttons: [
+      { label: "取消", className: "btn" },
+      {
+        label: session ? "儲存" : "補記",
+        className: "btn btn-primary",
+        onClick: () => saveFocusEditor(session)
+      }
+    ],
+
+    focus: "#fe-minutes"
+
+  });
+
+}
+
+
+async function saveFocusEditor(session) {
+
+  const select = document.getElementById("fe-subject");
+
+  const subject = select.value === "__custom__"
+    ? document.getElementById("fe-custom").value.trim()
+    : select.value;
+
+  const dateText = session
+    ? session.session_date
+    : document.getElementById("fe-date").value;
+
+  const timeText = document.getElementById("fe-time").value;
+
+  const minutes = Math.round(Number(document.getElementById("fe-minutes").value));
+
+
+  /* ---------- 檢查 ---------- */
+
+  if (!subject) {
+    alert("請選擇或輸入科目");
+    return false;
+  }
+
+  if (!dateText || !timeText) {
+    alert("請填日期和開始時間");
+    return false;
+  }
+
+  if (!(minutes >= 1 && minutes <= FOCUS_MAX_MINUTES)) {
+    alert(`分鐘數要在 1～${FOCUS_MAX_MINUTES} 之間（單筆最長 12 小時）`);
+    return false;
+  }
+
+  const startIso = taipeiToIso(dateText, timeText);
+  const start = new Date(startIso);
+  const end = new Date(start.getTime() + minutes * 60000);
+
+  if (start.getTime() > Date.now()) {
+    alert("開始時間不能是未來");
+    return false;
+  }
+
+  if (end.getTime() > Date.now() + 60000) {
+    alert("結束時間會超過現在，請把開始時間往前調，或把分鐘數改少");
+    return false;
+  }
+
+
+  /* ---------- 存 ---------- */
+
+  let error;
+
+  if (session) {
+
+    ({ error } = await db
+      .from("focus_sessions")
+      .update({
+        subject,
+        started_at: startIso,
+        ended_at: end.toISOString(),
+        duration_seconds: minutes * 60,
+        edited_at: new Date().toISOString()
+      })
+      .eq("id", session.id)
+      .eq("user_id", currentUser.id));
+
+  } else {
+
+    ({ error } = await db
+      .from("focus_sessions")
+      .insert({
+        user_id: currentUser.id,
+        subject,
+        mode: "up",
+        planned_minutes: null,
+        duration_seconds: minutes * 60,
+        started_at: startIso,
+        ended_at: end.toISOString(),
+        session_date: dateText,
+        is_manual: true
+      }));
+
+  }
+
+
+  if (error) {
+
+    console.error("專注紀錄儲存失敗：", error);
+
+    alert("儲存失敗：" + error.message);
+
+    return false;
+
+  }
+
+
+  await loadFocus();
+
+
+  /* 獎勵：只有今天的會變動（資料庫也會擋） */
+
+  if (dateText === getToday()) {
+
+    const reward = await syncFocusReward(dateText, true);
+
+    const delta = reward ? Number(reward.delta_exp || 0) : 0;
+
+    const verb = session ? "已修改" : "已補記";
+
+    if (delta > 0) {
+      showToast(`✅ ${verb}・🎁 +${delta} EXP / +${Number(reward.delta_gold || 0)} 金幣`);
+    } else if (delta < 0) {
+      showToast(`✅ ${verb}・專注時間變少，收回 ${delta} EXP`);
+    } else {
+      showToast(`✅ ${verb}：${subject} ${formatDuration(minutes * 60)}`);
+    }
+
+  } else {
+
+    showToast(`✅ ${session ? "已修改" : "已補記"} ${formatShortDate(dateText)} ${subject} ${formatDuration(minutes * 60)}（前幾天的不影響獎勵）`);
+
+  }
+
+}
+
+
+/* =========================================================
+   P3. 給 HTML onclick 使用
+========================================================= */
+
+Object.assign(window, {
+  showPage,
+  goToAddTask,
+  openFocusEditor
+});
+
+
+console.log("✅ 分頁 / 專注補記 載入完成");
 
