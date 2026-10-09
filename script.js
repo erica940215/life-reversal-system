@@ -45,9 +45,61 @@ document.addEventListener("DOMContentLoaded", async () => {
     await checkSession();
   } catch (error) {
     console.error("初始化失敗：", error);
+    showLoggedOutUI();
   }
 
 });
+
+
+/*
+  開頁時 body 有 "booting"：先顯示「載入中」，
+  確認完登入狀態才決定顯示登入畫面還是主畫面，
+  已登入的人就不會先閃一下登入畫面
+*/
+
+function finishBooting() {
+
+  document.body.classList.remove("booting");
+
+}
+
+
+/* =========================================================
+   跨日自動更新
+   網頁從昨晚開到今天時，回到網頁就自動換成今天的資料
+========================================================= */
+
+let loadedForDate = null;
+
+
+function refreshIfNewDay() {
+
+  if (!currentUser || !loadedForDate) return;
+
+  if (getToday() !== loadedForDate) {
+
+    console.log("📅 換日了，重新載入今天的資料");
+
+    showLoggedInUI();
+
+  }
+
+}
+
+
+document.addEventListener("visibilitychange", () => {
+
+  if (document.visibilityState === "visible") {
+
+    refreshIfNewDay();
+
+  }
+
+});
+
+window.addEventListener("focus", refreshIfNewDay);
+
+setInterval(refreshIfNewDay, 60 * 1000);
 
 
 /* =========================================================
@@ -238,7 +290,15 @@ async function registerUser() {
       error
     } = await db.auth.signUp({
       email,
-      password
+      password,
+      options: {
+        /*
+          驗證信點下去要回到這個網站
+          （這個網址也要加進 Supabase 的 Redirect URLs）
+        */
+        emailRedirectTo:
+          window.location.origin + window.location.pathname
+      }
     });
 
 
@@ -346,6 +406,9 @@ async function logoutUser() {
 
 async function showLoggedInUI() {
 
+  /* 記住這次載入的是哪一天（跨日自動更新用） */
+  loadedForDate = getToday();
+
   const authSection =
     document.getElementById("auth-section");
 
@@ -358,6 +421,9 @@ async function showLoggedInUI() {
     authSection.style.display = "none";
 
   }
+
+
+  finishBooting();
 
 
   if (appSection) {
@@ -486,6 +552,11 @@ function showLoggedOutUI() {
     authSection.style.display = "";
 
   }
+
+
+  loadedForDate = null;
+
+  finishBooting();
 
 
   if (appSection) {
