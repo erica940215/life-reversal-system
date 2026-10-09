@@ -31,6 +31,7 @@ let currentProfile = null;
 let currentTasks = [];        // 今天的任務（不含已跳過）
 let skippedTasks = [];        // 今天「只跳過今天」的重複任務
 let currentTaskFilter = "all";
+let currentTaskCategoryFilter = "all";   // 今日任務的分類篩選
 let currentManagedTab = "repeat";   // 任務管理分頁：repeat / once
 let taskTemplates = [];       // 重複任務的範本
 let carriedOverForDate = null;      // 今天已經順延過了嗎
@@ -469,6 +470,24 @@ async function showLoggedInUI() {
 
     console.error(
       "玩家資料載入失敗：",
+      error
+    );
+
+  }
+
+
+  /*
+    載入任務分類（任務要照分類分組，所以先載）
+  */
+
+  try {
+
+    await loadTaskCategories();
+
+  } catch (error) {
+
+    console.error(
+      "任務分類載入失敗：",
       error
     );
 
@@ -930,35 +949,59 @@ function getDifficultyLabel(difficulty) {
 
 
 /* =========================================================
-   16. 分類文字
+   16. 分類（🏷️ 可以自訂，存在 task_categories；這裡是預設值）
 ========================================================= */
 
+const DEFAULT_TASK_CATEGORIES = [
+  { key: "study",    label: "學習",     emoji: "📚", color: "#5865f2" },
+  { key: "toeic",    label: "多益",     emoji: "🔤", color: "#4fc3f7" },
+  { key: "focus",    label: "專注",     emoji: "🎯", color: "#9b6cff" },
+  { key: "health",   label: "健康",     emoji: "💪", color: "#42d392" },
+  { key: "survival", label: "生存整理", emoji: "🧹", color: "#ff9f5a" },
+  { key: "personal", label: "個人生活", emoji: "🏠", color: "#ffd76a" },
+  { key: "daily",    label: "每日收尾", emoji: "🌙", color: "#9ca5bd" },
+  { key: "random",   label: "隨機自律", emoji: "🎲", color: "#ff6b81" }
+];
+
+/* 目前的分類（登入後從資料庫讀；讀不到就用預設） */
+let taskCategories = DEFAULT_TASK_CATEGORIES.map(
+  (category, index) => ({ ...category, sort_order: index + 1 })
+);
+
+
+function findCategory(key) {
+
+  return taskCategories.find(category => category.key === key)
+    || DEFAULT_TASK_CATEGORIES.find(category => category.key === key)
+    || { key: key || "", label: key || "其他", emoji: "📦", color: "#9ca5bd" };
+
+}
+
+
+/* 顏色只接受 #RRGGBB，避免奇怪的字串跑進 style */
+function safeColor(color) {
+
+  return /^#[0-9a-fA-F]{6}$/.test(color || "") ? color : "#9ca5bd";
+
+}
+
+
+/* 純文字「📚 學習」（放進 HTML 前要 escapeHtml） */
 function getCategoryLabel(category) {
 
-  const labels = {
+  const found = findCategory(category);
 
-    survival: "生存整理",
+  return `${found.emoji} ${found.label}`;
 
-    personal: "個人生活",
-
-    study: "學習",
-
-    toeic: "多益",
-
-    focus: "專注",
-
-    health: "健康",
-
-    daily: "每日收尾",
-
-    random: "隨機自律"
-
-  };
+}
 
 
-  return labels[category]
-    || category
-    || "其他";
+/* 有顏色的分類小標籤 */
+function categoryTagHtml(category) {
+
+  const found = findCategory(category);
+
+  return `<span class="cat-tag" style="--cat:${safeColor(found.color)}">${escapeHtml(found.emoji)} ${escapeHtml(found.label)}</span>`;
 
 }
 
@@ -1170,6 +1213,34 @@ function renderTasks() {
 
 
   /*
+    分類篩選（今天有用到 2 個以上分類才顯示）
+  */
+
+  const presentKeys =
+    categoryKeysInUse(currentTasks);
+
+  if (
+    currentTaskCategoryFilter !== "all" &&
+    !presentKeys.includes(currentTaskCategoryFilter)
+  ) {
+
+    currentTaskCategoryFilter = "all";
+
+  }
+
+  renderTaskCategoryFilter(presentKeys);
+
+  if (currentTaskCategoryFilter !== "all") {
+
+    tasks =
+      tasks.filter(
+        task => (task.category || "") === currentTaskCategoryFilter
+      );
+
+  }
+
+
+  /*
     已跳過的任務（放最下面，可以復原）
   */
 
@@ -1210,8 +1281,7 @@ function renderTasks() {
   }
 
 
-  list.innerHTML = tasks
-    .map(task => {
+  const renderOne = task => {
 
       const reward =
         getActualReward(task);
@@ -1244,6 +1314,7 @@ function renderTasks() {
         <div
           class="task-item ${task.completed ? "completed" : ""}"
           data-task-id="${task.id}"
+          style="--cat:${safeColor(findCategory(task.category).color)}"
         >
 
           <div class="task-main">
@@ -1269,10 +1340,6 @@ function renderTasks() {
               <div class="task-meta">
 
                 ${badges.join("")}
-
-                <span>
-                  ${getCategoryLabel(task.category)}
-                </span>
 
                 <span>
                   ${getDifficultyLabel(task.difficulty)}
@@ -1316,8 +1383,12 @@ function renderTasks() {
 
       `;
 
-    })
-    .join("") + skippedHtml;
+  };
+
+
+  /* 照分類分組（分類的順序 = 🏷️ 任務分類的順序） */
+
+  list.innerHTML = renderTaskGroups(tasks, renderOne) + skippedHtml;
 
 }
 
@@ -2320,11 +2391,6 @@ document.addEventListener("keydown", event => {
 
 /* 分類 / 難度下拉選單 */
 
-const CATEGORY_ORDER = [
-  "study", "toeic", "focus", "health",
-  "survival", "personal", "daily", "random"
-];
-
 const DIFFICULTY_ORDER = [
   "easy", "normal", "hard", "epic"
 ];
@@ -2332,10 +2398,17 @@ const DIFFICULTY_ORDER = [
 
 function categoryOptionsHtml(selected) {
 
-  return CATEGORY_ORDER
-    .map(key => `
-      <option value="${key}" ${key === selected ? "selected" : ""}>
-        ${getCategoryLabel(key)}
+  const list = [...taskCategories];
+
+  /* 舊任務的分類如果已經不在清單裡，也要能選到（才不會被偷偷改掉） */
+  if (selected && !list.some(category => category.key === selected)) {
+    list.push(findCategory(selected));
+  }
+
+  return list
+    .map(category => `
+      <option value="${escapeHtml(category.key)}" ${category.key === selected ? "selected" : ""}>
+        ${escapeHtml(getCategoryLabel(category.key))}
       </option>
     `)
     .join("");
@@ -2662,6 +2735,10 @@ function renderTaskManagement() {
 
   }
 
+
+  /* 分類管理的「重複 N 個」也跟著更新 */
+  renderCategoryManager();
+
 }
 
 
@@ -2721,7 +2798,7 @@ function renderManagedRepeat(list) {
             <div class="task-meta">
               ${status}
               <span>${describeRepeatRule(template)}</span>
-              <span>${getCategoryLabel(template.category)}</span>
+              ${categoryTagHtml(template.category)}
               <span>${getDifficultyLabel(template.difficulty)}</span>
               <span>
                 ${template.repeat_end_date
@@ -2793,7 +2870,7 @@ function renderManagedOnce(list) {
             <div class="task-meta">
               ${carried}
               <span>${escapeHtml(task.task_date)}</span>
-              <span>${getCategoryLabel(task.category)}</span>
+              ${categoryTagHtml(task.category)}
               <span>${getDifficultyLabel(task.difficulty)}</span>
             </div>
 
@@ -3417,6 +3494,14 @@ function buildDailyReport(selfRating) {
       ? getIdeaStats()
       : { added: 0, converted: 0 };
 
+  /* 😴 昨晚的作息、🍱 今天的三餐 */
+
+  const sleepReport =
+    getSleepReportStats();
+
+  const mealReport =
+    getMealStats();
+
 
   return {
 
@@ -3439,6 +3524,16 @@ function buildDailyReport(selfRating) {
     habits_done: getHabitStats().done,
 
     habits_total: getHabitStats().total,
+
+    wake_time: sleepReport.wakeTime,
+
+    bed_time: sleepReport.bedTime,
+
+    sleep_minutes: sleepReport.minutes,
+
+    meals_count: mealReport.count,
+
+    meal_cost: mealReport.cost,
 
     mainline_title:
       todayMainline ? todayMainline.title : null,
@@ -3654,7 +3749,7 @@ function renderDailyReport(report) {
         <div class="report-value">
           +${Number(report.exp_gained)}
           ${Number(report.bonus_exp || 0) > 0
-            ? `<div class="small-note" style="font-weight:normal;">其中額外獎勵 +${Number(report.bonus_exp)}（晨間 / 專注 / 主線）</div>`
+            ? `<div class="small-note" style="font-weight:normal;">其中額外獎勵 +${Number(report.bonus_exp)}（晨間 / 專注 / 主線 / 習慣 / 作息）</div>`
             : ""}
         </div>
 
@@ -3671,6 +3766,16 @@ function renderDailyReport(report) {
         <div class="report-label">📅 習慣</div>
         <div class="report-value">
           ${Number(report.habits_done || 0)} / ${Number(report.habits_total || 0)}
+        </div>
+
+        <div class="report-label">😴 作息</div>
+        <div class="report-value">
+          ${sleepReportText(report)}
+        </div>
+
+        <div class="report-label">🍱 三餐</div>
+        <div class="report-value">
+          ${Number(report.meals_count || 0)} / 3 餐${Number(report.meal_cost || 0) > 0 ? `・花了 $${Number(report.meal_cost)}` : ""}
         </div>
 
         <div class="report-label">⏱️ 專注</div>
@@ -3918,6 +4023,8 @@ async function loadTodayModules() {
     loadHabits,
     loadFocus,
     loadIdeas,
+    loadSleep,
+    loadMeals,
     loadTodayRewards
   ]) {
 
@@ -3956,6 +4063,17 @@ function resetTodayModules() {
   morningDoneSet = new Set();
   habitEditing = false;
 
+  sleepLogs = [];
+  sleepSettings = { ...SLEEP_DEFAULT_SETTINGS };
+  sleepLoadError = null;
+  mealLogs = [];
+  mealLoadError = null;
+  taskCategories = DEFAULT_TASK_CATEGORIES.map(
+    (category, index) => ({ ...category, sort_order: index + 1 })
+  );
+  taskCategoriesFromDb = false;
+  currentTaskCategoryFilter = "all";
+
   document.title = ORIGINAL_TITLE;
 
   if (typeof closeModal === "function") closeModal();
@@ -3965,7 +4083,6 @@ function resetTodayModules() {
   closeIdeaCapture();
 
 }
-
 
 /* =========================================================
    2. 🌅 晨間打卡
@@ -4225,6 +4342,9 @@ async function toggleMorningItem(itemId, checked, checkbox) {
 
   if (checkbox) checkbox.disabled = true;
 
+  /* 勾「起床」→ 順便記錄起床時間（還沒記錄才記） */
+  let wakeFromMorning = false;
+
 
   try {
 
@@ -4248,6 +4368,8 @@ async function toggleMorningItem(itemId, checked, checkbox) {
 
       morningChecked.add(Number(itemId));
 
+      wakeFromMorning = isWakeMorningItem(itemId);
+
     } else {
 
       const { error } = await db
@@ -4265,6 +4387,11 @@ async function toggleMorningItem(itemId, checked, checkbox) {
 
 
     renderMorning();
+
+
+    if (wakeFromMorning) {
+      await recordWake({ auto: true });
+    }
 
 
     /* 全部完成 → 資料庫發獎勵；又取消 → 收回（提示也由這裡顯示） */
@@ -4481,6 +4608,7 @@ async function moveMorningItem(itemId, direction) {
   await syncMorningReward();
 
 }
+
 
 /* =========================================================
    3. ⏱️ 專注
@@ -5779,7 +5907,7 @@ async function convertIdeaToTask(ideaId) {
       .insert({
         user_id: currentUser.id,
         title,
-        category: IDEA_TO_TASK_CATEGORY[idea.category] || "personal",
+        category: availableCategoryKey(IDEA_TO_TASK_CATEGORY[idea.category] || "personal"),
         difficulty: "normal",
         exp_reward: reward.exp,
         gold_reward: reward.gold,
@@ -7486,7 +7614,6 @@ async function syncHabitReward(habitId) {
 
 }
 
-
 /* =========================================================
    H3. 管理習慣
 ========================================================= */
@@ -8187,7 +8314,7 @@ console.log("✅ 習慣追蹤 載入完成");
    P1. 分頁（網址後面的 #today、#focus… 會記住目前在哪一頁）
 ========================================================= */
 
-const PAGES = ["today", "tasks", "focus", "ideas", "records"];
+const PAGES = ["today", "tasks", "focus", "ideas", "life", "records"];
 
 
 function currentPageFromHash() {
@@ -8589,3 +8716,2039 @@ Object.assign(window, {
 
 console.log("✅ 分頁 / 專注補記 載入完成");
 
+
+
+/* #########################################################
+   🏷️ 任務分類 / 🌿 生活（😴 作息・🍱 三餐）
+######################################################### */
+
+
+/* =========================================================
+   C1. 🏷️ 任務分類：載入
+   第一次使用會自動建立 8 個預設分類（原本的那 8 個）
+========================================================= */
+
+const CATEGORY_COLORS = [
+  "#5865f2", "#4fc3f7", "#9b6cff", "#42d392", "#ff9f5a",
+  "#ffd76a", "#9ca5bd", "#ff6b81", "#2dd4bf", "#f472b6"
+];
+
+const CATEGORY_EMOJIS = [
+  "📚", "🔤", "🎯", "💪", "🧹", "🏠", "🌙", "🎲", "💼", "💰",
+  "🎨", "🎵", "🏃", "🍳", "🛒", "✈️", "❤️", "⭐", "🧠", "📝"
+];
+
+let taskCategoriesFromDb = false;   // false = 資料庫還沒設定好，先用預設
+
+
+async function loadTaskCategories() {
+
+  if (!currentUser) return;
+
+  const query = () => db
+    .from("task_categories")
+    .select("*")
+    .eq("user_id", currentUser.id)
+    .order("sort_order", { ascending: true })
+    .order("id", { ascending: true });
+
+
+  let { data, error } = await query();
+
+
+  /* 第一次：建立預設分類 */
+
+  if (!error && (data || []).length === 0) {
+
+    const rows = DEFAULT_TASK_CATEGORIES.map((category, index) => ({
+      user_id: currentUser.id,
+      key: category.key,
+      label: category.label,
+      emoji: category.emoji,
+      color: category.color,
+      sort_order: index + 1
+    }));
+
+    const seeded = await db
+      .from("task_categories")
+      .upsert(rows, { onConflict: "user_id,key", ignoreDuplicates: true });
+
+    if (seeded.error) {
+      console.warn("建立預設分類失敗：", seeded.error);
+    }
+
+    ({ data, error } = await query());
+
+  }
+
+
+  if (error || (data || []).length === 0) {
+
+    if (error) console.warn("任務分類載入失敗（先用預設分類）：", error);
+
+    taskCategoriesFromDb = false;
+
+    taskCategories = DEFAULT_TASK_CATEGORIES.map(
+      (category, index) => ({ ...category, sort_order: index + 1 })
+    );
+
+  } else {
+
+    taskCategoriesFromDb = true;
+
+    taskCategories = data;
+
+  }
+
+
+  renderCategoryControls();
+
+}
+
+
+/* 分類變了 → 新增表單的下拉選單、管理清單、今日任務（refreshLists = 任務管理也重畫） */
+function renderCategoryControls(refreshLists = false) {
+
+  const select = document.getElementById("new-task-category");
+
+  if (select) {
+
+    const keep = select.value;
+
+    const exists = taskCategories.some(category => category.key === keep);
+
+    select.innerHTML = categoryOptionsHtml(exists ? keep : null);
+
+    select.value = exists ? keep : (taskCategories[0] ? taskCategories[0].key : "");
+
+  }
+
+  renderCategoryManager();
+
+  if (refreshLists) {
+    renderTasks();
+    renderTaskManagement();
+  }
+
+}
+
+
+/* 想要的分類不存在（被刪掉）→ 用第一個分類 */
+function availableCategoryKey(preferred) {
+
+  if (taskCategories.some(category => category.key === preferred)) return preferred;
+
+  return taskCategories[0] ? taskCategories[0].key : preferred;
+
+}
+
+
+/* 今天的任務用到哪些分類（照分類順序，不認得的放最後） */
+function categoryKeysInUse(tasks) {
+
+  const keys = [...new Set(tasks.map(task => task.category || ""))];
+
+  const rank = key => {
+    const index = taskCategories.findIndex(category => category.key === key);
+    return index === -1 ? 9999 : index;
+  };
+
+  return keys.sort((a, b) => rank(a) - rank(b));
+
+}
+
+
+/* =========================================================
+   C2. 🏷️ 今日任務：分類篩選 + 分組
+========================================================= */
+
+function renderTaskCategoryFilter(presentKeys) {
+
+  const box = document.getElementById("task-category-filter");
+
+  if (!box) return;
+
+  if (presentKeys.length < 2) {
+    box.innerHTML = "";
+    return;
+  }
+
+  const countOf = key =>
+    currentTasks.filter(task => (task.category || "") === key).length;
+
+  box.innerHTML = `
+    <button class="chip ${currentTaskCategoryFilter === "all" ? "active" : ""}"
+      onclick="setTaskCategoryFilter('all')">全部分類</button>
+  ` + presentKeys
+    .map(key => {
+
+      const found = findCategory(key);
+
+      return `
+        <button
+          class="chip cat-chip ${currentTaskCategoryFilter === key ? "active" : ""}"
+          style="--cat:${safeColor(found.color)}"
+          data-key="${escapeHtml(key)}"
+          onclick="setTaskCategoryFilter(this.dataset.key)"
+        >${escapeHtml(found.emoji)} ${escapeHtml(found.label)}<span class="chip-count">${countOf(key)}</span></button>
+      `;
+
+    })
+    .join("");
+
+}
+
+
+function setTaskCategoryFilter(key) {
+
+  currentTaskCategoryFilter =
+    currentTaskCategoryFilter === key && key !== "all" ? "all" : key;
+
+  renderTasks();
+
+}
+
+
+function renderTaskGroups(tasks, renderOne) {
+
+  return categoryKeysInUse(tasks)
+    .map(key => {
+
+      const found = findCategory(key);
+
+      const inGroup = tasks.filter(task => (task.category || "") === key);
+
+      const allOfKey = currentTasks.filter(task => (task.category || "") === key);
+
+      const done = allOfKey.filter(task => task.completed).length;
+
+      return `
+        <div class="task-group">
+          <div class="task-group-head" style="--cat:${safeColor(found.color)}">
+            <span>${escapeHtml(found.emoji)} ${escapeHtml(found.label)}</span>
+            <span class="count">${done} / ${allOfKey.length}</span>
+          </div>
+          ${inGroup.map(renderOne).join("")}
+        </div>
+      `;
+
+    })
+    .join("");
+
+}
+
+
+/* =========================================================
+   C3. 🏷️ 分類管理（📋 任務頁）
+========================================================= */
+
+function findCategoryById(id) {
+
+  return taskCategories.find(category => Number(category.id) === Number(id)) || null;
+
+}
+
+
+function renderCategoryManager() {
+
+  const box = document.getElementById("category-manager-list");
+
+  if (!box) return;
+
+  const addRow = document.getElementById("category-add-row");
+
+
+  if (!taskCategoriesFromDb) {
+
+    box.innerHTML = `
+      <div class="empty-state">
+        分類還沒設定好（先用預設分類）。<br>
+        請到 Supabase 執行「完整設定」SQL，就可以自訂分類。
+      </div>
+    `;
+
+    if (addRow) addRow.style.display = "none";
+
+    return;
+
+  }
+
+  if (addRow) addRow.style.display = "";
+
+
+  const todayCount = key =>
+    currentTasks.filter(task => (task.category || "") === key).length;
+
+  const repeatCount = key =>
+    taskTemplates.filter(template => template.category === key).length;
+
+
+  box.innerHTML = taskCategories
+    .map((category, index) => {
+
+      const notes = [];
+      if (todayCount(category.key)) notes.push(`今天 ${todayCount(category.key)} 個任務`);
+      if (repeatCount(category.key)) notes.push(`重複任務 ${repeatCount(category.key)} 個`);
+
+      return `
+        <div class="manage-row cat-row">
+
+          <div class="manage-main">
+            ${categoryTagHtml(category.key)}
+            ${notes.length ? `<span class="small-note cat-usage">${notes.join("・")}</span>` : ""}
+          </div>
+
+          <div class="manage-actions">
+            <button class="icon-btn" title="上移" ${index === 0 ? "disabled" : ""}
+              onclick="moveCategory(${Number(category.id)}, -1)">▲</button>
+            <button class="icon-btn" title="下移" ${index === taskCategories.length - 1 ? "disabled" : ""}
+              onclick="moveCategory(${Number(category.id)}, 1)">▼</button>
+            <button class="icon-btn" title="修改"
+              onclick="openCategoryEditor(${Number(category.id)})">✏️</button>
+            <button class="icon-btn" title="刪除" ${taskCategories.length <= 1 ? "disabled" : ""}
+              onclick="openCategoryDelete(${Number(category.id)})">🗑️</button>
+          </div>
+
+        </div>
+      `;
+
+    })
+    .join("");
+
+}
+
+
+/* 分類變動後：重新載入，相關畫面都更新 */
+async function afterCategoryChange(reloadTasks = false) {
+
+  await loadTaskCategories();
+
+  if (reloadTasks) {
+    await loadTasks();
+    await loadTaskManagement();
+  } else {
+    renderTasks();
+    renderTaskManagement();
+  }
+
+}
+
+
+function cleanEmoji(text) {
+
+  return Array.from(String(text || "").trim()).slice(0, 8).join("");
+
+}
+
+
+async function addCategory() {
+
+  if (!currentUser || !taskCategoriesFromDb) return;
+
+  const labelInput = document.getElementById("cat-new-label");
+  const emojiInput = document.getElementById("cat-new-emoji");
+
+  const label = labelInput.value.trim();
+  const emoji = cleanEmoji(emojiInput.value) || "📌";
+
+  if (!label) {
+    alert("請輸入分類名稱");
+    labelInput.focus();
+    return;
+  }
+
+  if (label.length > 20) {
+    alert("分類名稱最多 20 個字");
+    return;
+  }
+
+  if (taskCategories.some(category => category.label === label)) {
+    alert(`已經有「${label}」這個分類了`);
+    return;
+  }
+
+
+  /* 顏色：先挑還沒用過的 */
+  const used = new Set(taskCategories.map(category => String(category.color).toLowerCase()));
+  const color = CATEGORY_COLORS.find(c => !used.has(c)) ||
+    CATEGORY_COLORS[taskCategories.length % CATEGORY_COLORS.length];
+
+  const maxOrder = taskCategories.reduce(
+    (max, category) => Math.max(max, Number(category.sort_order) || 0), 0
+  );
+
+
+  const { error } = await db
+    .from("task_categories")
+    .insert({
+      user_id: currentUser.id,
+      key: "c" + Date.now().toString(36),
+      label,
+      emoji,
+      color,
+      sort_order: maxOrder + 1
+    });
+
+  if (error) {
+    console.error("新增分類失敗：", error);
+    alert("新增分類失敗：" + error.message);
+    return;
+  }
+
+  labelInput.value = "";
+  emojiInput.value = "";
+
+  await afterCategoryChange();
+
+  showToast(`🏷️ 已新增分類「${emoji} ${label}」`);
+
+}
+
+
+function openCategoryEditor(id) {
+
+  const category = findCategoryById(id);
+
+  if (!category) return;
+
+  const current = safeColor(category.color).toLowerCase();
+
+  const colors = CATEGORY_COLORS.includes(current)
+    ? CATEGORY_COLORS
+    : [...CATEGORY_COLORS, current];
+
+
+  openModal({
+
+    title: "✏️ 修改分類",
+
+    bodyHtml: `
+
+      <div class="modal-row">
+
+        <div class="modal-field" style="flex:0 0 84px;">
+          <label for="cat-emoji">圖示</label>
+          <input type="text" id="cat-emoji" class="emoji-input" maxlength="8"
+            value="${escapeHtml(category.emoji)}" style="width:100%;">
+        </div>
+
+        <div class="modal-field">
+          <label for="cat-label">名稱</label>
+          <input type="text" id="cat-label" maxlength="20" value="${escapeHtml(category.label)}">
+        </div>
+
+      </div>
+
+      <div class="emoji-picks">
+        ${CATEGORY_EMOJIS
+          .map(emoji => `<button type="button" class="emoji-pick"
+            onclick="document.getElementById('cat-emoji').value = this.textContent">${emoji}</button>`)
+          .join("")}
+      </div>
+
+      <div class="modal-field">
+        <label>顏色</label>
+        <div class="color-picks">
+          ${colors
+            .map(color => `
+              <label class="color-pick" style="--cat:${color}">
+                <input type="radio" name="cat-color" value="${color}" ${color === current ? "checked" : ""}>
+                <span></span>
+              </label>
+            `)
+            .join("")}
+        </div>
+      </div>
+
+    `,
+
+    buttons: [
+      { label: "取消", className: "btn" },
+      {
+        label: "儲存",
+        className: "btn btn-primary",
+        onClick: () => saveCategoryEdit(category)
+      }
+    ],
+
+    focus: "#cat-label"
+
+  });
+
+}
+
+
+async function saveCategoryEdit(category) {
+
+  const label = document.getElementById("cat-label").value.trim();
+  const emoji = cleanEmoji(document.getElementById("cat-emoji").value) || "📌";
+  const picked = document.querySelector('input[name="cat-color"]:checked');
+  const color = safeColor(picked ? picked.value : category.color);
+
+  if (!label) {
+    alert("請輸入分類名稱");
+    return false;
+  }
+
+  if (taskCategories.some(other => other.id !== category.id && other.label === label)) {
+    alert(`已經有「${label}」這個分類了`);
+    return false;
+  }
+
+  const { error } = await db
+    .from("task_categories")
+    .update({ label, emoji, color })
+    .eq("id", category.id)
+    .eq("user_id", currentUser.id);
+
+  if (error) {
+    console.error("修改分類失敗：", error);
+    alert("修改分類失敗：" + error.message);
+    return false;
+  }
+
+  await afterCategoryChange();
+
+  showToast(`✅ 已更新分類「${emoji} ${label}」`);
+
+}
+
+
+function openCategoryDelete(id) {
+
+  const category = findCategoryById(id);
+
+  if (!category) return;
+
+  if (taskCategories.length <= 1) {
+    alert("至少要留一個分類");
+    return;
+  }
+
+  const others = taskCategories.filter(other => other.key !== category.key);
+
+
+  openModal({
+
+    title: "🗑️ 刪除分類",
+
+    bodyHtml: `
+
+      <p>要刪除 ${categoryTagHtml(category.key)} 嗎？</p>
+
+      <div class="modal-field">
+        <label for="cat-move-to">原本是這個分類的任務（包含以前的紀錄和重複任務）改成：</label>
+        <select id="cat-move-to">
+          ${others
+            .map(other => `<option value="${escapeHtml(other.key)}">${escapeHtml(getCategoryLabel(other.key))}</option>`)
+            .join("")}
+        </select>
+      </div>
+
+    `,
+
+    buttons: [
+      { label: "取消", className: "btn" },
+      {
+        label: "刪除",
+        className: "btn btn-danger",
+        onClick: () => deleteCategory(category, document.getElementById("cat-move-to").value)
+      }
+    ]
+
+  });
+
+}
+
+
+async function deleteCategory(category, targetKey) {
+
+  if (!targetKey || targetKey === category.key) return false;
+
+
+  /* 先把任務搬到新分類，再刪分類 */
+
+  for (const table of ["tasks", "task_templates"]) {
+
+    const { error } = await db
+      .from(table)
+      .update({ category: targetKey })
+      .eq("user_id", currentUser.id)
+      .eq("category", category.key);
+
+    if (error) {
+      console.error("搬移任務分類失敗：", table, error);
+      alert("搬移任務失敗：" + error.message);
+      return false;
+    }
+
+  }
+
+
+  const { error } = await db
+    .from("task_categories")
+    .delete()
+    .eq("id", category.id)
+    .eq("user_id", currentUser.id);
+
+  if (error) {
+    console.error("刪除分類失敗：", error);
+    alert("刪除分類失敗：" + error.message);
+    return false;
+  }
+
+  if (currentTaskCategoryFilter === category.key) currentTaskCategoryFilter = "all";
+
+  await afterCategoryChange(true);
+
+  showToast(`🗑️ 已刪除「${category.label}」，任務改到「${findCategory(targetKey).label}」`);
+
+}
+
+
+async function moveCategory(id, direction) {
+
+  const index = taskCategories.findIndex(category => Number(category.id) === Number(id));
+
+  const target = index + direction;
+
+  if (index === -1 || target < 0 || target >= taskCategories.length) return;
+
+
+  const list = [...taskCategories];
+
+  [list[index], list[target]] = [list[target], list[index]];
+
+
+  /* 重新編號 1, 2, 3…，只更新有變的 */
+
+  const changes = list
+    .map((category, i) => ({ category, order: i + 1 }))
+    .filter(({ category, order }) => Number(category.sort_order) !== order);
+
+  for (const { category, order } of changes) {
+
+    const { error } = await db
+      .from("task_categories")
+      .update({ sort_order: order })
+      .eq("id", category.id)
+      .eq("user_id", currentUser.id);
+
+    if (error) {
+      console.error("調整分類順序失敗：", error);
+      alert("調整順序失敗：" + error.message);
+      break;
+    }
+
+  }
+
+  await afterCategoryChange();
+
+}
+
+
+/* =========================================================
+   L0. 🌿 生活：共用
+========================================================= */
+
+/* 現在的台灣日期、時間 { date: "2026-10-09", time: "21:42" } */
+function taipeiNow() {
+
+  const text = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Taipei" });
+
+  return { date: text.slice(0, 10), time: text.slice(11, 16) };
+
+}
+
+
+/* timestamptz → 台灣「2026-10-09 07:10」 */
+function taipeiStamp(iso) {
+
+  return new Date(iso)
+    .toLocaleString("sv-SE", { timeZone: "Asia/Taipei" })
+    .slice(0, 16);
+
+}
+
+
+/* "23:30:00" → "23:30" */
+function trimTime(text) {
+
+  return String(text || "").slice(0, 5);
+
+}
+
+
+/* 2026-10-08 → 10/8（四） */
+function shortDateWithWeekday(dateText) {
+
+  const [y, m, d] = dateText.split("-").map(Number);
+
+  return `${m}/${d}（${WEEKDAY_SHORT[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]}）`;
+
+}
+
+
+/* =========================================================
+   L1. 😴 作息
+   一晚一筆（night_date = 睡覺那天的日期）：
+   - 凌晨 0–6 點睡的，算前一晚
+   - 起床時間 = 那一晚的隔天
+   - 早睡 / 早起達標各 +10 EXP（只有昨晚、今晚的會變動）
+========================================================= */
+
+const SLEEP_DEFAULT_SETTINGS = { bed_target: "23:30", wake_target: "07:30" };
+
+const SLEEP_TABLE_NIGHTS = 7;
+
+let sleepLogs = [];
+let sleepSettings = { ...SLEEP_DEFAULT_SETTINGS };
+let sleepLoadError = null;
+let sleepSaving = false;
+
+
+/* 現在按「我要睡了」算哪一晚：凌晨 0–6 點 = 昨晚 */
+function bedNightForNow() {
+
+  return taipeiNow().time < "06:00" ? shiftDate(getToday(), -1) : getToday();
+
+}
+
+
+/* 今天起床 = 昨晚那一筆 */
+function wakeNightForNow() {
+
+  return shiftDate(getToday(), -1);
+
+}
+
+
+function findSleepLog(night) {
+
+  return sleepLogs.find(row => row.night_date === night) || null;
+
+}
+
+
+/* 現在，秒數歸零（23:30:41 → 23:30，才不會顯示 23:30 卻沒達標） */
+function nowToMinuteIso() {
+
+  const now = new Date();
+
+  now.setSeconds(0, 0);
+
+  return now.toISOString();
+
+}
+
+
+function bedTargetStamp(night) {
+
+  const target = trimTime(sleepSettings.bed_target);
+
+  /* 目標在中午以前（例如 00:30）= 隔天凌晨 */
+  return `${target < "12:00" ? shiftDate(night, 1) : night} ${target}`;
+
+}
+
+
+function wakeTargetStamp(night) {
+
+  return `${shiftDate(night, 1)} ${trimTime(sleepSettings.wake_target)}`;
+
+}
+
+
+function isBedOk(log) {
+
+  return Boolean(log && log.bed_at) && taipeiStamp(log.bed_at) <= bedTargetStamp(log.night_date);
+
+}
+
+
+function isWakeOk(log) {
+
+  return Boolean(log && log.wake_at) && taipeiStamp(log.wake_at) <= wakeTargetStamp(log.night_date);
+
+}
+
+
+function sleepMinutes(log) {
+
+  if (!log || !log.bed_at || !log.wake_at) return null;
+
+  return Math.round((new Date(log.wake_at) - new Date(log.bed_at)) / 60000);
+
+}
+
+
+function formatSleepMinutes(minutes) {
+
+  return minutes === null ? "—" : formatDuration(minutes * 60);
+
+}
+
+
+async function loadSleep() {
+
+  if (!currentUser) return;
+
+  const since = shiftDate(getToday(), -(SLEEP_TABLE_NIGHTS + 1));
+
+  const [settingsResult, logsResult] = await Promise.all([
+
+    db
+      .from("user_settings")
+      .select("*")
+      .eq("user_id", currentUser.id)
+      .maybeSingle(),
+
+    db
+      .from("sleep_logs")
+      .select("*")
+      .eq("user_id", currentUser.id)
+      .gte("night_date", since)
+      .order("night_date", { ascending: false })
+
+  ]);
+
+
+  const error = settingsResult.error || logsResult.error;
+
+  if (error) {
+
+    console.error("作息載入失敗：", error);
+
+    sleepLoadError = error.message;
+
+    renderSleep();
+
+    return;
+
+  }
+
+
+  sleepLoadError = null;
+
+  const settings = settingsResult.data || {};
+
+  sleepSettings = {
+    bed_target: trimTime(settings.bed_target) || SLEEP_DEFAULT_SETTINGS.bed_target,
+    wake_target: trimTime(settings.wake_target) || SLEEP_DEFAULT_SETTINGS.wake_target
+  };
+
+  sleepLogs = logsResult.data || [];
+
+  renderSleep();
+
+}
+
+
+/* 給每日結算：昨晚的作息 */
+function getSleepReportStats() {
+
+  const log = findSleepLog(wakeNightForNow());
+
+  return {
+    wakeTime: log && log.wake_at ? isoToTaipeiTime(log.wake_at) : null,
+    bedTime: log && log.bed_at ? isoToTaipeiTime(log.bed_at) : null,
+    minutes: sleepMinutes(log)
+  };
+
+}
+
+
+function sleepReportText(report) {
+
+  const parts = [];
+
+  if (report.sleep_minutes !== null && report.sleep_minutes !== undefined) {
+    parts.push(`😴 睡 ${formatDuration(Number(report.sleep_minutes) * 60)}`);
+  } else if (report.bed_time) {
+    parts.push(`🌙 ${escapeHtml(report.bed_time)} 睡`);
+  }
+
+  if (report.wake_time) {
+    parts.push(`☀️ ${escapeHtml(report.wake_time)} 起`);
+  }
+
+  return parts.length ? parts.join("・") : "沒有記錄";
+
+}
+
+
+function renderSleep() {
+
+  renderSleepQuick();
+
+  const body = document.getElementById("sleep-body");
+
+  if (!body) return;
+
+
+  if (sleepLoadError) {
+
+    body.innerHTML = `
+      <div class="empty-state">
+        ❌ 作息載入失敗：${escapeHtml(sleepLoadError)}<br>
+        請到 Supabase 執行「完整設定」SQL
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  const today = getToday();
+
+  const lastNight = findSleepLog(wakeNightForNow());
+
+  const bedNight = bedNightForNow();
+
+  const bedLog = findSleepLog(bedNight);
+
+  const bedTarget = trimTime(sleepSettings.bed_target);
+
+  const wakeTarget = trimTime(sleepSettings.wake_target);
+
+
+  /* 兩個大按鈕 */
+
+  const wakeButton = lastNight && lastNight.wake_at
+    ? `<button class="sleep-btn wake recorded" onclick="recordWake()">☀️ 今天 ${isoToTaipeiTime(lastNight.wake_at)} 起床 ${isWakeOk(lastNight) ? "✅" : ""}</button>`
+    : `<button class="sleep-btn wake" onclick="recordWake()">☀️ 我起床了</button>`;
+
+  const bedButton = bedLog && bedLog.bed_at
+    ? `<button class="sleep-btn bed recorded" onclick="recordBed()">🌙 ${isoToTaipeiTime(bedLog.bed_at)} 上床 ${isBedOk(bedLog) ? "✅" : ""}</button>`
+    : `<button class="sleep-btn bed" onclick="recordBed()">🌙 我要睡了</button>`;
+
+
+  /* 昨晚 → 今天 */
+
+  const stat = (label, value) => `
+    <div class="sleep-stat">
+      <div class="label">${label}</div>
+      <div class="value">${value}</div>
+    </div>
+  `;
+
+  const summary = `
+    <div class="sleep-stats">
+      ${stat("昨晚睡覺", lastNight && lastNight.bed_at
+        ? `${isoToTaipeiTime(lastNight.bed_at)}${isBedOk(lastNight) ? " ✅" : ""}` : "—")}
+      ${stat("今天起床", lastNight && lastNight.wake_at
+        ? `${isoToTaipeiTime(lastNight.wake_at)}${isWakeOk(lastNight) ? " ✅" : ""}` : "—")}
+      ${stat("睡了", formatSleepMinutes(sleepMinutes(lastNight)))}
+    </div>
+  `;
+
+
+  /* 最近 7 晚 */
+
+  const nights = [];
+
+  for (let i = 0; i < SLEEP_TABLE_NIGHTS; i++) {
+    nights.push(shiftDate(today, -i));
+  }
+
+  const rows = nights
+    .map(night => {
+
+      const log = findSleepLog(night);
+
+      const name = night === today
+        ? "今晚"
+        : night === shiftDate(today, -1)
+        ? "昨晚"
+        : shortDateWithWeekday(night);
+
+      const marks = [];
+      if (log && log.bed_at) marks.push(isBedOk(log) ? "🌙✅" : "🌙✖️");
+      if (log && log.wake_at) marks.push(isWakeOk(log) ? "☀️✅" : "☀️✖️");
+
+      const minutes = sleepMinutes(log);
+
+      return `
+        <tr class="clickable-row ${night === today ? "is-today" : ""}" title="點一下修改"
+          onclick="openSleepEditor('${night}')">
+          <td class="nowrap">${name}</td>
+          <td class="nowrap">${log && log.bed_at ? isoToTaipeiTime(log.bed_at) : '<span class="muted">—</span>'}</td>
+          <td class="nowrap">${log && log.wake_at ? isoToTaipeiTime(log.wake_at) : '<span class="muted">—</span>'}</td>
+          <td class="num">${minutes === null ? '<span class="muted">—</span>' : formatSleepMinutes(minutes)}</td>
+          <td class="nowrap">${marks.join(" ")}</td>
+        </tr>
+      `;
+
+    })
+    .join("");
+
+
+  /* 平均 */
+
+  const logs = nights.map(findSleepLog).filter(Boolean);
+
+  const durations = logs.map(sleepMinutes).filter(m => m !== null);
+
+  const average = durations.length
+    ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
+    : null;
+
+  const bedDone = logs.filter(isBedOk).length;
+
+  const wakeDone = logs.filter(isWakeOk).length;
+
+
+  body.innerHTML = `
+
+    <div class="sleep-buttons">
+      ${wakeButton}
+      ${bedButton}
+    </div>
+
+    ${summary}
+
+    <div class="reward-hint">
+      🎯 目標：${bedTarget} 前睡・${wakeTarget} 前起（各 +10 EXP）
+    </div>
+
+    <h3 class="sub-title">最近 7 晚</h3>
+
+    <div class="table-wrap">
+      <table class="data-table sleep-table">
+        <thead>
+          <tr>
+            <th>哪一晚</th>
+            <th>睡覺</th>
+            <th>起床</th>
+            <th class="num">睡多久</th>
+            <th>達標</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+
+    <p class="small-note" style="margin-top:10px;">
+      ${average !== null ? `平均睡 ${formatDuration(average * 60)}・` : ""}早睡 ${bedDone} 次・早起 ${wakeDone} 次。
+      點一列可以修改；凌晨 0–6 點睡的算前一晚，起床是隔天早上。
+    </p>
+
+  `;
+
+}
+
+
+/* 「今日」頁的小按鈕：晨間打卡裡的 ☀️、每日收尾裡的 🌙 */
+function renderSleepQuick() {
+
+  const wakeBox = document.getElementById("wake-quick");
+  const bedBox = document.getElementById("bed-quick");
+
+  if (sleepLoadError) {
+    if (wakeBox) wakeBox.innerHTML = "";
+    if (bedBox) bedBox.innerHTML = "";
+    return;
+  }
+
+  const lastNight = findSleepLog(wakeNightForNow());
+
+  if (wakeBox) {
+
+    wakeBox.innerHTML = lastNight && lastNight.wake_at
+      ? `<span class="done-text">☀️ 今天 ${isoToTaipeiTime(lastNight.wake_at)} 起床${isWakeOk(lastNight) ? " ✅" : ""}${
+          sleepMinutes(lastNight) !== null ? `・昨晚睡 ${formatSleepMinutes(sleepMinutes(lastNight))}` : ""
+        }</span>
+        <button class="link-btn" onclick="showPage('life')">作息 →</button>`
+      : `<button class="btn btn-small" onclick="recordWake()">☀️ 我起床了</button>
+        <span class="small-note">記錄起床時間・${trimTime(sleepSettings.wake_target)} 前起床 +10 EXP</span>`;
+
+  }
+
+  const bedLog = findSleepLog(bedNightForNow());
+
+  if (bedBox) {
+
+    bedBox.innerHTML = bedLog && bedLog.bed_at
+      ? `<span class="done-text">🌙 ${isoToTaipeiTime(bedLog.bed_at)} 上床${isBedOk(bedLog) ? " ✅" : ""}・晚安</span>
+        <button class="link-btn" onclick="showPage('life')">作息 →</button>`
+      : `<button class="btn btn-small" onclick="recordBed()">🌙 我要睡了</button>
+        <span class="small-note">記錄上床時間・${trimTime(sleepSettings.bed_target)} 前睡 +10 EXP</span>`;
+
+  }
+
+}
+
+
+/* 存一晚的資料（只更新有給的欄位） */
+async function upsertSleepLog(night, fields) {
+
+  const { error } = await db
+    .from("sleep_logs")
+    .upsert(
+      { user_id: currentUser.id, night_date: night, ...fields },
+      { onConflict: "user_id,night_date" }
+    );
+
+  return error;
+
+}
+
+
+/* 呼叫資料庫算早睡 / 早起獎勵；回傳結果（有 bed_delta / wake_delta） */
+async function syncSleepReward(night) {
+
+  const { data, error } = await db.rpc("sync_sleep_reward", { p_night: night });
+
+  if (error) {
+    console.warn("作息獎勵同步失敗：", error);
+    return null;
+  }
+
+  await afterRewardChange(data, null, null);
+
+  return data;
+
+}
+
+
+function sleepRewardText(result, kind) {
+
+  if (!result) return "";
+
+  const delta = Number(result[kind === "bed" ? "bed_delta" : "wake_delta"] || 0);
+
+  const name = kind === "bed" ? "早睡" : "早起";
+
+  if (delta > 0) return `・🎁 ${name}達標 +${delta} EXP`;
+  if (delta < 0) return `・${name}沒達標，收回 ${delta} EXP`;
+
+  return "";
+
+}
+
+
+/* options.auto = true：從晨間「起床」來的，已經記錄過就不動、不問 */
+async function recordWake(options = {}) {
+
+  if (!currentUser || sleepSaving) return;
+
+  if (sleepLoadError) {
+    if (!options.auto) alert("作息還沒設定好，請到 Supabase 執行「完整設定」SQL");
+    return;
+  }
+
+  const night = wakeNightForNow();
+
+  const existing = findSleepLog(night);
+
+  if (options.auto && taipeiNow().time >= "12:00") return;
+
+  if (existing && existing.wake_at) {
+
+    if (options.auto) return;
+
+    if (!confirm(`今天已經記錄 ${isoToTaipeiTime(existing.wake_at)} 起床，要改成現在嗎？`)) return;
+
+  }
+
+  const wakeIso = nowToMinuteIso();
+
+  if (existing && existing.bed_at && new Date(wakeIso) <= new Date(existing.bed_at)) {
+    if (!options.auto) alert("起床時間要比睡覺時間晚。記錯的話，可以到「🌿 生活」按 ✏️ 修改");
+    return;
+  }
+
+
+  sleepSaving = true;
+
+  try {
+
+    const error = await upsertSleepLog(night, { wake_at: wakeIso });
+
+    if (error) {
+      console.error("記錄起床失敗：", error);
+      if (!options.auto) alert("記錄起床失敗：" + error.message);
+      return;
+    }
+
+    await loadSleep();
+
+    const reward = await syncSleepReward(night);
+
+    const log = findSleepLog(night);
+
+    const slept = sleepMinutes(log);
+
+    showToast(
+      `☀️ 早安！${isoToTaipeiTime(wakeIso)} 起床` +
+      (slept !== null ? `・昨晚睡了 ${formatSleepMinutes(slept)}` : "") +
+      sleepRewardText(reward, "wake")
+    );
+
+  } finally {
+
+    sleepSaving = false;
+
+  }
+
+}
+
+
+async function recordBed() {
+
+  if (!currentUser || sleepSaving) return;
+
+  if (sleepLoadError) {
+    alert("作息還沒設定好，請到 Supabase 執行「完整設定」SQL");
+    return;
+  }
+
+  const night = bedNightForNow();
+
+  const existing = findSleepLog(night);
+
+  if (existing && existing.bed_at) {
+
+    if (!confirm(`已經記錄 ${isoToTaipeiTime(existing.bed_at)} 上床，要改成現在嗎？`)) return;
+
+  }
+
+  const bedIso = nowToMinuteIso();
+
+  if (existing && existing.wake_at && new Date(existing.wake_at) <= new Date(bedIso)) {
+    alert("這一晚已經有起床時間了，睡覺時間要比它早。記錯的話，可以到「🌿 生活」按 ✏️ 修改");
+    return;
+  }
+
+
+  sleepSaving = true;
+
+  try {
+
+    const error = await upsertSleepLog(night, { bed_at: bedIso });
+
+    if (error) {
+      console.error("記錄上床失敗：", error);
+      alert("記錄上床失敗：" + error.message);
+      return;
+    }
+
+    await loadSleep();
+
+    const reward = await syncSleepReward(night);
+
+    showToast(`🌙 晚安！${isoToTaipeiTime(bedIso)} 上床` + sleepRewardText(reward, "bed"));
+
+  } finally {
+
+    sleepSaving = false;
+
+  }
+
+}
+
+
+/* ✏️ 修改 / ＋ 補填（night 沒給 = 補填，預設昨晚） */
+function openSleepEditor(night) {
+
+  if (sleepLoadError) {
+    alert("作息還沒設定好，請到 Supabase 執行「完整設定」SQL");
+    return;
+  }
+
+  const today = getToday();
+
+  const fixed = Boolean(night);
+
+  const nightText = night || shiftDate(today, -1);
+
+
+  openModal({
+
+    title: fixed ? `✏️ ${shortDateWithWeekday(nightText)} 晚上的作息` : "＋ 補填作息",
+
+    bodyHtml: `
+
+      <div class="modal-field">
+        <label for="se-night">哪一晚（睡覺那天的日期）</label>
+        <input type="date" id="se-night" value="${nightText}" max="${today}"
+          ${fixed ? "disabled" : ""} onchange="fillSleepEditor()">
+      </div>
+
+      <div class="modal-row">
+
+        <div class="modal-field">
+          <label for="se-bed">🌙 睡覺時間</label>
+          <input type="time" id="se-bed">
+        </div>
+
+        <div class="modal-field">
+          <label for="se-wake">☀️ 起床時間（隔天）</label>
+          <input type="time" id="se-wake">
+        </div>
+
+      </div>
+
+      <p class="small-note">
+        凌晨 0–6 點睡的，填 01:30 這樣就好，會自動算成隔天凌晨。
+        欄位清空 = 刪掉那個時間。昨晚、今晚的修改會重新計算早睡 / 早起獎勵，更早的不影響獎勵。
+      </p>
+
+    `,
+
+    buttons: [
+      { label: "取消", className: "btn" },
+      {
+        label: "儲存",
+        className: "btn btn-primary",
+        onClick: () => saveSleepEditor()
+      }
+    ],
+
+  });
+
+  fillSleepEditor();
+
+}
+
+
+/* 換日期 → 帶入那一晚已經有的時間（才不會不小心清掉） */
+function fillSleepEditor() {
+
+  const night = document.getElementById("se-night").value;
+
+  const log = findSleepLog(night);
+
+  document.getElementById("se-bed").value = log && log.bed_at ? isoToTaipeiTime(log.bed_at) : "";
+
+  document.getElementById("se-wake").value = log && log.wake_at ? isoToTaipeiTime(log.wake_at) : "";
+
+  if (!log && night && night < shiftDate(getToday(), -(SLEEP_TABLE_NIGHTS + 1))) {
+
+    /* 太久以前的（不在最近幾晚）→ 去資料庫讀 */
+    loadOneSleepNight(night);
+
+  }
+
+}
+
+
+async function loadOneSleepNight(night) {
+
+  const { data, error } = await db
+    .from("sleep_logs")
+    .select("*")
+    .eq("user_id", currentUser.id)
+    .eq("night_date", night)
+    .maybeSingle();
+
+  if (error || !data) return;
+
+  if (!findSleepLog(night)) sleepLogs.push(data);
+
+  const input = document.getElementById("se-night");
+
+  if (input && input.value === night) fillSleepEditor();
+
+}
+
+
+async function saveSleepEditor() {
+
+  const today = getToday();
+
+  const night = document.getElementById("se-night").value;
+
+  const bedText = document.getElementById("se-bed").value;
+
+  const wakeText = document.getElementById("se-wake").value;
+
+
+  if (!night || night > today) {
+    alert("請選今天或以前的日期");
+    return false;
+  }
+
+  const bedIso = bedText
+    ? taipeiToIso(bedText < "06:00" ? shiftDate(night, 1) : night, bedText)
+    : null;
+
+  const wakeIso = wakeText
+    ? taipeiToIso(shiftDate(night, 1), wakeText)
+    : null;
+
+  if (bedIso && new Date(bedIso).getTime() > Date.now()) {
+    alert("睡覺時間不能是未來");
+    return false;
+  }
+
+  if (wakeIso && new Date(wakeIso).getTime() > Date.now()) {
+    alert("起床時間不能是未來（起床時間是那一晚的隔天）");
+    return false;
+  }
+
+  if (bedIso && wakeIso && new Date(wakeIso) <= new Date(bedIso)) {
+    alert("起床時間要比睡覺時間晚");
+    return false;
+  }
+
+
+  let error;
+
+  if (!bedIso && !wakeIso) {
+
+    ({ error } = await db
+      .from("sleep_logs")
+      .delete()
+      .eq("user_id", currentUser.id)
+      .eq("night_date", night));
+
+  } else {
+
+    error = await upsertSleepLog(night, { bed_at: bedIso, wake_at: wakeIso });
+
+  }
+
+  if (error) {
+    console.error("作息儲存失敗：", error);
+    alert("儲存失敗：" + error.message);
+    return false;
+  }
+
+
+  await loadSleep();
+
+  if (night === today || night === shiftDate(today, -1)) {
+
+    const reward = await syncSleepReward(night);
+
+    showToast(`✅ 已儲存 ${shortDateWithWeekday(night)} 的作息` +
+      sleepRewardText(reward, "bed") + sleepRewardText(reward, "wake"));
+
+  } else {
+
+    showToast(`✅ 已儲存 ${shortDateWithWeekday(night)} 的作息（更早的不影響獎勵）`);
+
+  }
+
+}
+
+
+function openSleepSettings() {
+
+  openModal({
+
+    title: "🎯 作息目標",
+
+    bodyHtml: `
+
+      <div class="modal-row">
+
+        <div class="modal-field">
+          <label for="ss-bed">🌙 幾點前睡</label>
+          <input type="time" id="ss-bed" value="${escapeHtml(trimTime(sleepSettings.bed_target))}">
+        </div>
+
+        <div class="modal-field">
+          <label for="ss-wake">☀️ 幾點前起床</label>
+          <input type="time" id="ss-wake" value="${escapeHtml(trimTime(sleepSettings.wake_target))}">
+        </div>
+
+      </div>
+
+      <p class="small-note">
+        達標各 +10 EXP。睡覺目標填 00:30 這種凌晨的時間也可以（算隔天凌晨）。
+        改目標後，昨晚和今晚會用新目標重新計算。
+      </p>
+
+    `,
+
+    buttons: [
+      { label: "取消", className: "btn" },
+      {
+        label: "儲存",
+        className: "btn btn-primary",
+        onClick: () => saveSleepSettings()
+      }
+    ]
+
+  });
+
+}
+
+
+async function saveSleepSettings() {
+
+  const bed = document.getElementById("ss-bed").value;
+
+  const wake = document.getElementById("ss-wake").value;
+
+  if (!bed || !wake) {
+    alert("兩個時間都要填");
+    return false;
+  }
+
+  const { error } = await db
+    .from("user_settings")
+    .upsert(
+      {
+        user_id: currentUser.id,
+        bed_target: bed,
+        wake_target: wake,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: "user_id" }
+    );
+
+  if (error) {
+    console.error("作息目標儲存失敗：", error);
+    alert("儲存失敗：" + error.message);
+    return false;
+  }
+
+  sleepSettings = { bed_target: bed, wake_target: wake };
+
+
+  /* 用新目標重新算昨晚、今晚 */
+
+  let delta = 0;
+
+  for (const night of [shiftDate(getToday(), -1), getToday()]) {
+
+    const result = await syncSleepReward(night);
+
+    if (result) delta += Number(result.delta_exp || 0);
+
+  }
+
+  renderSleep();
+
+  showToast(
+    `🎯 目標：${bed} 前睡・${wake} 前起` +
+    (delta > 0 ? `・🎁 +${delta} EXP` : delta < 0 ? `・收回 ${delta} EXP` : "")
+  );
+
+}
+
+
+/* 晨間清單裡的「起床」 */
+function isWakeMorningItem(itemId) {
+
+  const item = morningItems.find(row => Number(row.id) === Number(itemId));
+
+  return Boolean(item && String(item.title).includes("起床"));
+
+}
+
+
+/* =========================================================
+   L2. 🍱 三餐（不算卡路里、不打分數，記下來就好）
+========================================================= */
+
+const MEAL_TYPES = [
+  { key: "breakfast", label: "早餐",        emoji: "🍳" },
+  { key: "lunch",     label: "午餐",        emoji: "🍱" },
+  { key: "dinner",    label: "晚餐",        emoji: "🍲" },
+  { key: "snack",     label: "點心 / 宵夜", emoji: "🍪" }
+];
+
+const MEAL_HISTORY_DAYS = 30;   // 「常吃的」從最近 30 天找
+
+const MEAL_TABLE_DAYS = 7;
+
+let mealLogs = [];
+let mealLoadError = null;
+
+
+function getMealType(key) {
+
+  return MEAL_TYPES.find(type => type.key === key) || MEAL_TYPES[0];
+
+}
+
+
+function findMeal(dateText, type) {
+
+  return mealLogs.find(row => row.log_date === dateText && row.meal_type === type) || null;
+
+}
+
+
+async function loadMeals() {
+
+  if (!currentUser) return;
+
+  const { data, error } = await db
+    .from("meal_logs")
+    .select("*")
+    .eq("user_id", currentUser.id)
+    .gte("log_date", shiftDate(getToday(), -(MEAL_HISTORY_DAYS - 1)))
+    .order("log_date", { ascending: false });
+
+  if (error) {
+
+    console.error("三餐載入失敗：", error);
+
+    mealLoadError = error.message;
+
+    renderMeals();
+
+    return;
+
+  }
+
+  mealLoadError = null;
+
+  mealLogs = data || [];
+
+  renderMeals();
+
+}
+
+
+/* 給每日結算：三餐吃了幾餐、今天花多少 */
+function getMealStats(dateText = getToday()) {
+
+  const rows = mealLogs.filter(row => row.log_date === dateText);
+
+  return {
+    count: rows.filter(row => row.meal_type !== "snack" && !row.skipped).length,
+    cost: rows.reduce((sum, row) => sum + (row.skipped ? 0 : Number(row.cost || 0)), 0)
+  };
+
+}
+
+
+/* 常吃的：同一餐優先，不夠再補其他餐的 */
+function frequentMeals(type) {
+
+  const count = rows => {
+
+    const map = new Map();
+
+    rows
+      .filter(row => !row.skipped && String(row.content || "").trim())
+      .forEach(row => {
+        const text = String(row.content).trim();
+        map.set(text, (map.get(text) || 0) + 1);
+      });
+
+    return [...map.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([text]) => text);
+
+  };
+
+  const same = count(mealLogs.filter(row => row.meal_type === type));
+
+  const all = count(mealLogs);
+
+  return [...new Set([...same, ...all])].slice(0, 8);
+
+}
+
+
+function renderMeals() {
+
+  const body = document.getElementById("meals-body");
+
+  const pill = document.getElementById("meals-cost-pill");
+
+  if (!body) return;
+
+
+  if (mealLoadError) {
+
+    if (pill) pill.textContent = "";
+
+    body.innerHTML = `
+      <div class="empty-state">
+        ❌ 三餐載入失敗：${escapeHtml(mealLoadError)}<br>
+        請到 Supabase 執行「完整設定」SQL
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  const today = getToday();
+
+  const stats = getMealStats(today);
+
+  if (pill) pill.textContent = `今天 $${stats.cost}`;
+
+
+  /* 今天的四格 */
+
+  const slots = MEAL_TYPES
+    .map(type => {
+
+      const meal = findMeal(today, type.key);
+
+      const state = !meal ? "empty" : meal.skipped ? "skipped" : "";
+
+      const info = [];
+      if (meal && meal.eaten_at && !meal.skipped) info.push(trimTime(meal.eaten_at));
+      if (meal && meal.cost !== null && meal.cost !== undefined && !meal.skipped) info.push(`$${Number(meal.cost)}`);
+
+      const content = !meal
+        ? "＋ 記錄"
+        : meal.skipped
+        ? "🚫 沒吃"
+        : escapeHtml(meal.content || "（沒寫內容）");
+
+      return `
+        <button class="meal-slot ${state}" onclick="openMealEditor('${type.key}')">
+          <span class="meal-slot-head">
+            <span>${type.emoji} ${type.label}</span>
+            <span>${info.join("・")}</span>
+          </span>
+          <span class="meal-slot-content">${content}</span>
+        </button>
+      `;
+
+    })
+    .join("");
+
+
+  /* 最近 7 天 */
+
+  const days = [];
+
+  for (let i = 0; i < MEAL_TABLE_DAYS; i++) days.push(shiftDate(today, -i));
+
+  const cell = (dateText, typeKey) => {
+
+    const meal = findMeal(dateText, typeKey);
+
+    const text = !meal ? '<span class="muted">—</span>'
+      : meal.skipped ? "🚫"
+      : escapeHtml(meal.content || "✔");
+
+    const title = meal && !meal.skipped ? ` title="${escapeHtml(meal.content || "")}"` : "";
+
+    return `<td class="meal-cell"${title} onclick="openMealEditor('${typeKey}', '${dateText}')">${text}</td>`;
+
+  };
+
+  const rows = days
+    .map(dateText => {
+
+      const dayCost = getMealStats(dateText).cost;
+
+      return `
+        <tr class="${dateText === today ? "is-today" : ""}">
+          <td class="nowrap">${dateText === today ? "今天" : shortDateWithWeekday(dateText)}</td>
+          ${MEAL_TYPES.map(type => cell(dateText, type.key)).join("")}
+          <td class="num">${dayCost > 0 ? `$${dayCost}` : '<span class="muted">—</span>'}</td>
+        </tr>
+      `;
+
+    })
+    .join("");
+
+  const weekCost = days.reduce((sum, dateText) => sum + getMealStats(dateText).cost, 0);
+
+
+  body.innerHTML = `
+
+    <div class="meal-slots">${slots}</div>
+
+    <p class="small-note" style="margin-top:10px;">
+      今天吃了 ${stats.count} / 3 餐${stats.cost > 0 ? `・花了 $${stats.cost}` : ""}。點一格就能記錄或修改。
+    </p>
+
+    <h3 class="sub-title">最近 7 天</h3>
+
+    <div class="table-wrap">
+      <table class="data-table meal-table">
+        <thead>
+          <tr>
+            <th>日期</th>
+            <th>早餐</th>
+            <th>午餐</th>
+            <th>晚餐</th>
+            <th>點心</th>
+            <th class="num">花費</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+
+    ${weekCost > 0 ? `<p class="small-note" style="margin-top:10px;">這 7 天三餐共花 $${weekCost}</p>` : ""}
+
+  `;
+
+}
+
+
+/* type / dateText 沒給 = 「＋ 補記」：預設今天、下一個還沒記的餐 */
+function openMealEditor(type, dateText) {
+
+  if (mealLoadError) {
+    alert("三餐還沒設定好，請到 Supabase 執行「完整設定」SQL");
+    return;
+  }
+
+  const today = getToday();
+
+  const day = dateText || today;
+
+  const mealType = type ||
+    (MEAL_TYPES.find(item => !findMeal(day, item.key)) || MEAL_TYPES[0]).key;
+
+
+  openModal({
+
+    title: "🍱 記錄三餐",
+
+    bodyHtml: `
+
+      <div class="modal-row">
+
+        <div class="modal-field">
+          <label for="me-date">日期</label>
+          <input type="date" id="me-date" value="${day}" max="${today}" onchange="fillMealEditor()">
+        </div>
+
+        <div class="modal-field">
+          <label for="me-type">哪一餐</label>
+          <select id="me-type" onchange="fillMealEditor()">
+            ${MEAL_TYPES
+              .map(item => `<option value="${item.key}" ${item.key === mealType ? "selected" : ""}>${item.emoji} ${item.label}</option>`)
+              .join("")}
+          </select>
+        </div>
+
+      </div>
+
+      <div class="modal-field">
+        <label class="check-line">
+          <input type="checkbox" id="me-skipped" onchange="updateMealSkipped()">
+          🚫 這餐沒吃
+        </label>
+      </div>
+
+      <div class="modal-field">
+        <label for="me-content">吃了什麼</label>
+        <input type="text" id="me-content" maxlength="200" placeholder="例如：蛋餅＋豆漿">
+      </div>
+
+      <div class="meal-chips" id="me-chips"></div>
+
+      <div class="modal-row">
+
+        <div class="modal-field">
+          <label for="me-time">幾點吃</label>
+          <input type="time" id="me-time">
+        </div>
+
+        <div class="modal-field">
+          <label for="me-cost">花多少錢（選填）</label>
+          <input type="number" id="me-cost" min="0" max="100000" step="1" inputmode="numeric" placeholder="$">
+        </div>
+
+      </div>
+
+      <p class="small-note" id="me-note"></p>
+
+    `,
+
+    buttons: [
+      { label: "刪除", className: "btn btn-danger", onClick: () => deleteMealFromEditor() },
+      { label: "取消", className: "btn" },
+      { label: "儲存", className: "btn btn-primary", onClick: () => saveMealEditor() }
+    ],
+
+    focus: "#me-content"
+
+  });
+
+  fillMealEditor();
+
+}
+
+
+/* 換日期或餐別 → 帶入已經記錄的內容 */
+function fillMealEditor() {
+
+  const dateText = document.getElementById("me-date").value;
+
+  const type = document.getElementById("me-type").value;
+
+  const meal = findMeal(dateText, type);
+
+  const isToday = dateText === getToday();
+
+
+  document.getElementById("me-skipped").checked = Boolean(meal && meal.skipped);
+
+  document.getElementById("me-content").value = meal ? meal.content || "" : "";
+
+  document.getElementById("me-time").value = meal && meal.eaten_at
+    ? trimTime(meal.eaten_at)
+    : (!meal && isToday ? taipeiNow().time : "");
+
+  document.getElementById("me-cost").value =
+    meal && meal.cost !== null && meal.cost !== undefined ? String(meal.cost) : "";
+
+  document.getElementById("me-note").textContent = meal
+    ? "這一餐已經記錄過，儲存會更新它。"
+    : "";
+
+
+  /* 刪除按鈕：有紀錄才顯示 */
+  const deleteButton = document.querySelector("#modal-actions .btn-danger");
+
+  if (deleteButton) deleteButton.style.display = meal ? "" : "none";
+
+
+  /* 常吃的 */
+  const chips = frequentMeals(type);
+
+  document.getElementById("me-chips").innerHTML = chips.length
+    ? `<span class="small-note" style="align-self:center;">常吃的：</span>` + chips
+        .map(text => `<button type="button" class="chip" onclick="pickMealChip(this)">${escapeHtml(text)}</button>`)
+        .join("")
+    : "";
+
+  updateMealSkipped();
+
+}
+
+
+function pickMealChip(button) {
+
+  document.getElementById("me-content").value = button.textContent;
+
+  document.getElementById("me-skipped").checked = false;
+
+  updateMealSkipped();
+
+}
+
+
+function updateMealSkipped() {
+
+  const skipped = document.getElementById("me-skipped").checked;
+
+  ["me-content", "me-time", "me-cost"].forEach(id => {
+    document.getElementById(id).disabled = skipped;
+  });
+
+  document.getElementById("me-chips").style.display = skipped ? "none" : "";
+
+}
+
+
+async function saveMealEditor() {
+
+  const today = getToday();
+
+  const dateText = document.getElementById("me-date").value;
+
+  const type = document.getElementById("me-type").value;
+
+  const skipped = document.getElementById("me-skipped").checked;
+
+  const content = document.getElementById("me-content").value.trim();
+
+  const timeText = document.getElementById("me-time").value;
+
+  const costText = document.getElementById("me-cost").value.trim();
+
+
+  if (!dateText || dateText > today) {
+    alert("請選今天或以前的日期");
+    return false;
+  }
+
+  if (!skipped && !content) {
+    alert("寫一下吃了什麼，或勾「這餐沒吃」");
+    return false;
+  }
+
+  let cost = null;
+
+  if (!skipped && costText !== "") {
+
+    cost = Number(costText);
+
+    if (!Number.isInteger(cost) || cost < 0 || cost > 100000) {
+      alert("金額要是 0～100000 的整數");
+      return false;
+    }
+
+  }
+
+
+  const { error } = await db
+    .from("meal_logs")
+    .upsert(
+      {
+        user_id: currentUser.id,
+        log_date: dateText,
+        meal_type: type,
+        content: skipped ? "" : content,
+        eaten_at: skipped || !timeText ? null : timeText,
+        skipped,
+        cost
+      },
+      { onConflict: "user_id,log_date,meal_type" }
+    );
+
+  if (error) {
+    console.error("三餐儲存失敗：", error);
+    alert("儲存失敗：" + error.message);
+    return false;
+  }
+
+  await loadMeals();
+
+  const item = getMealType(type);
+
+  const when = dateText === today ? "" : `${shortDateWithWeekday(dateText)} `;
+
+  showToast(skipped
+    ? `✅ 已記錄 ${when}${item.label}：沒吃`
+    : `${item.emoji} 已記錄 ${when}${item.label}：${content}${cost !== null ? `（$${cost}）` : ""}`);
+
+}
+
+
+async function deleteMealFromEditor() {
+
+  const dateText = document.getElementById("me-date").value;
+
+  const type = document.getElementById("me-type").value;
+
+  const meal = findMeal(dateText, type);
+
+  if (!meal) return;
+
+  if (!confirm(`刪除 ${shortDateWithWeekday(dateText)} 的${getMealType(type).label}紀錄？`)) return false;
+
+  const { error } = await db
+    .from("meal_logs")
+    .delete()
+    .eq("id", meal.id)
+    .eq("user_id", currentUser.id);
+
+  if (error) {
+    console.error("三餐刪除失敗：", error);
+    alert("刪除失敗：" + error.message);
+    return false;
+  }
+
+  await loadMeals();
+
+  showToast(`🗑️ 已刪除${getMealType(type).label}紀錄`);
+
+}
+
+
+console.log("✅ 任務分類 / 生活（作息・三餐）載入完成");
