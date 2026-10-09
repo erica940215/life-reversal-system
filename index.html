@@ -246,7 +246,45 @@
     ============================== */
 
     main {
-      padding: 30px 0 110px;   /* 底部留位置給右下角 💡 按鈕 */
+      padding: 0 0 110px;   /* 底部留位置給右下角 💡 按鈕 */
+    }
+
+
+    /* 上方間距放在內容區，頁首才能貼齊畫面頂端 */
+    main > .container {
+      padding-top: 30px;
+    }
+
+
+    /* ==============================
+       開頁載入中
+    ============================== */
+
+    #boot-loader {
+      display: none;
+    }
+
+
+    body.booting #boot-loader {
+
+      min-height: 100vh;
+
+      display: flex;
+
+      align-items: center;
+
+      justify-content: center;
+
+      text-align: center;
+
+      padding: 20px;
+
+      opacity: .6;
+    }
+
+
+    body.booting #auth-section {
+      display: none;
     }
 
 
@@ -1604,7 +1642,13 @@
 </head>
 
 
-<body>
+<body class="booting">
+
+
+<!-- 開頁時先顯示，確認完登入狀態就消失 -->
+<div id="boot-loader">
+  ⚔️ 載入中...
+</div>
 
 
 <!-- ==================================================
@@ -2675,6 +2719,20 @@
 ================================================== -->
 
 <script src="script.js"></script>
+
+
+<!-- 保險：10 秒後還在載入（例如網路斷線），提示重新整理 -->
+<script>
+  setTimeout(function () {
+    if (document.body.classList.contains("booting")) {
+      var loader = document.getElementById("boot-loader");
+      if (loader) {
+        loader.innerHTML =
+          '載入失敗，請檢查網路後<a href="" style="color:#9b6cff; margin-left:4px;">重新整理</a>';
+      }
+    }
+  }, 10000);
+</script>
 
 
 </body>
