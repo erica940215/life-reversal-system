@@ -6966,4 +6966,83 @@ async function toggleGoalDone(id) {
       done_at: finishing ? new Date().toISOString() : null
     })
     .eq("id", id)
-    .eq("user_id", curren
+        .eq("user_id", currentUser.id);
+
+  if (error) {
+    alert("更新失敗：" + error.message);
+    return;
+  }
+
+  if (finishing) showToast(`🏆 恭喜達成「${goal.title}」！`);
+
+  await loadMainline();
+
+}
+
+
+async function deleteGoal(id) {
+
+  const goal = findGoal(id);
+
+  if (!goal) return;
+
+  const ok = confirm(
+    `刪除長期目標「${goal.title}」？\n\n` +
+    "過去的主線紀錄會保留，只是不再標示屬於這個目標。\n" +
+    "如果是已經完成了，建議按「🏆 達成」。"
+  );
+
+  if (!ok) return;
+
+  const { error } = await db
+    .from("goals")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", currentUser.id);
+
+  if (error) {
+    alert("刪除失敗：" + error.message);
+    return;
+  }
+
+  await loadMainline();
+
+}
+
+
+/* =========================================================
+   M4. 給 HTML onclick 使用
+========================================================= */
+
+Object.assign(window, {
+
+  toggleAddTaskPanel,
+
+  /* 倒數 */
+  openCountdownManager,
+  addCountdown,
+  startCountdownEdit,
+  cancelCountdownEdit,
+  saveCountdownEdit,
+  toggleCountdownVisible,
+  deleteCountdown,
+
+  /* 主線 */
+  setMainline,
+  reuseLastMainline,
+  editMainline,
+  toggleMainlineDone,
+  startFocusFromMainline,
+  setMainlineFromIdea,
+
+  /* 長期目標 */
+  openGoalManager,
+  addGoal,
+  renameGoal,
+  toggleGoalDone,
+  deleteGoal
+
+});
+
+
+console.log("✅ 倒數 / 主線 / 長期目標 載入完成");
