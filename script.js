@@ -28,9 +28,12 @@ const db = window.supabase.createClient(
 let currentUser = null;
 let currentProfile = null;
 
-let currentTasks = [];
+let currentTasks = [];        // 今天的任務（不含已跳過）
+let skippedTasks = [];        // 今天「只跳過今天」的重複任務
 let currentTaskFilter = "all";
-let currentManagedFilter = "all";
+let currentManagedTab = "repeat";   // 任務管理分頁：repeat / once
+let taskTemplates = [];       // 重複任務的範本
+let carriedOverForDate = null;      // 今天已經順延過了嗎
 
 
 /* =========================================================
@@ -556,6 +559,14 @@ function showLoggedOutUI() {
 
   loadedForDate = null;
 
+  carriedOverForDate = null;
+
+  skippedTasks = [];
+
+  taskTemplates = [];
+
+  managedOnceTasks = [];
+
   finishBooting();
 
 
@@ -951,6 +962,45 @@ async function loadTasks() {
 
 
   /*
+    沒完成的單次任務 → 移到今天（每天只需要做一次）
+  */
+
+  if (carriedOverForDate !== today) {
+
+    try {
+
+      const {
+        data: moved,
+        error
+      } = await db.rpc("carry_over_tasks");
+
+
+      if (error) {
+
+        console.warn("順延任務失敗：", error);
+
+      } else {
+
+        carriedOverForDate = today;
+
+        if (moved > 0) {
+
+          console.log(`⏩ 順延了 ${moved} 個沒完成的單次任務`);
+
+        }
+
+      }
+
+    } catch (error) {
+
+      console.warn("順延任務失敗：", error);
+
+    }
+
+  }
+
+
+  /*
     先嘗試執行每日任務 RPC
   */
 
@@ -1012,6 +1062,8 @@ async function loadTasks() {
 
     currentTasks = [];
 
+    skippedTasks = [];
+
     renderTasks();
 
     return;
@@ -1019,12 +1071,45 @@ async function loadTasks() {
   }
 
 
-  currentTasks = data || [];
+  /*
+    「只跳過今天」的任務不算在今天的任務裡，
+    放在清單最下面，可以復原
+  */
+
+  currentTasks =
+    (data || []).filter(task => !task.skipped);
+
+  skippedTasks =
+    (data || []).filter(task => task.skipped);
 
 
   renderTasks();
 
   updateSummary();
+
+}
+
+
+/* 是不是「由重複任務產生」的任務 */
+
+function isRepeatInstance(task) {
+
+  return Boolean(
+    task.template_id ||
+    (task.repeat_type && task.repeat_type !== "none")
+  );
+
+}
+
+
+/* 2026-10-08 → 10/8 */
+
+function formatShortDate(dateString) {
+
+  const [, month, day] =
+    String(dateString).split("-").map(Number);
+
+  return `${month}/${day}`;
 
 }
 
@@ -1071,6 +1156,30 @@ function renderTasks() {
 
 
   /*
+    已跳過的任務（放最下面，可以復原）
+  */
+
+  const skippedHtml =
+    skippedTasks.length === 0
+      ? ""
+      : `
+        <div class="skipped-box">
+          <div class="small-note">今天已跳過：</div>
+          ${skippedTasks
+            .map(task => `
+              <div class="skipped-row">
+                <span>🔄 ${escapeHtml(task.title)}</span>
+                <button class="icon-btn" onclick="unskipTask(${Number(task.id)})">
+                  ↩ 復原
+                </button>
+              </div>
+            `)
+            .join("")}
+        </div>
+      `;
+
+
+  /*
     沒有任務
   */
 
@@ -1080,7 +1189,7 @@ function renderTasks() {
       <div class="empty-state">
         🎮 目前沒有任務
       </div>
-    `;
+    ` + skippedHtml;
 
     return;
 
@@ -1092,6 +1201,28 @@ function renderTasks() {
 
       const reward =
         getActualReward(task);
+
+
+      /* 小標籤：重複任務、順延 */
+
+      const badges = [];
+
+      if (isRepeatInstance(task)) {
+
+        badges.push(`<span class="badge-repeat">🔄 重複</span>`);
+
+      }
+
+      if (
+        task.original_date &&
+        task.original_date !== task.task_date
+      ) {
+
+        badges.push(
+          `<span class="badge-carry">⏩ 順延自 ${formatShortDate(task.original_date)}</span>`
+        );
+
+      }
 
 
       return `
@@ -1123,6 +1254,8 @@ function renderTasks() {
 
               <div class="task-meta">
 
+                ${badges.join("")}
+
                 <span>
                   ${getCategoryLabel(task.category)}
                 </span>
@@ -1147,6 +1280,7 @@ function renderTasks() {
             <div class="task-actions">
 
               <button
+                title="編輯"
                 onclick="editTask('${task.id}')"
               >
                 ✏️
@@ -1154,6 +1288,7 @@ function renderTasks() {
 
 
               <button
+                title="刪除"
                 onclick="deleteTask('${task.id}')"
               >
                 🗑️
@@ -1168,7 +1303,7 @@ function renderTasks() {
       `;
 
     })
-    .join("");
+    .join("") + skippedHtml;
 
 }
 
@@ -1328,16 +1463,26 @@ async function addTask() {
       : "daily";
 
 
-  const repeatDayElement =
-    document.querySelector(
-      'select[name="repeat-day"]'
+  /* 星期一 = 1 … 星期日 = 7，可多選 */
+
+  const repeatDays =
+    readWeekdayPicker("new-task-days");
+
+
+  if (
+    repeat === "repeat" &&
+    repeatType === "weekly" &&
+    repeatDays.length === 0
+  ) {
+
+    showAddTaskMessage(
+      "每週重複至少要選一天",
+      true
     );
 
+    return;
 
-  const repeatDay =
-    repeatDayElement
-      ? repeatDayElement.value
-      : null;
+  }
 
 
   const endDateElement =
@@ -1398,7 +1543,7 @@ async function addTask() {
           /* 星期一 = 1 ... 星期日 = 7 */
           repeat_days:
             repeatType === "weekly"
-              ? [Number(repeatDay)]
+              ? repeatDays
               : [],
 
           repeat_end_date: repeatEndDate
@@ -1673,12 +1818,26 @@ async function toggleTask(
    26. 編輯任務
 ========================================================= */
 
+/*
+  找任務：今日清單、已跳過、任務管理的單次清單都找
+*/
+
+function findTask(taskId) {
+
+  return [
+    ...currentTasks,
+    ...skippedTasks,
+    ...managedOnceTasks
+  ].find(
+    item => String(item.id) === String(taskId)
+  );
+
+}
+
+
 async function editTask(taskId) {
 
-  const task =
-    currentTasks.find(
-      item => String(item.id) === String(taskId)
-    );
+  const task = findTask(taskId);
 
 
   if (!task) {
@@ -1690,85 +1849,212 @@ async function editTask(taskId) {
   }
 
 
-  const newTitle =
-    prompt(
-      "修改任務名稱：",
-      task.title
-    );
+  const notes = [];
 
+  if (task.completed) {
 
-  if (newTitle === null) {
+    notes.push("已完成的任務不能改難度（要先取消勾選，避免 EXP 對不上）。");
 
-    return;
+  }
+
+  if (isRepeatInstance(task)) {
+
+    notes.push("這裡只會改今天這一份；要改以後每天的，請到「任務管理 → 重複任務」。");
 
   }
 
 
+  openModal({
+
+    title: "✏️ 編輯任務",
+
+    bodyHtml: `
+
+      <div class="modal-field">
+        <label for="edit-task-title">任務名稱</label>
+        <input type="text" id="edit-task-title" maxlength="100"
+          value="${escapeHtml(task.title)}">
+      </div>
+
+      <div class="modal-field">
+        <label for="edit-task-category">分類</label>
+        <select id="edit-task-category">
+          ${categoryOptionsHtml(task.category)}
+        </select>
+      </div>
+
+      <div class="modal-field">
+        <label for="edit-task-difficulty">難度</label>
+        <select id="edit-task-difficulty" ${task.completed ? "disabled" : ""}>
+          ${difficultyOptionsHtml(task.difficulty)}
+        </select>
+      </div>
+
+      ${notes.map(note => `<p class="small-note">${note}</p>`).join("")}
+
+    `,
+
+    buttons: [
+
+      { label: "取消", className: "btn" },
+
+      {
+        label: "儲存",
+        className: "btn btn-primary",
+        onClick: () => saveTaskEdit(task)
+      }
+
+    ],
+
+    focus: "#edit-task-title"
+
+  });
+
+}
+
+
+async function saveTaskEdit(task) {
+
   const title =
-    newTitle.trim();
+    document.getElementById("edit-task-title").value.trim();
+
+  const category =
+    document.getElementById("edit-task-category").value;
+
+  const difficulty =
+    document.getElementById("edit-task-difficulty").value;
 
 
   if (!title) {
 
     alert("任務名稱不能為空");
 
-    return;
+    return false;   // 不關閉視窗
 
   }
 
 
-  try {
-
-    const {
-      error
-    } = await db
-      .from("tasks")
-      .update({
-        title
-      })
-      .eq("id", taskId)
-      .eq("user_id", currentUser.id);
+  const update = {
+    title,
+    category
+  };
 
 
-    if (error) {
+  /* 難度改了 → 獎勵跟著改（只限還沒完成的任務） */
 
-      throw error;
+  if (!task.completed && difficulty !== task.difficulty) {
 
-    }
+    const reward = getTaskReward(difficulty);
 
-
-    await loadTasks();
-
-    await loadTaskManagement();
-
-
-  } catch (error) {
-
-    console.error(
-      "編輯任務失敗：",
-      error
-    );
-
-
-    alert(
-      "編輯失敗：" +
-      error.message
-    );
+    update.difficulty = difficulty;
+    update.exp_reward = reward.exp;
+    update.gold_reward = reward.gold;
 
   }
+
+
+  const { error } = await db
+    .from("tasks")
+    .update(update)
+    .eq("id", task.id)
+    .eq("user_id", currentUser.id);
+
+
+  if (error) {
+
+    console.error("編輯任務失敗：", error);
+
+    alert("編輯失敗：" + error.message);
+
+    return false;
+
+  }
+
+
+  showToast("✅ 已儲存");
+
+  await loadTasks();
+
+  await loadTaskManagement();
 
 }
 
 
 /* =========================================================
    27. 刪除任務
+   - 已完成：要先取消勾選（EXP 一起扣回）
+   - 單次任務：確認後刪除
+   - 重複任務：選「只跳過今天」或「停止整個重複任務」
 ========================================================= */
 
 async function deleteTask(taskId) {
 
+  const task = findTask(taskId);
+
+
+  if (!task) {
+
+    alert("找不到這個任務");
+
+    return;
+
+  }
+
+
+  if (task.completed) {
+
+    alert(
+      "已完成的任務要先取消勾選（EXP 會一起扣回），\n" +
+      "才能刪除或跳過。"
+    );
+
+    return;
+
+  }
+
+
+  if (isRepeatInstance(task)) {
+
+    openModal({
+
+      title: "🔄 這是重複任務",
+
+      bodyHtml: `
+        <p>要怎麼處理「${escapeHtml(task.title)}」？</p>
+        <p class="small-note">
+          「只跳過今天」：今天不做，明天照常出現。<br>
+          「停止整個重複任務」：以後都不會出現，可以在「任務管理 → 重複任務」恢復或刪除。
+        </p>
+      `,
+
+      buttons: [
+
+        { label: "取消", className: "btn" },
+
+        {
+          label: "只跳過今天",
+          className: "btn btn-primary",
+          onClick: () => skipTask(task)
+        },
+
+        {
+          label: "停止整個重複任務",
+          className: "btn btn-danger",
+          onClick: () => stopRepeatFromTask(task)
+        }
+
+      ]
+
+    });
+
+    return;
+
+  }
+
+
   const confirmed =
     confirm(
-      "確定要刪除這個任務嗎？"
+      `確定要刪除「${task.title}」嗎？`
     );
 
 
@@ -1816,6 +2102,313 @@ async function deleteTask(taskId) {
     );
 
   }
+
+}
+
+
+/* 只跳過今天：留著這一筆並標記跳過，系統就不會再補一份 */
+
+async function skipTask(task) {
+
+  const { error } = await db
+    .from("tasks")
+    .update({ skipped: true })
+    .eq("id", task.id)
+    .eq("user_id", currentUser.id);
+
+
+  if (error) {
+
+    alert("跳過失敗：" + error.message);
+
+    return false;
+
+  }
+
+
+  showToast("已跳過今天，明天會照常出現");
+
+  await loadTasks();
+
+}
+
+
+async function unskipTask(taskId) {
+
+  const { error } = await db
+    .from("tasks")
+    .update({ skipped: false })
+    .eq("id", taskId)
+    .eq("user_id", currentUser.id);
+
+
+  if (error) {
+
+    alert("復原失敗：" + error.message);
+
+    return;
+
+  }
+
+
+  await loadTasks();
+
+}
+
+
+/* 停止整個重複任務 = 暫停範本（可以恢復）＋ 移除今天還沒完成的那一份 */
+
+async function stopRepeatFromTask(task) {
+
+  if (task.template_id) {
+
+    const { error } = await db
+      .from("task_templates")
+      .update({ repeat_enabled: false })
+      .eq("id", task.template_id)
+      .eq("user_id", currentUser.id);
+
+
+    if (error) {
+
+      alert("停止失敗：" + error.message);
+
+      return false;
+
+    }
+
+  }
+
+
+  const { error: deleteError } = await db
+    .from("tasks")
+    .delete()
+    .eq("id", task.id)
+    .eq("user_id", currentUser.id);
+
+
+  if (deleteError) {
+
+    alert("移除今天的任務失敗：" + deleteError.message);
+
+  }
+
+
+  showToast("已停止。可以在「任務管理 → 重複任務」恢復或刪除");
+
+  await loadTasks();
+
+  await loadTaskManagement();
+
+}
+
+
+/* =========================================================
+   共用：彈出視窗
+   openModal({ title, bodyHtml, buttons: [{ label, className, onClick }], focus })
+   onClick 回傳 false 代表「不要關閉視窗」（例如欄位沒填好）
+========================================================= */
+
+let modalButtons = [];
+let modalBusy = false;
+
+
+function openModal({ title, bodyHtml, buttons, focus }) {
+
+  modalButtons = buttons || [];
+
+  document.getElementById("modal-title").textContent = title;
+
+  document.getElementById("modal-body").innerHTML = bodyHtml;
+
+  document.getElementById("modal-actions").innerHTML = modalButtons
+    .map((button, index) => `
+      <button class="${button.className || "btn"}" onclick="modalAction(${index})">
+        ${escapeHtml(button.label)}
+      </button>
+    `)
+    .join("");
+
+  document.getElementById("modal").style.display = "flex";
+
+
+  if (focus) {
+
+    setTimeout(() => {
+
+      const el = document.querySelector(focus);
+
+      if (el) el.focus();
+
+    }, 30);
+
+  }
+
+}
+
+
+function closeModal() {
+
+  const modal = document.getElementById("modal");
+
+  if (modal) modal.style.display = "none";
+
+  modalButtons = [];
+
+}
+
+
+async function modalAction(index) {
+
+  const button = modalButtons[index];
+
+  if (!button || modalBusy) return;
+
+
+  if (!button.onClick) {
+
+    closeModal();
+
+    return;
+
+  }
+
+
+  modalBusy = true;
+
+  try {
+
+    const result = await button.onClick();
+
+    if (result !== false) closeModal();
+
+  } finally {
+
+    modalBusy = false;
+
+  }
+
+}
+
+
+document.addEventListener("keydown", event => {
+
+  if (event.key === "Escape") closeModal();
+
+});
+
+
+/* 分類 / 難度下拉選單 */
+
+const CATEGORY_ORDER = [
+  "study", "toeic", "focus", "health",
+  "survival", "personal", "daily", "random"
+];
+
+const DIFFICULTY_ORDER = [
+  "easy", "normal", "hard", "epic"
+];
+
+
+function categoryOptionsHtml(selected) {
+
+  return CATEGORY_ORDER
+    .map(key => `
+      <option value="${key}" ${key === selected ? "selected" : ""}>
+        ${getCategoryLabel(key)}
+      </option>
+    `)
+    .join("");
+
+}
+
+
+function difficultyOptionsHtml(selected) {
+
+  return DIFFICULTY_ORDER
+    .map(key => {
+
+      const reward = getTaskReward(key);
+
+      return `
+        <option value="${key}" ${key === selected ? "selected" : ""}>
+          ${getDifficultyLabel(key)}（+${reward.exp} EXP / +${reward.gold} 金幣）
+        </option>
+      `;
+
+    })
+    .join("");
+
+}
+
+
+/* 星期選擇（可多選）：1 = 星期一 … 7 = 星期日 */
+
+const WEEKDAY_LABELS = {
+  1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六", 7: "日"
+};
+
+
+function weekdayPickerHtml(name, selectedDays) {
+
+  const selected = new Set((selectedDays || []).map(Number));
+
+  return `
+    <div class="day-picker">
+      ${[1, 2, 3, 4, 5, 6, 7]
+        .map(day => `
+          <label class="day-chip">
+            <input type="checkbox" name="${name}" value="${day}"
+              ${selected.has(day) ? "checked" : ""}>
+            ${WEEKDAY_LABELS[day]}
+          </label>
+        `)
+        .join("")}
+    </div>
+  `;
+
+}
+
+
+function readWeekdayPicker(name) {
+
+  return [...document.querySelectorAll(`input[name="${name}"]:checked`)]
+    .map(input => Number(input.value))
+    .sort((a, b) => a - b);
+
+}
+
+
+/* 今天是星期幾（台灣時間，1 = 一 … 7 = 日） */
+
+function getTodayWeekday() {
+
+  const [year, month, day] = getToday().split("-").map(Number);
+
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+
+  return weekday === 0 ? 7 : weekday;
+
+}
+
+
+function describeRepeatRule(template) {
+
+  if (template.repeat_type === "daily") return "每天";
+
+  if (template.repeat_type === "weekly") {
+
+    const days = (template.repeat_days || [])
+      .map(Number)
+      .sort((a, b) => a - b)
+      .map(day => WEEKDAY_LABELS[day])
+      .join("、");
+
+    return days ? `每週${days}` : "每週（沒選星期）";
+
+  }
+
+  return "不重複";
 
 }
 
@@ -1925,7 +2518,12 @@ function updateSummary() {
 
 /* =========================================================
    29. 任務管理
+   - 🔄 重複任務：範本清單，可暫停 / 恢復、編輯、刪除
+   - 📌 單次任務：還沒完成的單次任務
 ========================================================= */
+
+let managedOnceTasks = [];   // 任務管理的「單次任務」清單
+
 
 async function loadTaskManagement() {
 
@@ -1934,33 +2532,49 @@ async function loadTaskManagement() {
 
   try {
 
-    const {
-      data,
-      error
-    } = await db
-      .from("tasks")
-      .select("*")
-      .eq("user_id", currentUser.id)
-      .order("created_at", {
-        ascending: false
-      });
+    const [templatesResult, onceResult] = await Promise.all([
+
+      db
+        .from("task_templates")
+        .select("*")
+        .eq("user_id", currentUser.id)
+        .order("created_at", { ascending: true }),
+
+      db
+        .from("tasks")
+        .select("*")
+        .eq("user_id", currentUser.id)
+        .eq("completed", false)
+        .order("created_at", { ascending: true })
+
+    ]);
 
 
-    if (error) {
+    if (templatesResult.error) {
 
-      console.error(
-        "載入任務管理失敗：",
-        error
-      );
+      console.error("載入重複任務失敗：", templatesResult.error);
 
-      return;
+    } else {
+
+      taskTemplates = templatesResult.data || [];
 
     }
 
 
-    renderTaskManagement(
-      data || []
-    );
+    if (onceResult.error) {
+
+      console.error("載入單次任務失敗：", onceResult.error);
+
+    } else {
+
+      managedOnceTasks = (onceResult.data || []).filter(
+        task => !isRepeatInstance(task) && !task.skipped
+      );
+
+    }
+
+
+    renderTaskManagement();
 
 
   } catch (error) {
@@ -1979,7 +2593,7 @@ async function loadTaskManagement() {
    30. 顯示任務管理
 ========================================================= */
 
-function renderTaskManagement(tasks) {
+function renderTaskManagement() {
 
   const list =
     document.getElementById(
@@ -1990,39 +2604,47 @@ function renderTaskManagement(tasks) {
   if (!list) return;
 
 
-  let filtered =
-    [...tasks];
+  /* 分頁按鈕 */
 
+  document
+    .querySelectorAll("[data-managed-tab]")
+    .forEach(btn => {
 
-  if (
-    currentManagedFilter === "once"
-  ) {
-
-    filtered =
-      filtered.filter(
-        task => !task.template_id
+      btn.classList.toggle(
+        "active",
+        btn.dataset.managedTab === currentManagedTab
       );
+
+    });
+
+
+  const repeatCount = document.getElementById("managed-repeat-count");
+  const onceCount = document.getElementById("managed-once-count");
+
+  if (repeatCount) repeatCount.textContent = taskTemplates.length || "";
+  if (onceCount) onceCount.textContent = managedOnceTasks.length || "";
+
+
+  if (currentManagedTab === "once") {
+
+    renderManagedOnce(list);
+
+  } else {
+
+    renderManagedRepeat(list);
 
   }
 
-
-  if (
-    currentManagedFilter === "repeat"
-  ) {
-
-    filtered =
-      filtered.filter(
-        task => task.template_id
-      );
-
-  }
+}
 
 
-  if (filtered.length === 0) {
+function renderManagedRepeat(list) {
+
+  if (taskTemplates.length === 0) {
 
     list.innerHTML = `
       <div class="empty-state">
-        📭 沒有符合條件的任務
+        還沒有重複任務。新增任務時選「重複任務」就會出現在這裡
       </div>
     `;
 
@@ -2031,216 +2653,479 @@ function renderTaskManagement(tasks) {
   }
 
 
-  list.innerHTML =
-    filtered
-      .map(task => {
+  const today = getToday();
 
-        return `
 
-          <div
-            class="managed-task-item"
-            data-task-id="${task.id}"
-          >
+  list.innerHTML = taskTemplates
+    .map(template => {
 
-            <div>
+      const id = Number(template.id);
 
-              <strong>
-                ${escapeHtml(task.title)}
-              </strong>
+      const ended =
+        template.repeat_end_date &&
+        template.repeat_end_date < today;
 
-              <div class="task-meta">
 
-                <span>
-                  ${getCategoryLabel(task.category)}
-                </span>
+      let status;
 
-                <span>
-                  ${
-                    task.template_id
-                      ? "🔄 重複"
-                      : "📌 單次"
-                  }
-                </span>
+      if (!template.repeat_enabled) {
 
-                <span>
-                  ${getDifficultyLabel(task.difficulty)}
-                </span>
+        status = `<span class="status-paused">⏸ 暫停中</span>`;
 
-              </div>
+      } else if (ended) {
 
+        status = `<span class="status-ended">🏁 已結束</span>`;
+
+      } else {
+
+        status = `<span class="status-active">▶ 進行中</span>`;
+
+      }
+
+
+      return `
+
+        <div class="managed-task-item ${template.repeat_enabled && !ended ? "" : "inactive"}">
+
+          <div class="managed-main">
+
+            <strong>${escapeHtml(template.title)}</strong>
+
+            <div class="task-meta">
+              ${status}
+              <span>${describeRepeatRule(template)}</span>
+              <span>${getCategoryLabel(template.category)}</span>
+              <span>${getDifficultyLabel(template.difficulty)}</span>
+              <span>
+                ${template.repeat_end_date
+                  ? `到 ${escapeHtml(template.repeat_end_date)}`
+                  : "沒有結束日"}
+              </span>
             </div>
-
-
-            <button
-              onclick="deleteManagedTask('${task.id}')"
-            >
-              🗑️
-            </button>
 
           </div>
 
-        `;
 
-      })
-      .join("");
+          <div class="managed-actions">
+
+            <button onclick="toggleTemplatePause(${id})">
+              ${template.repeat_enabled ? "⏸ 暫停" : "▶ 恢復"}
+            </button>
+
+            <button title="編輯" onclick="editTemplate(${id})">✏️</button>
+
+            <button class="btn-del" title="刪除" onclick="deleteTemplate(${id})">🗑️</button>
+
+          </div>
+
+        </div>
+
+      `;
+
+    })
+    .join("");
+
+}
+
+
+function renderManagedOnce(list) {
+
+  if (managedOnceTasks.length === 0) {
+
+    list.innerHTML = `
+      <div class="empty-state">
+        沒有未完成的單次任務 👍
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  list.innerHTML = managedOnceTasks
+    .map(task => {
+
+      const id = Number(task.id);
+
+      const carried =
+        task.original_date &&
+        task.original_date !== task.task_date
+          ? `<span class="badge-carry">⏩ 順延自 ${formatShortDate(task.original_date)}</span>`
+          : "";
+
+
+      return `
+
+        <div class="managed-task-item">
+
+          <div class="managed-main">
+
+            <strong>${escapeHtml(task.title)}</strong>
+
+            <div class="task-meta">
+              ${carried}
+              <span>${escapeHtml(task.task_date)}</span>
+              <span>${getCategoryLabel(task.category)}</span>
+              <span>${getDifficultyLabel(task.difficulty)}</span>
+            </div>
+
+          </div>
+
+
+          <div class="managed-actions">
+
+            <button title="編輯" onclick="editTask(${id})">✏️</button>
+
+            <button class="btn-del" title="刪除" onclick="deleteTask(${id})">🗑️</button>
+
+          </div>
+
+        </div>
+
+      `;
+
+    })
+    .join("");
 
 }
 
 
 /* =========================================================
-   31. 任務管理篩選
+   31. 任務管理分頁
 ========================================================= */
 
-function filterManagedTasks(
-  filter,
-  button
-) {
+function setManagedTab(tab) {
 
-  currentManagedFilter =
-    filter;
+  currentManagedTab = tab;
 
+  renderTaskManagement();
 
-  const buttons =
-    document.querySelectorAll(
-      "[onclick^=\"filterManagedTasks\"]"
-    );
+}
 
 
-  buttons.forEach(btn => {
+/* =========================================================
+   32. 重複任務：暫停 / 恢復、編輯、刪除
+========================================================= */
 
-    btn.classList.remove(
-      "active"
-    );
+function findTemplate(templateId) {
+
+  return taskTemplates.find(
+    template => Number(template.id) === Number(templateId)
+  );
+
+}
+
+
+/* 今天由這個範本產生、還沒完成的那一份 */
+
+function todayOpenInstanceQuery(templateId) {
+
+  return db
+    .from("tasks")
+    .delete()
+    .eq("user_id", currentUser.id)
+    .eq("template_id", templateId)
+    .eq("task_date", getToday())
+    .eq("completed", false);
+
+}
+
+
+async function toggleTemplatePause(templateId) {
+
+  const template = findTemplate(templateId);
+
+  if (!template) return;
+
+
+  const pausing = template.repeat_enabled;
+
+
+  const { error } = await db
+    .from("task_templates")
+    .update({
+      repeat_enabled: !pausing,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", templateId)
+    .eq("user_id", currentUser.id);
+
+
+  if (error) {
+
+    alert((pausing ? "暫停" : "恢復") + "失敗：" + error.message);
+
+    return;
+
+  }
+
+
+  if (pausing) {
+
+    /* 暫停：今天還沒完成的那一份也拿掉 */
+
+    const { error: removeError } =
+      await todayOpenInstanceQuery(templateId);
+
+    if (removeError) {
+
+      console.warn("移除今天的任務失敗：", removeError);
+
+    }
+
+    showToast(`⏸ 已暫停「${template.title}」`);
+
+  } else {
+
+    showToast(`▶ 已恢復「${template.title}」`);
+
+  }
+
+
+  /* 恢復時，loadTasks 會自動補上今天那一份（如果今天要做） */
+
+  await loadTasks();
+
+  await loadTaskManagement();
+
+}
+
+
+function editTemplate(templateId) {
+
+  const template = findTemplate(templateId);
+
+  if (!template) return;
+
+
+  const weekly = template.repeat_type === "weekly";
+
+
+  openModal({
+
+    title: "✏️ 編輯重複任務",
+
+    bodyHtml: `
+
+      <div class="modal-field">
+        <label for="tpl-title">任務名稱</label>
+        <input type="text" id="tpl-title" maxlength="100"
+          value="${escapeHtml(template.title)}">
+      </div>
+
+      <div class="modal-row">
+
+        <div class="modal-field">
+          <label for="tpl-category">分類</label>
+          <select id="tpl-category">
+            ${categoryOptionsHtml(template.category)}
+          </select>
+        </div>
+
+        <div class="modal-field">
+          <label for="tpl-difficulty">難度</label>
+          <select id="tpl-difficulty">
+            ${difficultyOptionsHtml(template.difficulty)}
+          </select>
+        </div>
+
+      </div>
+
+      <div class="modal-field">
+        <label for="tpl-type">重複方式</label>
+        <select id="tpl-type" onchange="document.getElementById('tpl-days-field').style.display = this.value === 'weekly' ? 'block' : 'none'">
+          <option value="daily" ${weekly ? "" : "selected"}>每天</option>
+          <option value="weekly" ${weekly ? "selected" : ""}>每週</option>
+        </select>
+      </div>
+
+      <div class="modal-field" id="tpl-days-field" style="display:${weekly ? "block" : "none"};">
+        <label>星期（可多選）</label>
+        ${weekdayPickerHtml(
+          "tpl-days",
+          weekly && (template.repeat_days || []).length
+            ? template.repeat_days
+            : [getTodayWeekday()]
+        )}
+      </div>
+
+      <div class="modal-field">
+        <label for="tpl-end">結束日期（可不填）</label>
+        <input type="date" id="tpl-end" value="${escapeHtml(template.repeat_end_date || "")}">
+      </div>
+
+      <p class="small-note">
+        從今天開始生效；今天那一份如果還沒完成，名稱、分類、難度也會一起更新。
+      </p>
+
+    `,
+
+    buttons: [
+
+      { label: "取消", className: "btn" },
+
+      {
+        label: "儲存",
+        className: "btn btn-primary",
+        onClick: () => saveTemplateEdit(template)
+      }
+
+    ],
+
+    focus: "#tpl-title"
 
   });
 
+}
 
-  if (button) {
 
-    button.classList.add(
-      "active"
-    );
+async function saveTemplateEdit(template) {
+
+  const title = document.getElementById("tpl-title").value.trim();
+  const category = document.getElementById("tpl-category").value;
+  const difficulty = document.getElementById("tpl-difficulty").value;
+  const repeatType = document.getElementById("tpl-type").value;
+  const days = readWeekdayPicker("tpl-days");
+  const endDate = document.getElementById("tpl-end").value || null;
+
+
+  if (!title) {
+
+    alert("任務名稱不能為空");
+
+    return false;
 
   }
 
 
-  loadTaskManagement();
+  if (repeatType === "weekly" && days.length === 0) {
+
+    alert("每週重複至少要選一天");
+
+    return false;
+
+  }
+
+
+  const reward = getTaskReward(difficulty);
+
+  const repeatDays = repeatType === "weekly" ? days : [];
+
+
+  const { error } = await db
+    .from("task_templates")
+    .update({
+      title,
+      category,
+      difficulty,
+      exp_reward: reward.exp,
+      gold_reward: reward.gold,
+      repeat_type: repeatType,
+      repeat_days: repeatDays,
+      repeat_end_date: endDate,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", template.id)
+    .eq("user_id", currentUser.id);
+
+
+  if (error) {
+
+    alert("儲存失敗：" + error.message);
+
+    return false;
+
+  }
+
+
+  /* 今天還沒完成的那一份一起更新 */
+
+  const { error: todayError } = await db
+    .from("tasks")
+    .update({
+      title,
+      category,
+      difficulty,
+      exp_reward: reward.exp,
+      gold_reward: reward.gold,
+      repeat_type: repeatType,
+      repeat_days: repeatDays,
+      repeat_end_date: endDate
+    })
+    .eq("user_id", currentUser.id)
+    .eq("template_id", template.id)
+    .eq("task_date", getToday())
+    .eq("completed", false);
+
+
+  if (todayError) {
+
+    console.warn("更新今天的任務失敗：", todayError);
+
+  }
+
+
+  showToast("✅ 已儲存");
+
+  await loadTasks();
+
+  await loadTaskManagement();
 
 }
 
 
-/* =========================================================
-   32. 任務管理刪除
-========================================================= */
+async function deleteTemplate(templateId) {
 
-async function deleteManagedTask(
-  taskId
-) {
+  const template = findTemplate(templateId);
 
-  const confirmed =
-    confirm(
-      "確定要刪除這個任務嗎？"
-    );
+  if (!template) return;
 
 
-  if (!confirmed) return;
+  const ok = confirm(
+    `刪除重複任務「${template.title}」？\n\n` +
+    "・以後不會再出現\n" +
+    "・過去完成的紀錄會保留（數據中心會用到）\n" +
+    "・今天還沒完成的那一份會一起刪除\n\n" +
+    "只是暫時不做的話，建議用「暫停」。"
+  );
+
+  if (!ok) return;
 
 
-  try {
+  const { error: removeError } =
+    await todayOpenInstanceQuery(templateId);
 
-    const {
-      error
-    } = await db
-      .from("tasks")
-      .delete()
-      .eq("id", taskId)
-      .eq("user_id", currentUser.id);
+  if (removeError) {
 
+    alert("刪除今天的任務失敗：" + removeError.message);
 
-    if (error) {
-
-      throw error;
-
-    }
-
-
-    await loadTasks();
-
-    await loadTaskManagement();
-
-
-  } catch (error) {
-
-    console.error(
-      "刪除任務失敗：",
-      error
-    );
-
-
-    alert(
-      "刪除失敗：" +
-      error.message
-    );
+    return;
 
   }
 
-}
+
+  const { error } = await db
+    .from("task_templates")
+    .delete()
+    .eq("id", templateId)
+    .eq("user_id", currentUser.id);
 
 
-/* =========================================================
-   33. 清空任務管理
-========================================================= */
+  if (error) {
 
-async function clearManagementList() {
+    alert("刪除失敗：" + error.message);
 
-  const confirmed =
-    confirm(
-      "確定要刪除所有任務嗎？這個操作無法復原。"
-    );
-
-
-  if (!confirmed) return;
-
-
-  if (!currentUser) return;
-
-
-  try {
-
-    const {
-      error
-    } = await db
-      .from("tasks")
-      .delete()
-      .eq("user_id", currentUser.id);
-
-
-    if (error) {
-
-      throw error;
-
-    }
-
-
-    await loadTasks();
-
-    await loadTaskManagement();
-
-
-  } catch (error) {
-
-    console.error(
-      "清空任務失敗：",
-      error
-    );
-
-
-    alert(
-      "清空失敗：" +
-      error.message
-    );
+    return;
 
   }
+
+
+  showToast(`🗑️ 已刪除「${template.title}」`);
+
+  await loadTasks();
+
+  await loadTaskManagement();
 
 }
 
@@ -2302,10 +3187,27 @@ function updateRepeatUI() {
 
   if (repeatTypeElement && repeatDayItem) {
 
+    const weekly =
+      repeatTypeElement.value === "weekly";
+
     repeatDayItem.style.display =
-      repeatTypeElement.value === "weekly"
-        ? "block"
-        : "none";
+      weekly ? "block" : "none";
+
+
+    /* 打開「每週」時，一天都沒勾就先勾今天 */
+
+    if (
+      weekly &&
+      readWeekdayPicker("new-task-days").length === 0
+    ) {
+
+      const todayBox = document.querySelector(
+        `input[name="new-task-days"][value="${getTodayWeekday()}"]`
+      );
+
+      if (todayBox) todayBox.checked = true;
+
+    }
 
   }
 
@@ -2394,9 +3296,6 @@ window.addTask =
 window.filterTasks =
   filterTasks;
 
-window.filterManagedTasks =
-  filterManagedTasks;
-
 window.toggleTask =
   toggleTask;
 
@@ -2406,11 +3305,18 @@ window.editTask =
 window.deleteTask =
   deleteTask;
 
-window.deleteManagedTask =
-  deleteManagedTask;
+/* 重複任務管理 */
 
-window.clearManagementList =
-  clearManagementList;
+Object.assign(window, {
+  unskipTask,
+  setManagedTab,
+  toggleTemplatePause,
+  editTemplate,
+  deleteTemplate,
+  openModal,
+  closeModal,
+  modalAction
+});
 
 window.updateRepeatUI =
   updateRepeatUI;
