@@ -5977,4 +5977,993 @@ async function afterRewardChange(result, gainText, loseText) {
 
   if (delta > 0 && gainText) {
     showToast(gainText);
-  } else if 
+  } else if (delta < 0 && loseText) {
+    showToast(loseText);
+  }
+
+  if (delta !== 0) {
+    await loadPlayer();
+  }
+
+  await loadTodayRewards();
+
+}
+
+
+async function syncMorningReward() {
+
+  if (!currentUser) return;
+
+  const { data, error } = await db.rpc("sync_morning_reward");
+
+  if (error) {
+    console.warn("晨間獎勵同步失敗：", error);
+    return;
+  }
+
+  await afterRewardChange(
+    data,
+    "🌅 晨間啟動完成！+20 EXP / +10 金幣",
+    "晨間打卡沒有全部完成，收回 −20 EXP / −10 金幣"
+  );
+
+}
+
+
+/*
+  silent = true：不自己顯示提示（例如結束專注時，和「已記錄」合成一則）
+  回傳資料庫的結果，裡面有 delta_exp / delta_gold
+*/
+async function syncFocusReward(sessionDate, silent = false) {
+
+  if (!currentUser) return null;
+
+  const { data, error } = await db.rpc(
+    "sync_focus_reward",
+    { p_date: sessionDate || getToday() }
+  );
+
+  if (error) {
+    console.warn("專注獎勵同步失敗：", error);
+    return null;
+  }
+
+  const delta = data ? Number(data.delta_exp || 0) : 0;
+
+  const goldDelta = data ? Number(data.delta_gold || 0) : 0;
+
+  await afterRewardChange(
+    data,
+    silent ? null : `⏱️ 專注滿 25 分鐘！+${delta} EXP / +${goldDelta} 金幣`,
+    silent ? null : `專注時間變少，收回 ${delta} EXP / ${goldDelta} 金幣`
+  );
+
+  return data;
+
+}
+
+
+/* =========================================================
+   M2. ⏳ 倒數
+========================================================= */
+
+let countdowns = [];
+let editingCountdownId = null;
+
+
+async function loadCountdowns() {
+
+  if (!currentUser) return;
+
+  const { data, error } = await db
+    .from("countdowns")
+    .select("*")
+    .eq("user_id", currentUser.id)
+    .order("target_date", { ascending: true });
+
+  if (error) {
+
+    console.error("倒數載入失敗：", error);
+
+    document.getElementById("countdown-list").innerHTML =
+      `<span class="small-note">❌ 倒數載入失敗</span>`;
+
+    return;
+
+  }
+
+  countdowns = data || [];
+
+  renderCountdownStrip();
+
+  if (isCountdownManagerOpen()) renderCountdownManager();
+
+}
+
+
+function countdownLabel(days) {
+
+  if (days === 0) return "🔥 就是今天！";
+  if (days < 0) return `已過 ${-days} 天`;
+
+  return `還有 <strong>${days}</strong> 天`;
+
+}
+
+
+function renderCountdownStrip() {
+
+  const list = document.getElementById("countdown-list");
+
+  if (!list) return;
+
+  const today = getToday();
+
+  const shown = countdowns
+    .map(item => ({ ...item, days: daysBetween(today, item.target_date) }))
+    .filter(item => item.visible && item.days >= 0)
+    .sort((a, b) => a.days - b.days);
+
+
+  if (shown.length === 0) {
+
+    list.innerHTML = `
+      <button class="countdown-chip add" onclick="openCountdownManager()">
+        ＋ 新增倒數（例如：研究所考試）
+      </button>
+    `;
+
+    return;
+
+  }
+
+
+  list.innerHTML = shown
+    .map(item => `
+      <div class="countdown-chip ${item.days === 0 ? "today" : item.days <= 7 ? "soon" : ""}">
+        <span class="cd-title">⏳ ${escapeHtml(item.title)}</span>
+        <span class="cd-days">${countdownLabel(item.days)}</span>
+      </div>
+    `)
+    .join("");
+
+}
+
+
+function isCountdownManagerOpen() {
+
+  const modal = document.getElementById("modal");
+
+  return Boolean(
+    modal &&
+    modal.style.display !== "none" &&
+    modal.dataset.kind === "countdowns"
+  );
+
+}
+
+
+function openCountdownManager() {
+
+  editingCountdownId = null;
+
+  openModal({
+    title: "⏳ 管理倒數",
+    bodyHtml: "",
+    buttons: [{ label: "關閉", className: "btn" }]
+  });
+
+  document.getElementById("modal").dataset.kind = "countdowns";
+
+  renderCountdownManager();
+
+  setTimeout(() => {
+    const input = document.getElementById("cd-new-title");
+    if (input && countdowns.length === 0) input.focus();
+  }, 30);
+
+}
+
+
+function renderCountdownManager() {
+
+  const body = document.getElementById("modal-body");
+
+  if (!body) return;
+
+  const today = getToday();
+
+  const rows = [...countdowns]
+    .sort((a, b) => (a.target_date > b.target_date ? 1 : -1))
+    .map(item => {
+
+      const id = Number(item.id);
+      const days = daysBetween(today, item.target_date);
+
+      if (editingCountdownId === id) {
+
+        return `
+          <div class="manage-row editing">
+            <input type="text" id="cd-edit-title" maxlength="50" value="${escapeHtml(item.title)}">
+            <input type="date" id="cd-edit-date" value="${escapeHtml(item.target_date)}">
+            <div class="manage-actions">
+              <button class="icon-btn" onclick="saveCountdownEdit(${id})">儲存</button>
+              <button class="icon-btn" onclick="cancelCountdownEdit()">取消</button>
+            </div>
+          </div>
+        `;
+
+      }
+
+      return `
+        <div class="manage-row ${item.visible ? "" : "muted"}">
+          <div class="manage-main">
+            <strong>${escapeHtml(item.title)}</strong>
+            <div class="small-note">
+              ${escapeHtml(item.target_date)}・${countdownLabel(days).replace(/<\/?strong>/g, "")}
+              ${item.visible ? "" : "・首頁不顯示"}
+            </div>
+          </div>
+          <div class="manage-actions">
+            <button class="icon-btn" onclick="toggleCountdownVisible(${id})">
+              ${item.visible ? "🙈 隱藏" : "👁 顯示"}
+            </button>
+            <button class="icon-btn" title="編輯" onclick="startCountdownEdit(${id})">✏️</button>
+            <button class="icon-btn" title="刪除" onclick="deleteCountdown(${id})">🗑️</button>
+          </div>
+        </div>
+      `;
+
+    })
+    .join("");
+
+
+  body.innerHTML = `
+
+    ${rows || `<p class="small-note">還沒有倒數。例如：研究所考試、多益、專題期限、畢業。</p>`}
+
+    <div class="manage-add">
+      <input type="text" id="cd-new-title" maxlength="50" placeholder="名稱，例如：研究所考試">
+      <input type="date" id="cd-new-date">
+      <button class="btn btn-primary" onclick="addCountdown()">＋ 新增</button>
+    </div>
+
+    <p class="small-note">日期到了當天會顯示「🔥 就是今天！」，過了之後首頁自動隱藏（資料保留）。</p>
+
+  `;
+
+}
+
+
+async function addCountdown() {
+
+  const title = document.getElementById("cd-new-title").value.trim();
+  const date = document.getElementById("cd-new-date").value;
+
+  if (!title || !date) {
+    alert("請輸入名稱和日期");
+    return;
+  }
+
+  const { error } = await db
+    .from("countdowns")
+    .insert({
+      user_id: currentUser.id,
+      title,
+      target_date: date,
+      visible: true
+    });
+
+  if (error) {
+    alert("新增失敗：" + error.message);
+    return;
+  }
+
+  await loadCountdowns();
+
+}
+
+
+function startCountdownEdit(id) {
+
+  editingCountdownId = id;
+
+  renderCountdownManager();
+
+}
+
+
+function cancelCountdownEdit() {
+
+  editingCountdownId = null;
+
+  renderCountdownManager();
+
+}
+
+
+async function saveCountdownEdit(id) {
+
+  const title = document.getElementById("cd-edit-title").value.trim();
+  const date = document.getElementById("cd-edit-date").value;
+
+  if (!title || !date) {
+    alert("請輸入名稱和日期");
+    return;
+  }
+
+  const { error } = await db
+    .from("countdowns")
+    .update({ title, target_date: date })
+    .eq("id", id)
+    .eq("user_id", currentUser.id);
+
+  if (error) {
+    alert("儲存失敗：" + error.message);
+    return;
+  }
+
+  editingCountdownId = null;
+
+  await loadCountdowns();
+
+}
+
+
+async function toggleCountdownVisible(id) {
+
+  const item = countdowns.find(row => Number(row.id) === Number(id));
+
+  if (!item) return;
+
+  const { error } = await db
+    .from("countdowns")
+    .update({ visible: !item.visible })
+    .eq("id", id)
+    .eq("user_id", currentUser.id);
+
+  if (error) {
+    alert("更新失敗：" + error.message);
+    return;
+  }
+
+  await loadCountdowns();
+
+}
+
+
+async function deleteCountdown(id) {
+
+  const item = countdowns.find(row => Number(row.id) === Number(id));
+
+  if (!item || !confirm(`刪除倒數「${item.title}」？`)) return;
+
+  const { error } = await db
+    .from("countdowns")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", currentUser.id);
+
+  if (error) {
+    alert("刪除失敗：" + error.message);
+    return;
+  }
+
+  await loadCountdowns();
+
+}
+
+
+/* =========================================================
+   M3. 🎯 今日主線 ＋ 📍 長期目標
+========================================================= */
+
+let goals = [];
+let todayMainline = null;
+let previousMainline = null;   // 最近一天（今天以前）的主線
+let goalStats = {};            // goal_id → { days, done }
+
+
+async function loadMainline() {
+
+  if (!currentUser) return;
+
+  const [goalsResult, mainlinesResult] = await Promise.all([
+
+    db
+      .from("goals")
+      .select("*")
+      .eq("user_id", currentUser.id)
+      .order("created_at", { ascending: true }),
+
+    db
+      .from("mainlines")
+      .select("*")
+      .eq("user_id", currentUser.id)
+      .order("main_date", { ascending: false })
+      .limit(1000)
+
+  ]);
+
+
+  const error = goalsResult.error || mainlinesResult.error;
+
+  if (error) {
+
+    console.error("主線載入失敗：", error);
+
+    document.getElementById("mainline-body").innerHTML = `
+      <div class="empty-state">❌ 主線載入失敗：${escapeHtml(error.message)}</div>
+    `;
+
+    return;
+
+  }
+
+
+  goals = goalsResult.data || [];
+
+  const rows = mainlinesResult.data || [];
+  const today = getToday();
+
+  todayMainline = rows.find(row => row.main_date === today) || null;
+
+  previousMainline = rows.find(row => row.main_date < today) || null;
+
+
+  goalStats = {};
+
+  rows.forEach(row => {
+
+    if (!row.goal_id) return;
+
+    const stat = goalStats[row.goal_id] || { days: 0, done: 0 };
+
+    stat.days += 1;
+    if (row.completed) stat.done += 1;
+
+    goalStats[row.goal_id] = stat;
+
+  });
+
+
+  renderMainline();
+
+  if (isGoalManagerOpen()) renderGoalManager();
+
+}
+
+
+function findGoal(goalId) {
+
+  return goals.find(goal => Number(goal.id) === Number(goalId)) || null;
+
+}
+
+
+function goalOptionsHtml(selectedId) {
+
+  const options = goals
+    .filter(goal =>
+      goal.status === "active" ||
+      Number(goal.id) === Number(selectedId)
+    )
+    .map(goal => `
+      <option value="${Number(goal.id)}" ${Number(goal.id) === Number(selectedId) ? "selected" : ""}>
+        📍 ${escapeHtml(goal.title)}
+      </option>
+    `)
+    .join("");
+
+  return `<option value="">不屬於長期目標</option>${options}`;
+
+}
+
+
+function renderMainline() {
+
+  const body = document.getElementById("mainline-body");
+
+  if (!body) return;
+
+
+  /* ---------- 還沒設定 ---------- */
+
+  if (!todayMainline) {
+
+    let reuse = "";
+
+    if (previousMainline && !previousMainline.completed) {
+
+      const when =
+        previousMainline.main_date === shiftDate(getToday(), -1)
+          ? "昨天"
+          : formatShortDate(previousMainline.main_date);
+
+      reuse = `
+        <button class="chip reuse-chip" onclick="reuseLastMainline()">
+          ↩ 沿用${when}沒完成的主線：「${escapeHtml(previousMainline.title)}」
+        </button>
+      `;
+
+    }
+
+    body.innerHTML = `
+
+      <div class="mainline-question">今天最重要的一件事是？</div>
+
+      <div class="mainline-form">
+
+        <input
+          type="text"
+          id="mainline-input"
+          maxlength="100"
+          placeholder="例如：計概進制與編碼複習"
+          onkeydown="if (event.key === 'Enter' && !event.isComposing && event.keyCode !== 229) setMainline()"
+        >
+
+        <select id="mainline-goal">${goalOptionsHtml(null)}</select>
+
+        <button class="btn btn-primary" onclick="setMainline()">設定主線</button>
+
+      </div>
+
+      ${reuse}
+
+      <p class="small-note" style="margin-top:10px;">
+        🎁 完成主線 +50 EXP / +30 金幣。其他事情都是支線，突然想到的先丟進 💡 想法庫。
+      </p>
+
+    `;
+
+    return;
+
+  }
+
+
+  /* ---------- 已設定 ---------- */
+
+  const main = todayMainline;
+  const goal = main.goal_id ? findGoal(main.goal_id) : null;
+
+  body.innerHTML = `
+
+    <div class="mainline-show ${main.completed ? "done" : ""}">
+
+      ${goal ? `<div class="mainline-goal">📍 ${escapeHtml(goal.title)}</div>` : ""}
+
+      <div class="mainline-title">${escapeHtml(main.title)}</div>
+
+      ${main.completed
+        ? `<div class="mainline-done-note">✅ 主線完成！+50 EXP / +30 金幣</div>`
+        : ""}
+
+      <div class="mainline-actions">
+
+        ${main.completed
+          ? `<button class="btn" onclick="toggleMainlineDone(false)">↩ 取消完成</button>`
+          : `<button class="btn btn-primary" onclick="toggleMainlineDone(true)">✓ 完成主線（+50 EXP）</button>
+             <button class="btn" onclick="startFocusFromMainline()">⏱️ 開始專注</button>`}
+
+        <button class="btn" onclick="editMainline()">✏️ 修改</button>
+
+      </div>
+
+    </div>
+
+  `;
+
+}
+
+
+async function insertMainline(title, goalId) {
+
+  const { error } = await db
+    .from("mainlines")
+    .insert({
+      user_id: currentUser.id,
+      main_date: getToday(),
+      title,
+      goal_id: goalId || null
+    });
+
+  if (error) {
+
+    /* 例如另一個分頁已經設定了 → 重新載入就會看到 */
+    console.error("設定主線失敗：", error);
+    alert("設定主線失敗：" + error.message);
+
+  } else {
+
+    showToast("🎯 主線設定好了，專心推進它！");
+
+  }
+
+  await loadMainline();
+
+}
+
+
+async function setMainline() {
+
+  const input = document.getElementById("mainline-input");
+  const title = input ? input.value.trim() : "";
+
+  if (!title) {
+    if (input) input.focus();
+    return;
+  }
+
+  const goalValue = document.getElementById("mainline-goal").value;
+
+  await insertMainline(title, goalValue ? Number(goalValue) : null);
+
+}
+
+
+async function reuseLastMainline() {
+
+  if (!previousMainline) return;
+
+  await insertMainline(previousMainline.title, previousMainline.goal_id);
+
+}
+
+
+function editMainline() {
+
+  if (!todayMainline) return;
+
+  openModal({
+
+    title: "✏️ 修改今日主線",
+
+    bodyHtml: `
+      <div class="modal-field">
+        <label for="edit-main-title">主線</label>
+        <input type="text" id="edit-main-title" maxlength="100"
+          value="${escapeHtml(todayMainline.title)}">
+      </div>
+      <div class="modal-field">
+        <label for="edit-main-goal">屬於哪個長期目標</label>
+        <select id="edit-main-goal">${goalOptionsHtml(todayMainline.goal_id)}</select>
+      </div>
+    `,
+
+    buttons: [
+      { label: "取消", className: "btn" },
+      { label: "儲存", className: "btn btn-primary", onClick: saveMainlineEdit }
+    ],
+
+    focus: "#edit-main-title"
+
+  });
+
+}
+
+
+async function saveMainlineEdit() {
+
+  const title = document.getElementById("edit-main-title").value.trim();
+  const goalValue = document.getElementById("edit-main-goal").value;
+
+  if (!title) {
+    alert("主線不能是空的");
+    return false;
+  }
+
+  const { error } = await db
+    .from("mainlines")
+    .update({
+      title,
+      goal_id: goalValue ? Number(goalValue) : null,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", todayMainline.id)
+    .eq("user_id", currentUser.id);
+
+  if (error) {
+    alert("儲存失敗：" + error.message);
+    return false;
+  }
+
+  await loadMainline();
+
+}
+
+
+async function toggleMainlineDone(done) {
+
+  if (!todayMainline) return;
+
+  const { data, error } = await db.rpc(
+    done ? "complete_mainline" : "uncomplete_mainline",
+    { p_mainline_id: todayMainline.id }
+  );
+
+  if (error) {
+    alert("更新主線失敗：" + error.message);
+    return;
+  }
+
+  await loadMainline();
+
+  await afterRewardChange(
+    data,
+    "🎯 主線完成！+50 EXP / +30 金幣",
+    "已取消完成，收回 −50 EXP / −30 金幣"
+  );
+
+}
+
+
+/* 跳到專注區；主線名稱裡有科目名稱就先選好 */
+function startFocusFromMainline() {
+
+  const card = document.getElementById("focus-card");
+
+  if (!card) return;
+
+
+  if (!focusTimer && todayMainline) {
+
+    const title = todayMainline.title;
+
+    const match = [...focusKnownSubjects]
+      .sort((a, b) => b.length - a.length)
+      .find(subject => title.includes(subject));
+
+    if (match) {
+
+      const select = document.getElementById("focus-subject");
+
+      select.value = match;
+
+      onFocusSubjectChange();
+
+    }
+
+  }
+
+
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  card.classList.remove("flash");
+  void card.offsetWidth;   // 讓動畫可以重播
+  card.classList.add("flash");
+
+  if (focusTimer) {
+    showToast("專注已經在進行中 💪");
+  }
+
+}
+
+
+/* 想法庫「🎯 主線」分類 → 設為今日主線 */
+async function setMainlineFromIdea(ideaId) {
+
+  const idea = ideas.find(row => Number(row.id) === Number(ideaId));
+
+  if (!idea) return;
+
+
+  if (todayMainline) {
+
+    if (todayMainline.completed) {
+      alert("今天的主線已經完成了，這個想法可以留到明天。");
+      return;
+    }
+
+    const ok = confirm(
+      `今天已經有主線「${todayMainline.title}」，要換成「${idea.content}」嗎？`
+    );
+
+    if (!ok) return;
+
+    const { error } = await db
+      .from("mainlines")
+      .update({ title: idea.content, updated_at: new Date().toISOString() })
+      .eq("id", todayMainline.id)
+      .eq("user_id", currentUser.id);
+
+    if (error) {
+      alert("更新主線失敗：" + error.message);
+      return;
+    }
+
+    showToast("🎯 已換成今日主線");
+
+  } else {
+
+    const { error } = await db
+      .from("mainlines")
+      .insert({
+        user_id: currentUser.id,
+        main_date: getToday(),
+        title: idea.content
+      });
+
+    if (error) {
+      alert("設定主線失敗：" + error.message);
+      return;
+    }
+
+    showToast("🎯 已設為今日主線");
+
+  }
+
+
+  await setIdeaStatus(ideaId, "done");
+
+  await loadMainline();
+
+  document.getElementById("mainline-card")
+    .scrollIntoView({ behavior: "smooth", block: "start" });
+
+}
+
+
+/* ---------- 📍 長期目標管理 ---------- */
+
+function isGoalManagerOpen() {
+
+  const modal = document.getElementById("modal");
+
+  return Boolean(
+    modal &&
+    modal.style.display !== "none" &&
+    modal.dataset.kind === "goals"
+  );
+
+}
+
+
+function openGoalManager() {
+
+  openModal({
+    title: "📍 長期目標",
+    bodyHtml: "",
+    buttons: [{ label: "關閉", className: "btn" }]
+  });
+
+  document.getElementById("modal").dataset.kind = "goals";
+
+  renderGoalManager();
+
+  setTimeout(() => {
+    const input = document.getElementById("goal-new-title");
+    if (input && goals.length === 0) input.focus();
+  }, 30);
+
+}
+
+
+function renderGoalManager() {
+
+  const body = document.getElementById("modal-body");
+
+  if (!body) return;
+
+  const ordered = [
+    ...goals.filter(goal => goal.status === "active"),
+    ...goals.filter(goal => goal.status !== "active")
+  ];
+
+  const rows = ordered
+    .map(goal => {
+
+      const id = Number(goal.id);
+      const stat = goalStats[id] || { days: 0, done: 0 };
+      const active = goal.status === "active";
+
+      return `
+        <div class="manage-row ${active ? "" : "muted"}">
+          <div class="manage-main">
+            <strong>${active ? "📍" : "🏆"} ${escapeHtml(goal.title)}</strong>
+            <div class="small-note">
+              ${active ? "進行中" : "已達成"}・已推進 ${stat.days} 天（完成 ${stat.done} 天）
+            </div>
+          </div>
+          <div class="manage-actions">
+            <button class="icon-btn" onclick="toggleGoalDone(${id})">
+              ${active ? "🏆 達成" : "↩ 恢復"}
+            </button>
+            <button class="icon-btn" title="改名" onclick="renameGoal(${id})">✏️</button>
+            <button class="icon-btn" title="刪除" onclick="deleteGoal(${id})">🗑️</button>
+          </div>
+        </div>
+      `;
+
+    })
+    .join("");
+
+
+  body.innerHTML = `
+
+    ${rows || `<p class="small-note">長期目標是大方向，例如：研究所考試、多益 800、完成專題。每天的主線可以選它屬於哪個目標。</p>`}
+
+    <div class="manage-add">
+      <input type="text" id="goal-new-title" maxlength="50"
+        placeholder="新增長期目標，例如：研究所考試"
+        onkeydown="if (event.key === 'Enter' && !event.isComposing && event.keyCode !== 229) addGoal()">
+      <button class="btn btn-primary" onclick="addGoal()">＋ 新增</button>
+    </div>
+
+  `;
+
+}
+
+
+async function addGoal() {
+
+  const input = document.getElementById("goal-new-title");
+  const title = input ? input.value.trim() : "";
+
+  if (!title) {
+    if (input) input.focus();
+    return;
+  }
+
+  const { error } = await db
+    .from("goals")
+    .insert({ user_id: currentUser.id, title, status: "active" });
+
+  if (error) {
+    alert("新增失敗：" + error.message);
+    return;
+  }
+
+  await loadMainline();
+
+}
+
+
+async function renameGoal(id) {
+
+  const goal = findGoal(id);
+
+  if (!goal) return;
+
+  const answer = prompt("修改長期目標名稱：", goal.title);
+
+  if (answer === null) return;
+
+  const title = answer.trim();
+
+  if (!title) {
+    alert("名稱不能是空的");
+    return;
+  }
+
+  const { error } = await db
+    .from("goals")
+    .update({ title })
+    .eq("id", id)
+    .eq("user_id", currentUser.id);
+
+  if (error) {
+    alert("修改失敗：" + error.message);
+    return;
+  }
+
+  await loadMainline();
+
+}
+
+
+async function toggleGoalDone(id) {
+
+  const goal = findGoal(id);
+
+  if (!goal) return;
+
+  const finishing = goal.status === "active";
+
+  const { error } = await db
+    .from("goals")
+    .update({
+      status: finishing ? "done" : "active",
+      done_at: finishing ? new Date().toISOString() : null
+    })
+    .eq("id", id)
+    .eq("user_id", curren
