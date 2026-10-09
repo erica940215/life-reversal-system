@@ -144,6 +144,14 @@
     }
 
 
+    /* 單選 / 勾選框不要被拉成輸入框那麼寬 */
+    .task-form input[type="radio"],
+    .task-form input[type="checkbox"] {
+      width: auto;
+      padding: 0;
+    }
+
+
     .auth-buttons {
       display: flex;
 
@@ -701,17 +709,356 @@
     }
 
 
-    .managed-task-item button {
+    .managed-task-item.inactive {
+
+      opacity: .6;
+    }
+
+
+    .managed-main {
+
+      flex: 1;
+
+      min-width: 0;
+
+      word-break: break-word;
+    }
+
+
+    .managed-actions {
+
+      display: flex;
+
+      gap: 6px;
+
+      flex-shrink: 0;
+    }
+
+
+    .managed-actions button {
 
       border: 0;
 
-      background: #7d3040;
+      background: #252b38;
 
       color: white;
 
       padding: 8px 10px;
 
       border-radius: 8px;
+
+      white-space: nowrap;
+    }
+
+
+    .managed-actions button.btn-del {
+
+      background: #7d3040;
+    }
+
+
+    .status-active {
+      color: #7bed9f;
+    }
+
+
+    .status-paused {
+      color: #ffd76a;
+    }
+
+
+    .status-ended {
+      color: #9ca5bd;
+    }
+
+
+    .tab-count:not(:empty) {
+
+      margin-left: 4px;
+
+      padding: 0 7px;
+
+      border-radius: 999px;
+
+      background: rgba(255, 255, 255, .15);
+
+      font-size: 12px;
+    }
+
+
+    /* ==============================
+       今日任務：標籤 / 已跳過
+    ============================== */
+
+    .task-meta .badge-repeat {
+
+      background: rgba(88, 101, 242, .25);
+    }
+
+
+    .task-meta .badge-carry,
+    .badge-carry {
+
+      background: rgba(255, 215, 106, .18);
+
+      color: #ffd76a;
+    }
+
+
+    .skipped-box {
+
+      margin-top: 12px;
+
+      padding: 10px 14px;
+
+      border: 1px dashed #343b4b;
+
+      border-radius: 12px;
+    }
+
+
+    .skipped-row {
+
+      display: flex;
+
+      align-items: center;
+
+      justify-content: space-between;
+
+      gap: 10px;
+
+      margin-top: 6px;
+
+      opacity: .7;
+    }
+
+
+    /* ==============================
+       星期多選
+    ============================== */
+
+    #repeat-day-item {
+
+      grid-column: 1 / -1;
+
+      order: 3;
+    }
+
+
+    /* 七天固定排一行，手機也不會換行 */
+    .day-picker {
+
+      display: grid;
+
+      grid-template-columns:
+        repeat(7, minmax(0, 1fr));
+
+      gap: 6px;
+
+      max-width: 340px;
+    }
+
+
+    .day-chip {
+
+      position: relative;
+
+      display: inline-flex;
+
+      align-items: center;
+
+      justify-content: center;
+
+      min-width: 0;
+
+      height: 40px;
+
+      border: 1px solid #343b4b;
+
+      border-radius: 10px;
+
+      background: #10131a;
+
+      cursor: pointer;
+
+      user-select: none;
+    }
+
+
+    .day-chip input {
+
+      position: absolute;
+
+      opacity: 0;
+
+      pointer-events: none;
+    }
+
+
+    .day-chip:has(input:checked) {
+
+      background: #5865f2;
+
+      border-color: #5865f2;
+
+      font-weight: bold;
+    }
+
+
+    .day-chip:has(input:focus-visible) {
+
+      outline: 2px solid #9b6cff;
+    }
+
+
+    /* ==============================
+       彈出視窗
+    ============================== */
+
+    .modal {
+
+      position: fixed;
+
+      inset: 0;
+
+      z-index: 150;
+
+      background: rgba(0, 0, 0, .55);
+
+      display: flex;
+
+      align-items: flex-start;
+
+      justify-content: center;
+
+      padding: 10vh 16px 16px;
+
+      overflow-y: auto;
+    }
+
+
+    .modal-box {
+
+      width: 100%;
+
+      max-width: 480px;
+
+      background: #181c26;
+
+      border: 1px solid #2c3342;
+
+      border-radius: 16px;
+
+      padding: 20px;
+
+      box-shadow:
+        0 15px 50px rgba(0, 0, 0, .45);
+    }
+
+
+    .modal-title {
+
+      font-weight: bold;
+
+      font-size: 18px;
+
+      margin-bottom: 14px;
+    }
+
+
+    .modal-field {
+
+      margin-bottom: 12px;
+
+      flex: 1;
+
+      min-width: 0;
+    }
+
+
+    .modal-field label {
+
+      display: block;
+
+      font-size: 13px;
+
+      opacity: .7;
+
+      margin-bottom: 6px;
+    }
+
+
+    /* 星期按鈕也是 label，蓋掉一般欄位標籤的樣式 */
+    .modal-field .day-chip,
+    .form-item .day-chip {
+
+      display: inline-flex;
+
+      font-size: 14px;
+
+      opacity: 1;
+
+      margin: 0;
+    }
+
+
+    .modal-field input[type="text"],
+    .modal-field input[type="date"],
+    .modal-field select {
+
+      width: 100%;
+
+      padding: 10px 12px;
+
+      border: 1px solid #343b4b;
+
+      border-radius: 10px;
+
+      background: #10131a;
+
+      color: #fff;
+
+      outline: none;
+
+      font-size: 15px;
+    }
+
+
+    .modal-field select:disabled {
+
+      opacity: .5;
+    }
+
+
+    .modal-row {
+
+      display: flex;
+
+      gap: 10px;
+
+      flex-wrap: wrap;
+    }
+
+
+    .modal-box p {
+
+      margin: 0 0 10px;
+
+      line-height: 1.6;
+    }
+
+
+    .modal-actions {
+
+      display: flex;
+
+      justify-content: flex-end;
+
+      flex-wrap: wrap;
+
+      gap: 8px;
+
+      margin-top: 16px;
     }
 
 
@@ -1629,6 +1976,22 @@
       }
 
 
+      .managed-task-item {
+
+        flex-direction: column;
+
+        align-items: stretch;
+
+      }
+
+
+      .managed-actions {
+
+        justify-content: flex-end;
+
+      }
+
+
       .card {
 
         padding: 18px 14px;
@@ -2367,42 +2730,19 @@
               >
 
                 <label>
-                  星期
+                  星期（可多選）
                 </label>
 
-                <select
-                  name="repeat-day"
-                >
-
-                  <option value="1">
-                    星期一
-                  </option>
-
-                  <option value="2">
-                    星期二
-                  </option>
-
-                  <option value="3">
-                    星期三
-                  </option>
-
-                  <option value="4">
-                    星期四
-                  </option>
-
-                  <option value="5">
-                    星期五
-                  </option>
-
-                  <option value="6">
-                    星期六
-                  </option>
-
-                  <option value="7">
-                    星期日
-                  </option>
-
-                </select>
+                <!-- 1 = 星期一 … 7 = 星期日，打開時預設勾今天 -->
+                <div class="day-picker">
+                  <label class="day-chip"><input type="checkbox" name="new-task-days" value="1">一</label>
+                  <label class="day-chip"><input type="checkbox" name="new-task-days" value="2">二</label>
+                  <label class="day-chip"><input type="checkbox" name="new-task-days" value="3">三</label>
+                  <label class="day-chip"><input type="checkbox" name="new-task-days" value="4">四</label>
+                  <label class="day-chip"><input type="checkbox" name="new-task-days" value="5">五</label>
+                  <label class="day-chip"><input type="checkbox" name="new-task-days" value="6">六</label>
+                  <label class="day-chip"><input type="checkbox" name="new-task-days" value="7">日</label>
+                </div>
 
               </div>
 
@@ -2521,7 +2861,7 @@
           margin-top:-5px;
         "
       >
-        管理你的所有任務與重複任務設定
+        重複任務的暫停、修改、刪除，以及還沒完成的單次任務
       </p>
 
 
@@ -2530,37 +2870,25 @@
 
         <button
           class="filter-btn active"
-          onclick="filterManagedTasks('all', this)"
+          data-managed-tab="repeat"
+          onclick="setManagedTab('repeat')"
         >
-          全部
+          🔄 重複任務
+          <span class="tab-count" id="managed-repeat-count"></span>
         </button>
 
 
         <button
           class="filter-btn"
-          onclick="filterManagedTasks('once', this)"
+          data-managed-tab="once"
+          onclick="setManagedTab('once')"
         >
-          單次
-        </button>
-
-
-        <button
-          class="filter-btn"
-          onclick="filterManagedTasks('repeat', this)"
-        >
-          重複
+          📌 單次任務（未完成）
+          <span class="tab-count" id="managed-once-count"></span>
         </button>
 
 
       </div>
-
-
-      <button
-        class="btn btn-danger"
-        onclick="clearManagementList()"
-      >
-        🗑️ 清空所有任務
-      </button>
 
 
       <div
@@ -2702,6 +3030,30 @@
 
 
   <div id="toast"></div>
+
+
+  <!-- ==============================
+       共用彈出視窗（編輯任務、跳過 / 停止重複任務）
+  ============================== -->
+
+  <div
+    id="modal"
+    class="modal"
+    style="display:none;"
+    onclick="if (event.target === this) closeModal()"
+  >
+
+    <div class="modal-box" role="dialog" aria-modal="true">
+
+      <div class="modal-title" id="modal-title"></div>
+
+      <div id="modal-body"></div>
+
+      <div class="modal-actions" id="modal-actions"></div>
+
+    </div>
+
+  </div>
 
 </main>
 
