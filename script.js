@@ -35,6 +35,15 @@ let currentManagedTab = "repeat";   // 任務管理分頁：repeat / once
 let taskTemplates = [];       // 重複任務的範本
 let carriedOverForDate = null;      // 今天已經順延過了嗎
 
+/* 今天的額外獎勵（晨間 / 專注 / 主線），從 reward_events 讀 */
+let todayBonus = {
+  exp: 0,
+  gold: 0,
+  morning: null,
+  focus: null,
+  mainline: null
+};
+
 
 /* =========================================================
    3. 頁面初始化
@@ -832,26 +841,31 @@ function renderPlayer() {
 
 function getTaskReward(difficulty) {
 
+  /*
+    新的獎勵表（照藍圖範例）：
+    已經建立的任務保留原本的數字，只有新任務用這張表
+  */
+
   const rewards = {
 
     easy: {
-      exp: 10,
-      gold: 5
-    },
-
-    normal: {
-      exp: 20,
+      exp: 15,
       gold: 10
     },
 
-    hard: {
-      exp: 35,
+    normal: {
+      exp: 30,
       gold: 20
     },
 
-    epic: {
-      exp: 55,
+    hard: {
+      exp: 50,
       gold: 35
+    },
+
+    epic: {
+      exp: 80,
+      gold: 55
     }
 
   };
@@ -2217,6 +2231,9 @@ function openModal({ title, bodyHtml, buttons, focus }) {
 
   modalButtons = buttons || [];
 
+  /* 管理視窗（倒數 / 長期目標）會自己標記種類 */
+  delete document.getElementById("modal").dataset.kind;
+
   document.getElementById("modal-title").textContent = title;
 
   document.getElementById("modal-body").innerHTML = bodyHtml;
@@ -2251,7 +2268,10 @@ function closeModal() {
 
   const modal = document.getElementById("modal");
 
-  if (modal) modal.style.display = "none";
+  if (modal) {
+    modal.style.display = "none";
+    delete modal.dataset.kind;
+  }
 
   modalButtons = [];
 
@@ -2496,6 +2516,13 @@ function updateSummary() {
     }
 
   });
+
+
+  /* 加上晨間、專注、主線的額外獎勵 */
+
+  todayExp += todayBonus.exp;
+
+  todayGold += todayBonus.gold;
 
 
   if (expElement) {
@@ -3409,6 +3436,16 @@ function buildDailyReport(selfRating) {
 
     ideas_converted: idea.converted,
 
+    mainline_title:
+      todayMainline ? todayMainline.title : null,
+
+    mainline_done:
+      Boolean(todayMainline && todayMainline.completed),
+
+    bonus_exp: todayBonus.exp,
+
+    bonus_gold: todayBonus.gold,
+
     tasks_total: total,
 
     tasks_done: doneTasks.length,
@@ -3420,9 +3457,11 @@ function buildDailyReport(selfRating) {
             (doneTasks.length / total) * 100
           ),
 
-    exp_gained: exp,
+    /* 總共：任務 + 額外獎勵 */
 
-    gold_gained: gold,
+    exp_gained: exp + todayBonus.exp,
+
+    gold_gained: gold + todayBonus.gold,
 
     self_rating: selfRating,
 
@@ -3594,6 +3633,14 @@ function renderDailyReport(report) {
 
       <div class="report-grid">
 
+        <div class="report-label">🎯 主線</div>
+        <div class="report-value">
+          ${report.mainline_title
+            ? `${report.mainline_done ? "✅ 完成" : "⬜ 未完成"}
+               <div class="small-note" style="font-weight:normal;">${escapeHtml(report.mainline_title)}</div>`
+            : "今天沒有設定"}
+        </div>
+
         <div class="report-label">📋 任務</div>
         <div class="report-value">
           ${Number(report.tasks_done)} / ${Number(report.tasks_total)}
@@ -3602,6 +3649,9 @@ function renderDailyReport(report) {
         <div class="report-label">🎮 EXP</div>
         <div class="report-value">
           +${Number(report.exp_gained)}
+          ${Number(report.bonus_exp || 0) > 0
+            ? `<div class="small-note" style="font-weight:normal;">其中額外獎勵 +${Number(report.bonus_exp)}（晨間 / 專注 / 主線）</div>`
+            : ""}
         </div>
 
         <div class="report-label">💰 Gold</div>
@@ -3657,6 +3707,8 @@ function renderDailyReport(report) {
 function formatReportDuration(seconds) {
 
   const s = Number(seconds || 0);
+
+  if (s <= 0) return "0m";
 
   return typeof formatDuration === "function"
     ? formatDuration(s)
@@ -3846,9 +3898,18 @@ async function loadTodayModules() {
 
   if (!currentUser) return;
 
+  setTodayDateLabel();
+
   /* 一個模組壞掉不影響其他模組 */
 
-  for (const loader of [loadMorning, loadFocus, loadIdeas]) {
+  for (const loader of [
+    loadCountdowns,
+    loadMainline,
+    loadMorning,
+    loadFocus,
+    loadIdeas,
+    loadTodayRewards
+  ]) {
 
     try {
       await loader();
@@ -3872,7 +3933,18 @@ function resetTodayModules() {
   morningEditing = false;
   ideas = [];
 
+  countdowns = [];
+  goals = [];
+  todayMainline = null;
+  previousMainline = null;
+  goalStats = {};
+  todayBonus = { exp: 0, gold: 0, morning: null, focus: null, mainline: null };
+
   document.title = ORIGINAL_TITLE;
+
+  if (typeof closeModal === "function") closeModal();
+
+  toggleAddTaskPanel(false);
 
   closeIdeaCapture();
 
@@ -4105,7 +4177,9 @@ function renderMorning() {
     })
     .join("") + (
       done === total
-        ? `<div class="morning-complete">🎉 晨間啟動完成！開始今天的主線吧</div>`
+        ? `<div class="morning-complete">🎉 晨間啟動完成！+20 EXP / +10 金幣・開始今天的主線吧</div>`
+        : total > 0
+        ? `<div class="reward-hint">🎁 全部完成 +20 EXP / +10 金幣（還差 ${total - done} 項）</div>`
         : ""
     );
 
@@ -4177,11 +4251,9 @@ async function toggleMorningItem(itemId, checked, checkbox) {
     renderMorning();
 
 
-    const { done, total } = getMorningStats();
+    /* 全部完成 → 資料庫發獎勵；又取消 → 收回（提示也由這裡顯示） */
 
-    if (checked && total > 0 && done === total) {
-      showToast("🎉 晨間啟動完成！");
-    }
+    await syncMorningReward();
 
   } catch (error) {
 
@@ -4220,6 +4292,8 @@ async function applyDefaultMorningItems() {
 
   await loadMorning();
 
+  await syncMorningReward();
+
 }
 
 
@@ -4255,6 +4329,8 @@ async function addMorningItem() {
   }
 
   await loadMorning();
+
+  await syncMorningReward();
 
   const newInput = document.getElementById("morning-new-title");
   if (newInput) newInput.focus();
@@ -4292,6 +4368,8 @@ async function renameMorningItem(itemId) {
 
   await loadMorning();
 
+  await syncMorningReward();
+
 }
 
 
@@ -4313,6 +4391,8 @@ async function toggleMorningEnabled(itemId) {
   }
 
   await loadMorning();
+
+  await syncMorningReward();
 
 }
 
@@ -4343,6 +4423,8 @@ async function deleteMorningItem(itemId) {
   }
 
   await loadMorning();
+
+  await syncMorningReward();
 
 }
 
@@ -4379,6 +4461,8 @@ async function moveMorningItem(itemId, direction) {
   }
 
   await loadMorning();
+
+  await syncMorningReward();
 
 }
 
@@ -4715,9 +4799,23 @@ function renderFocusLog() {
     `今日 ${seconds > 0 ? formatDuration(seconds) : "0m"}`;
 
 
+  /* 🎁 獎勵進度：每滿 25 分鐘 +10 EXP / +5 金幣 */
+
+  const units = Math.floor(seconds / 1500);
+  const toNext = Math.ceil((1500 - (seconds % 1500)) / 60);
+
+  const rewardHint = `
+    <div class="reward-hint">
+      🎁 每滿 25 分鐘 +10 EXP / +5 金幣
+      ${units > 0 ? `・今日已得 +${units * 10} EXP` : ""}
+      ・再 ${toNext} 分鐘拿下一份
+    </div>
+  `;
+
+
   if (focusSessions.length === 0) {
 
-    box.innerHTML = `
+    box.innerHTML = rewardHint + `
       <div class="small-note" style="text-align:center;">
         今天還沒有專注紀錄
       </div>
@@ -4755,7 +4853,7 @@ function renderFocusLog() {
     .join("");
 
 
-  box.innerHTML = `
+  box.innerHTML = rewardHint + `
 
     <div class="focus-log-title">📚 今日各科時間</div>
 
@@ -5116,6 +5214,8 @@ async function finishFocus(reason) {
     }
 
 
+    const sessionDate = toTaipeiDate(timer.startedAt);
+
     const { error } = await db
       .from("focus_sessions")
       .insert({
@@ -5126,20 +5226,44 @@ async function finishFocus(reason) {
         duration_seconds: seconds,
         started_at: timer.startedAt,
         ended_at: new Date().toISOString(),
-        session_date: toTaipeiDate(timer.startedAt)
+        session_date: sessionDate
       });
 
     if (error) throw error;
 
 
+    /*
+      紀錄已經存好了；獎勵另外處理，
+      就算獎勵失敗也不能讓計時被還原（不然會記兩次）
+    */
+
+    let rewardText = "";
+
+    try {
+
+      const reward = await syncFocusReward(sessionDate, true);
+
+      const gained = reward ? Number(reward.delta_exp || 0) : 0;
+
+      if (gained > 0) {
+        rewardText = `・🎁 +${gained} EXP / +${Number(reward.delta_gold || 0)} 金幣`;
+      }
+
+    } catch (rewardError) {
+
+      console.warn("專注獎勵同步失敗：", rewardError);
+
+    }
+
+
     const label = `${timer.subject} ${formatDuration(seconds)}`;
 
     if (reason === "timeup") {
-      showToast(`⏰ 時間到！已記錄：${label}`);
+      showToast(`⏰ 時間到！已記錄：${label}${rewardText}`);
     } else if (reason === "away") {
-      showToast(`⏰ 倒計時在你離開時已結束，已記錄：${label}`);
+      showToast(`⏰ 倒計時在你離開時已結束，已記錄：${label}${rewardText}`);
     } else {
-      showToast(`✅ 已記錄：${label}`);
+      showToast(`✅ 已記錄：${label}${rewardText}`);
     }
 
     await loadFocus();
@@ -5179,7 +5303,13 @@ async function finishFocus(reason) {
 
 async function deleteFocusSession(sessionId) {
 
-  const ok = confirm("刪除這筆專注紀錄？");
+  const session = focusSessions.find(
+    row => Number(row.id) === Number(sessionId)
+  );
+
+  const ok = confirm(
+    "刪除這筆專注紀錄？\n（如果因此少了 25 分鐘，專注獎勵會一起收回）"
+  );
 
   if (!ok) return;
 
@@ -5195,6 +5325,8 @@ async function deleteFocusSession(sessionId) {
   }
 
   await loadFocus();
+
+  await syncFocusReward(session ? session.session_date : getToday());
 
 }
 
@@ -5348,6 +5480,9 @@ function renderIdeas() {
       if (idea.status === "inbox") {
 
         actions = `
+          ${idea.category === "mainline"
+            ? `<button class="icon-btn" onclick="setMainlineFromIdea(${id})">🎯 設為今日主線</button>`
+            : ""}
           <button class="icon-btn" onclick="convertIdeaToTask(${id})">→ 轉任務</button>
           <button class="icon-btn" onclick="setIdeaStatus(${id}, 'done')">✓ 已處理</button>
           <button class="icon-btn" title="刪除" onclick="deleteIdea(${id})">🗑️</button>
@@ -5714,3 +5849,132 @@ Object.assign(window, {
 
 
 console.log("✅ 晨間打卡 / 專注 / 想法庫 載入完成");
+
+
+/* #########################################################
+   ① 今日＋主線：⏳ 倒數 / 🎯 今日主線 / 📍 長期目標 / 🎁 額外獎勵
+######################################################### */
+
+
+/* =========================================================
+   M0. 共用
+========================================================= */
+
+const WEEKDAY_SHORT = ["日", "一", "二", "三", "四", "五", "六"];
+
+
+/* 2026-10-09 → 10/9（五） */
+function setTodayDateLabel() {
+
+  const label = document.getElementById("today-date-label");
+
+  if (!label) return;
+
+  const [year, month, day] = getToday().split("-").map(Number);
+
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+
+  label.textContent = `${month}/${day}（${WEEKDAY_SHORT[weekday]}）`;
+
+}
+
+
+/* 兩個日期差幾天（b - a） */
+function daysBetween(a, b) {
+
+  const toUtc = text => {
+    const [y, m, d] = String(text).split("-").map(Number);
+    return Date.UTC(y, m - 1, d);
+  };
+
+  return Math.round((toUtc(b) - toUtc(a)) / 86400000);
+
+}
+
+
+/* 今天往前 n 天（台灣日期） */
+function shiftDate(dateText, n) {
+
+  const [y, m, d] = dateText.split("-").map(Number);
+
+  const date = new Date(Date.UTC(y, m - 1, d + n));
+
+  return date.toISOString().slice(0, 10);
+
+}
+
+
+/* ＋ 新增任務面板 */
+function toggleAddTaskPanel(forceOpen) {
+
+  const panel = document.getElementById("add-task-panel");
+  const button = document.getElementById("add-task-toggle");
+
+  if (!panel) return;
+
+  const open =
+    typeof forceOpen === "boolean"
+      ? forceOpen
+      : panel.style.display === "none";
+
+  panel.style.display = open ? "block" : "none";
+
+  if (button) {
+    button.textContent = open ? "✕ 收起" : "＋ 新增任務";
+    button.classList.toggle("btn-primary", !open);
+  }
+
+  if (open) {
+
+    const input = document.getElementById("new-task-title");
+
+    if (input) setTimeout(() => input.focus(), 30);
+
+  }
+
+}
+
+
+/* =========================================================
+   M1. 🎁 額外獎勵（晨間 / 專注 / 主線）
+   真正的加減都在資料庫做，這裡只負責呼叫和顯示
+========================================================= */
+
+async function loadTodayRewards() {
+
+  if (!currentUser) return;
+
+  const { data, error } = await db
+    .from("reward_events")
+    .select("*")
+    .eq("user_id", currentUser.id)
+    .eq("reward_date", getToday());
+
+  if (error) {
+    console.warn("讀取今日獎勵失敗：", error);
+    return;
+  }
+
+  const rows = data || [];
+
+  todayBonus = {
+    exp: rows.reduce((sum, row) => sum + Number(row.exp || 0), 0),
+    gold: rows.reduce((sum, row) => sum + Number(row.gold || 0), 0),
+    morning: rows.find(row => row.source_key.startsWith("morning:")) || null,
+    focus: rows.find(row => row.source_key.startsWith("focus:")) || null,
+    mainline: rows.find(row => row.source_key.startsWith("mainline:")) || null
+  };
+
+  updateSummary();
+
+}
+
+
+/* 獎勵有變動 → 更新玩家狀態、今日統計 */
+async function afterRewardChange(result, gainText, loseText) {
+
+  const delta = result ? Number(result.delta_exp || 0) : 0;
+
+  if (delta > 0 && gainText) {
+    showToast(gainText);
+  } else if 
