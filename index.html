@@ -1872,6 +1872,405 @@
 
 
     /* ==============================
+       標題日期
+    ============================== */
+
+    .today-date {
+
+      font-size: 16px;
+
+      font-weight: normal;
+
+      opacity: .6;
+
+      margin-left: 6px;
+    }
+
+
+    /* ==============================
+       ⏳ 倒數
+    ============================== */
+
+    .countdown-strip {
+
+      display: flex;
+
+      align-items: center;
+
+      gap: 10px;
+
+      margin-bottom: 16px;
+    }
+
+
+    .countdown-list {
+
+      flex: 1;
+
+      min-width: 0;
+
+      display: flex;
+
+      gap: 8px;
+
+      overflow-x: auto;
+
+      padding-bottom: 2px;
+    }
+
+
+    .countdown-chip {
+
+      flex-shrink: 0;
+
+      display: flex;
+
+      flex-direction: column;
+
+      gap: 2px;
+
+      padding: 9px 14px;
+
+      background: #181c26;
+
+      border: 1px solid #2c3342;
+
+      border-radius: 12px;
+
+      font-size: 13px;
+
+      color: #fff;
+    }
+
+
+    .countdown-chip .cd-title {
+
+      opacity: .75;
+
+      white-space: nowrap;
+    }
+
+
+    .countdown-chip .cd-days strong {
+
+      font-size: 20px;
+
+      color: #b18cff;
+    }
+
+
+    .countdown-chip.soon {
+
+      border-color: rgba(255, 215, 106, .5);
+    }
+
+
+    .countdown-chip.soon .cd-days strong {
+
+      color: #ffd76a;
+    }
+
+
+    .countdown-chip.today {
+
+      border-color: #ff7777;
+
+      background: rgba(255, 119, 119, .12);
+    }
+
+
+    .countdown-chip.add {
+
+      border-style: dashed;
+
+      opacity: .7;
+
+      cursor: pointer;
+    }
+
+
+    /* ==============================
+       🎯 今日主線
+    ============================== */
+
+    .mainline-card {
+
+      border-color: rgba(155, 108, 255, .55);
+
+      background:
+        linear-gradient(135deg, rgba(88, 101, 242, .16), rgba(155, 108, 255, .08)),
+        #181c26;
+    }
+
+
+    .mainline-question {
+
+      font-size: 18px;
+
+      font-weight: bold;
+
+      margin-bottom: 12px;
+    }
+
+
+    .mainline-form {
+
+      display: flex;
+
+      gap: 8px;
+
+      flex-wrap: wrap;
+    }
+
+
+    .mainline-form input,
+    .mainline-form select {
+
+      padding: 12px;
+
+      border: 1px solid #343b4b;
+
+      border-radius: 10px;
+
+      background: #10131a;
+
+      color: #fff;
+
+      outline: none;
+
+      font-size: 15px;
+    }
+
+
+    .mainline-form input {
+
+      flex: 2 1 260px;
+
+      min-width: 0;
+    }
+
+
+    .mainline-form select {
+
+      flex: 1 1 160px;
+
+      min-width: 0;
+    }
+
+
+    .mainline-form input:focus {
+
+      border-color: #6c7cff;
+    }
+
+
+    .reuse-chip {
+
+      margin-top: 10px;
+
+      text-align: left;
+
+      max-width: 100%;
+
+      white-space: normal;
+    }
+
+
+    .mainline-goal {
+
+      font-size: 13px;
+
+      opacity: .7;
+
+      margin-bottom: 4px;
+    }
+
+
+    .mainline-title {
+
+      font-size: 26px;
+
+      font-weight: bold;
+
+      line-height: 1.35;
+
+      word-break: break-word;
+    }
+
+
+    .mainline-show.done .mainline-title {
+
+      opacity: .6;
+
+      text-decoration: line-through;
+    }
+
+
+    .mainline-done-note {
+
+      margin-top: 8px;
+
+      color: #7bed9f;
+
+      font-weight: bold;
+    }
+
+
+    .mainline-actions {
+
+      display: flex;
+
+      flex-wrap: wrap;
+
+      gap: 8px;
+
+      margin-top: 14px;
+    }
+
+
+    /* ==============================
+       🎁 獎勵提示
+    ============================== */
+
+    .reward-hint {
+
+      margin: 10px 0 4px;
+
+      font-size: 13px;
+
+      color: #ffd76a;
+
+      opacity: .85;
+    }
+
+
+    /* 從主線跳到專注時閃一下 */
+    #focus-card.flash {
+
+      animation: card-flash 1.2s ease;
+    }
+
+
+    @keyframes card-flash {
+
+      0%   { box-shadow: 0 0 0 0 rgba(155, 108, 255, .0); }
+      25%  { box-shadow: 0 0 0 3px rgba(155, 108, 255, .8); }
+      100% { box-shadow: 0 0 0 0 rgba(155, 108, 255, .0); }
+    }
+
+
+    /* ==============================
+       ＋ 新增任務（收在今日任務裡）
+    ============================== */
+
+    .add-task-panel {
+
+      margin-bottom: 16px;
+
+      padding: 16px;
+
+      border: 1px solid #343b4b;
+
+      border-radius: 12px;
+
+      background: rgba(16, 19, 26, .6);
+    }
+
+
+    /* ==============================
+       管理視窗（倒數 / 長期目標）
+    ============================== */
+
+    .manage-row {
+
+      display: flex;
+
+      align-items: center;
+
+      justify-content: space-between;
+
+      gap: 10px;
+
+      padding: 10px 12px;
+
+      margin-bottom: 8px;
+
+      background: #10131a;
+
+      border: 1px solid #272d3a;
+
+      border-radius: 12px;
+    }
+
+
+    .manage-row.muted {
+
+      opacity: .6;
+    }
+
+
+    .manage-row.editing {
+
+      flex-wrap: wrap;
+    }
+
+
+    .manage-main {
+
+      flex: 1;
+
+      min-width: 0;
+
+      word-break: break-word;
+    }
+
+
+    .manage-actions {
+
+      display: flex;
+
+      gap: 5px;
+
+      flex-shrink: 0;
+    }
+
+
+    .manage-add {
+
+      display: flex;
+
+      gap: 8px;
+
+      flex-wrap: wrap;
+
+      margin-top: 14px;
+    }
+
+
+    .manage-add input,
+    .manage-row.editing input {
+
+      flex: 1 1 150px;
+
+      min-width: 0;
+
+      padding: 10px 12px;
+
+      border: 1px solid #343b4b;
+
+      border-radius: 10px;
+
+      background: #10131a;
+
+      color: #fff;
+
+      outline: none;
+
+      font-size: 15px;
+    }
+
+
+    /* ==============================
        RWD
     ============================== */
 
@@ -1976,11 +2375,40 @@
       }
 
 
-      .managed-task-item {
+      .managed-task-item,
+      .manage-row {
 
         flex-direction: column;
 
         align-items: stretch;
+
+      }
+
+
+      .manage-actions {
+
+        justify-content: flex-end;
+
+      }
+
+
+      .mainline-title {
+
+        font-size: 22px;
+
+      }
+
+
+      .mainline-form .btn {
+
+        flex: 1 1 100%;
+
+      }
+
+
+      .add-task-panel {
+
+        padding: 12px;
 
       }
 
@@ -2148,6 +2576,7 @@
 
       <h1>
         🎮 今日冒險
+        <span class="today-date" id="today-date-label"></span>
       </h1>
 
       <p>
@@ -2159,168 +2588,56 @@
 
 
     <!-- ==============================
-         玩家資訊
+         ⏳ 倒數
     ============================== -->
 
-    <section class="card">
+    <section class="countdown-strip" id="countdown-strip">
 
-      <h2>
-        🧙 玩家狀態
-      </h2>
+      <div class="countdown-list" id="countdown-list"></div>
 
-
-      <div class="player-grid">
-
-
-        <div class="stat-box">
-
-          <div class="stat-label">
-            等級
-          </div>
-
-          <div
-            class="stat-value"
-            id="player-level"
-          >
-            1
-          </div>
-
-        </div>
-
-
-        <div class="stat-box">
-
-          <div class="stat-label">
-            經驗值
-          </div>
-
-          <div
-            class="stat-value"
-            id="player-exp"
-          >
-            0
-          </div>
-
-        </div>
-
-
-        <div class="stat-box">
-
-          <div class="stat-label">
-            金幣
-          </div>
-
-          <div
-            class="stat-value"
-            id="player-gold"
-          >
-            100
-          </div>
-
-        </div>
-
-
-      </div>
-
-
-      <div class="exp-bar">
-
-        <div
-          id="exp-progress"
-        ></div>
-
-      </div>
-
-
-      <div id="exp-text">
-        0 / 100
-      </div>
+      <button
+        class="icon-btn"
+        title="管理倒數"
+        onclick="openCountdownManager()"
+      >
+        ⚙️ 倒數
+      </button>
 
     </section>
+
 
 
 
     <!-- ==============================
-         今日統計
+         🎯 今日主線
     ============================== -->
 
-    <section class="card">
+    <section class="card mainline-card" id="mainline-card">
 
-      <h2>
-        📊 今日統計
-      </h2>
+      <div class="card-head">
 
+        <h2>
+          🎯 今日主線
+        </h2>
 
-      <div class="summary-grid">
-
-
-        <div class="stat-box">
-
-          <div class="stat-label">
-            今日任務
-          </div>
-
-          <div
-            class="stat-value"
-            id="daily-task-count"
-          >
-            0
-          </div>
-
-        </div>
-
-
-        <div class="stat-box">
-
-          <div class="stat-label">
-            完成率
-          </div>
-
-          <div
-            class="stat-value"
-            id="completion-rate"
-          >
-            0%
-          </div>
-
-        </div>
-
-
-        <div class="stat-box">
-
-          <div class="stat-label">
-            今日 EXP
-          </div>
-
-          <div
-            class="stat-value"
-            id="today-exp"
-          >
-            0
-          </div>
-
-        </div>
-
-
-        <div class="stat-box">
-
-          <div class="stat-label">
-            今日金幣
-          </div>
-
-          <div
-            class="stat-value"
-            id="today-gold"
-          >
-            0
-          </div>
-
-        </div>
-
+        <button
+          class="btn btn-small"
+          onclick="openGoalManager()"
+        >
+          📍 長期目標
+        </button>
 
       </div>
 
+
+      <div id="mainline-body">
+        <div class="empty-state">
+          載入中...
+        </div>
+      </div>
+
     </section>
+
 
 
 
@@ -2367,6 +2684,310 @@
         <div class="empty-state">
           載入中...
         </div>
+      </div>
+
+    </section>
+
+
+
+    <!-- ==============================
+         今日任務
+    ============================== -->
+
+    <section class="card" id="tasks-card">
+
+      <div class="card-head">
+
+        <h2>
+          ⚔️ 今日任務
+        </h2>
+
+        <button
+          class="btn btn-small btn-primary"
+          id="add-task-toggle"
+          onclick="toggleAddTaskPanel()"
+        >
+          ＋ 新增任務
+        </button>
+
+      </div>
+
+      <!-- ＋ 新增任務（按按鈕才展開） -->
+      <div id="add-task-panel" class="add-task-panel" style="display:none;">
+
+        <div class="task-form">
+
+
+          <div class="form-item">
+
+            <label>
+              任務名稱
+            </label>
+
+            <input
+              type="text"
+              id="new-task-title"
+              placeholder="例如：完成多益 Part 5"
+            >
+
+          </div>
+
+
+          <div class="form-item">
+
+            <label>
+              分類
+            </label>
+
+            <select
+              id="new-task-category"
+            >
+
+              <option value="study">
+                學習
+              </option>
+
+              <option value="toeic">
+                多益
+              </option>
+
+              <option value="focus">
+                專注
+              </option>
+
+              <option value="health">
+                健康
+              </option>
+
+              <option value="survival">
+                生存整理
+              </option>
+
+              <option value="personal">
+                個人生活
+              </option>
+
+              <option value="daily">
+                每日收尾
+              </option>
+
+              <option value="random">
+                隨機自律
+              </option>
+
+            </select>
+
+          </div>
+
+
+          <div class="form-item">
+
+            <label>
+              難度
+            </label>
+
+            <select
+              id="new-task-difficulty"
+            >
+
+              <option value="easy">
+                簡單
+              </option>
+
+              <option
+                value="normal"
+                selected
+              >
+                普通
+              </option>
+
+              <option value="hard">
+                困難
+              </option>
+
+              <option value="epic">
+                史詩
+              </option>
+
+            </select>
+
+          </div>
+
+
+          <div class="form-full">
+
+            <div class="radio-area">
+
+              <strong>
+                任務類型：
+              </strong>
+
+
+              <label>
+
+                <input
+                  type="radio"
+                  name="new-task-repeat"
+                  value="once"
+                  checked
+                  onchange="updateRepeatUI()"
+                >
+
+                單次任務
+
+              </label>
+
+
+              <label>
+
+                <input
+                  type="radio"
+                  name="new-task-repeat"
+                  value="repeat"
+                  onchange="updateRepeatUI()"
+                >
+
+                重複任務
+
+              </label>
+
+            </div>
+
+
+            <div
+              id="repeat-options"
+            >
+
+              <div class="task-form">
+
+
+                <div class="form-item">
+
+                  <label>
+                    重複方式
+                  </label>
+
+                  <select
+                    name="repeat-type"
+                    onchange="updateRepeatUI()"
+                  >
+
+                    <option value="daily">
+                      每天
+                    </option>
+
+                    <option value="weekly">
+                      每週
+                    </option>
+
+                  </select>
+
+                </div>
+
+
+                <div
+                  class="form-item"
+                  id="repeat-day-item"
+                  style="display:none;"
+                >
+
+                  <label>
+                    星期（可多選）
+                  </label>
+
+                  <!-- 1 = 星期一 … 7 = 星期日，打開時預設勾今天 -->
+                  <div class="day-picker">
+                    <label class="day-chip"><input type="checkbox" name="new-task-days" value="1">一</label>
+                    <label class="day-chip"><input type="checkbox" name="new-task-days" value="2">二</label>
+                    <label class="day-chip"><input type="checkbox" name="new-task-days" value="3">三</label>
+                    <label class="day-chip"><input type="checkbox" name="new-task-days" value="4">四</label>
+                    <label class="day-chip"><input type="checkbox" name="new-task-days" value="5">五</label>
+                    <label class="day-chip"><input type="checkbox" name="new-task-days" value="6">六</label>
+                    <label class="day-chip"><input type="checkbox" name="new-task-days" value="7">日</label>
+                  </div>
+
+                </div>
+
+
+                <div class="form-item">
+
+                  <label>
+                    結束日期
+                  </label>
+
+                  <input
+                    type="date"
+                    id="repeat-end-date"
+                  >
+
+                </div>
+
+
+              </div>
+
+            </div>
+
+          </div>
+
+
+          <div class="form-full">
+
+            <button
+              class="btn btn-primary"
+              onclick="addTask()"
+            >
+              ➕ 建立任務
+            </button>
+
+          </div>
+
+
+        </div>
+
+
+        <div id="add-task-message"></div>
+
+      </div>
+
+
+
+
+      <div class="filter-bar">
+
+
+        <button
+          class="filter-btn active"
+          onclick="filterTasks('all', this)"
+        >
+          全部
+        </button>
+
+
+        <button
+          class="filter-btn"
+          onclick="filterTasks('uncompleted', this)"
+        >
+          未完成
+        </button>
+
+
+        <button
+          class="filter-btn"
+          onclick="filterTasks('completed', this)"
+        >
+          已完成
+        </button>
+
+
+      </div>
+
+
+      <div id="task-list">
+
+        <div class="empty-state">
+          載入中...
+        </div>
+
       </div>
 
     </section>
@@ -2543,363 +3164,165 @@
 
 
     <!-- ==============================
-         新增任務
+         今日統計
     ============================== -->
 
     <section class="card">
 
       <h2>
-        ➕ 新增任務
+        📊 今日統計
       </h2>
 
 
-      <div class="task-form">
+      <div class="summary-grid">
 
 
-        <div class="form-item">
+        <div class="stat-box">
 
-          <label>
-            任務名稱
-          </label>
-
-          <input
-            type="text"
-            id="new-task-title"
-            placeholder="例如：完成多益 Part 5"
-          >
-
-        </div>
-
-
-        <div class="form-item">
-
-          <label>
-            分類
-          </label>
-
-          <select
-            id="new-task-category"
-          >
-
-            <option value="study">
-              學習
-            </option>
-
-            <option value="toeic">
-              多益
-            </option>
-
-            <option value="focus">
-              專注
-            </option>
-
-            <option value="health">
-              健康
-            </option>
-
-            <option value="survival">
-              生存整理
-            </option>
-
-            <option value="personal">
-              個人生活
-            </option>
-
-            <option value="daily">
-              每日收尾
-            </option>
-
-            <option value="random">
-              隨機自律
-            </option>
-
-          </select>
-
-        </div>
-
-
-        <div class="form-item">
-
-          <label>
-            難度
-          </label>
-
-          <select
-            id="new-task-difficulty"
-          >
-
-            <option value="easy">
-              簡單
-            </option>
-
-            <option
-              value="normal"
-              selected
-            >
-              普通
-            </option>
-
-            <option value="hard">
-              困難
-            </option>
-
-            <option value="epic">
-              史詩
-            </option>
-
-          </select>
-
-        </div>
-
-
-        <div class="form-full">
-
-          <div class="radio-area">
-
-            <strong>
-              任務類型：
-            </strong>
-
-
-            <label>
-
-              <input
-                type="radio"
-                name="new-task-repeat"
-                value="once"
-                checked
-                onchange="updateRepeatUI()"
-              >
-
-              單次任務
-
-            </label>
-
-
-            <label>
-
-              <input
-                type="radio"
-                name="new-task-repeat"
-                value="repeat"
-                onchange="updateRepeatUI()"
-              >
-
-              重複任務
-
-            </label>
-
+          <div class="stat-label">
+            今日任務
           </div>
-
 
           <div
-            id="repeat-options"
+            class="stat-value"
+            id="daily-task-count"
           >
-
-            <div class="task-form">
-
-
-              <div class="form-item">
-
-                <label>
-                  重複方式
-                </label>
-
-                <select
-                  name="repeat-type"
-                  onchange="updateRepeatUI()"
-                >
-
-                  <option value="daily">
-                    每天
-                  </option>
-
-                  <option value="weekly">
-                    每週
-                  </option>
-
-                </select>
-
-              </div>
-
-
-              <div
-                class="form-item"
-                id="repeat-day-item"
-                style="display:none;"
-              >
-
-                <label>
-                  星期（可多選）
-                </label>
-
-                <!-- 1 = 星期一 … 7 = 星期日，打開時預設勾今天 -->
-                <div class="day-picker">
-                  <label class="day-chip"><input type="checkbox" name="new-task-days" value="1">一</label>
-                  <label class="day-chip"><input type="checkbox" name="new-task-days" value="2">二</label>
-                  <label class="day-chip"><input type="checkbox" name="new-task-days" value="3">三</label>
-                  <label class="day-chip"><input type="checkbox" name="new-task-days" value="4">四</label>
-                  <label class="day-chip"><input type="checkbox" name="new-task-days" value="5">五</label>
-                  <label class="day-chip"><input type="checkbox" name="new-task-days" value="6">六</label>
-                  <label class="day-chip"><input type="checkbox" name="new-task-days" value="7">日</label>
-                </div>
-
-              </div>
-
-
-              <div class="form-item">
-
-                <label>
-                  結束日期
-                </label>
-
-                <input
-                  type="date"
-                  id="repeat-end-date"
-                >
-
-              </div>
-
-
-            </div>
-
+            0
           </div>
 
         </div>
 
 
-        <div class="form-full">
+        <div class="stat-box">
 
-          <button
-            class="btn btn-primary"
-            onclick="addTask()"
+          <div class="stat-label">
+            完成率
+          </div>
+
+          <div
+            class="stat-value"
+            id="completion-rate"
           >
-            ➕ 建立任務
-          </button>
+            0%
+          </div>
+
+        </div>
+
+
+        <div class="stat-box">
+
+          <div class="stat-label">
+            今日 EXP
+          </div>
+
+          <div
+            class="stat-value"
+            id="today-exp"
+          >
+            0
+          </div>
+
+        </div>
+
+
+        <div class="stat-box">
+
+          <div class="stat-label">
+            今日金幣
+          </div>
+
+          <div
+            class="stat-value"
+            id="today-gold"
+          >
+            0
+          </div>
 
         </div>
 
 
       </div>
 
-
-      <div id="add-task-message"></div>
-
     </section>
 
 
 
     <!-- ==============================
-         今日任務
+         玩家資訊
     ============================== -->
 
     <section class="card">
 
       <h2>
-        ⚔️ 今日任務
+        🧙 玩家狀態
       </h2>
 
 
-      <div class="filter-bar">
+      <div class="player-grid">
 
 
-        <button
-          class="filter-btn active"
-          onclick="filterTasks('all', this)"
-        >
-          全部
-        </button>
+        <div class="stat-box">
 
+          <div class="stat-label">
+            等級
+          </div>
 
-        <button
-          class="filter-btn"
-          onclick="filterTasks('uncompleted', this)"
-        >
-          未完成
-        </button>
+          <div
+            class="stat-value"
+            id="player-level"
+          >
+            1
+          </div>
 
-
-        <button
-          class="filter-btn"
-          onclick="filterTasks('completed', this)"
-        >
-          已完成
-        </button>
-
-
-      </div>
-
-
-      <div id="task-list">
-
-        <div class="empty-state">
-          載入中...
         </div>
 
-      </div>
 
-    </section>
+        <div class="stat-box">
 
+          <div class="stat-label">
+            經驗值
+          </div>
 
+          <div
+            class="stat-value"
+            id="player-exp"
+          >
+            0
+          </div>
 
-    <!-- ==============================
-         任務管理
-    ============================== -->
-
-    <section
-      class="card task-management-card"
-    >
-
-      <h2>
-        🗂️ 任務管理
-      </h2>
-
-
-      <p
-        style="
-          opacity:0.7;
-          margin-top:-5px;
-        "
-      >
-        重複任務的暫停、修改、刪除，以及還沒完成的單次任務
-      </p>
-
-
-      <div class="filter-bar">
-
-
-        <button
-          class="filter-btn active"
-          data-managed-tab="repeat"
-          onclick="setManagedTab('repeat')"
-        >
-          🔄 重複任務
-          <span class="tab-count" id="managed-repeat-count"></span>
-        </button>
-
-
-        <button
-          class="filter-btn"
-          data-managed-tab="once"
-          onclick="setManagedTab('once')"
-        >
-          📌 單次任務（未完成）
-          <span class="tab-count" id="managed-once-count"></span>
-        </button>
-
-
-      </div>
-
-
-      <div
-        id="task-management-list"
-        style="margin-top:15px;"
-      >
-
-        <div class="empty-state">
-          載入中...
         </div>
 
+
+        <div class="stat-box">
+
+          <div class="stat-label">
+            金幣
+          </div>
+
+          <div
+            class="stat-value"
+            id="player-gold"
+          >
+            100
+          </div>
+
+        </div>
+
+
+      </div>
+
+
+      <div class="exp-bar">
+
+        <div
+          id="exp-progress"
+        ></div>
+
+      </div>
+
+
+      <div id="exp-text">
+        0 / 100
       </div>
 
     </section>
@@ -2965,6 +3388,70 @@
       ></div>
 
     </section>
+
+
+    <!-- ==============================
+         任務管理
+    ============================== -->
+
+    <section
+      class="card task-management-card"
+    >
+
+      <h2>
+        🗂️ 任務管理
+      </h2>
+
+
+      <p
+        style="
+          opacity:0.7;
+          margin-top:-5px;
+        "
+      >
+        重複任務的暫停、修改、刪除，以及還沒完成的單次任務
+      </p>
+
+
+      <div class="filter-bar">
+
+
+        <button
+          class="filter-btn active"
+          data-managed-tab="repeat"
+          onclick="setManagedTab('repeat')"
+        >
+          🔄 重複任務
+          <span class="tab-count" id="managed-repeat-count"></span>
+        </button>
+
+
+        <button
+          class="filter-btn"
+          data-managed-tab="once"
+          onclick="setManagedTab('once')"
+        >
+          📌 單次任務（未完成）
+          <span class="tab-count" id="managed-once-count"></span>
+        </button>
+
+
+      </div>
+
+
+      <div
+        id="task-management-list"
+        style="margin-top:15px;"
+      >
+
+        <div class="empty-state">
+          載入中...
+        </div>
+
+      </div>
+
+    </section>
+
 
 
   </div>
