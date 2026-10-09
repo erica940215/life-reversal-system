@@ -3270,10 +3270,842 @@
 
 
     /* ==============================
+       💡 想法庫：已處理
+    ============================== */
+
+    .idea-section-title {
+
+      margin: 16px 2px 8px;
+
+      font-size: 14px;
+
+      font-weight: bold;
+
+      color: #c9d1e3;
+    }
+
+
+    .idea-section-title:first-child {
+
+      margin-top: 4px;
+    }
+
+
+    .idea-status {
+
+      font-size: 12px;
+
+      padding: 2px 8px;
+
+      border-radius: 999px;
+
+      background: #202532;
+
+      color: #c9d1e3;
+    }
+
+
+    .idea-status.done {
+
+      color: #7bed9f;
+    }
+
+
+    .idea-status.converted {
+
+      color: #8f9bff;
+    }
+
+
+    /* ==============================
+       📈 習慣圖表
+    ============================== */
+
+    .viz-tiles {
+
+      display: grid;
+
+      grid-template-columns: repeat(4, 1fr);
+
+      gap: 10px;
+
+      margin-bottom: 14px;
+    }
+
+
+    .viz-tile {
+
+      background: #10131a;
+
+      border: 1px solid #272d3a;
+
+      border-radius: 12px;
+
+      padding: 12px;
+    }
+
+
+    .viz-tile-label {
+
+      font-size: 12px;
+
+      color: #8a93a8;
+    }
+
+
+    .viz-tile-value {
+
+      margin-top: 4px;
+
+      font-size: 22px;
+
+      font-weight: 600;
+    }
+
+
+    .viz-tile-note {
+
+      margin-top: 2px;
+
+      font-size: 12px;
+
+      color: #8a93a8;
+
+      white-space: nowrap;
+
+      overflow: hidden;
+
+      text-overflow: ellipsis;
+    }
+
+
+    .viz-grid {
+
+      display: grid;
+
+      grid-template-columns: 1fr 1fr;
+
+      gap: 14px;
+    }
+
+
+    .viz-panel {
+
+      background: #10131a;
+
+      border: 1px solid #272d3a;
+
+      border-radius: 12px;
+
+      padding: 14px;
+
+      margin-bottom: 14px;
+
+      min-width: 0;
+    }
+
+
+    .viz-title {
+
+      font-weight: bold;
+
+      font-size: 15px;
+    }
+
+
+    .viz-sub {
+
+      font-size: 12px;
+
+      color: #8a93a8;
+
+      margin: 2px 0 8px;
+    }
+
+
+    .viz-svg {
+
+      display: block;
+
+      max-width: 100%;
+
+      height: auto;
+
+      margin: 0 auto;
+
+      overflow: visible;
+    }
+
+
+    .viz-svg.radar {
+
+      width: 100%;
+
+      max-width: 340px;
+    }
+
+
+    .viz-svg text {
+
+      font-family: inherit;
+    }
+
+
+    .viz-tick {
+
+      fill: #8a93a8;
+
+      font-size: 11px;
+
+      font-variant-numeric: tabular-nums;
+    }
+
+
+    .viz-label {
+
+      fill: #c9d1e3;
+
+      font-size: 12px;
+    }
+
+
+    .viz-value {
+
+      fill: #e6e9f2;
+
+      font-size: 12px;
+
+      font-weight: bold;
+    }
+
+
+    .viz-center {
+
+      fill: #e6e9f2;
+
+      font-size: 26px;
+
+      font-weight: 600;
+    }
+
+
+    .viz-hover line {
+
+      opacity: 0;
+    }
+
+
+    .viz-hover:hover line,
+    .viz-hover:focus-within line {
+
+      opacity: 1;
+    }
+
+
+    .viz-svg [tabindex]:focus {
+
+      outline: none;
+    }
+
+
+    .viz-hit:hover,
+    .viz-hit:focus {
+
+      fill: rgba(255, 255, 255, .04);
+    }
+
+
+    .viz-key {
+
+      display: flex;
+
+      justify-content: center;
+
+      gap: 16px;
+
+      font-size: 12px;
+
+      color: #c9d1e3;
+    }
+
+
+    .viz-key i {
+
+      display: inline-block;
+
+      width: 14px;
+
+      height: 3px;
+
+      border-radius: 2px;
+
+      margin-right: 6px;
+
+      vertical-align: middle;
+    }
+
+
+    .viz-donut-wrap {
+
+      display: flex;
+
+      align-items: center;
+
+      justify-content: center;
+
+      gap: 18px;
+
+      flex-wrap: wrap;
+
+      padding: 6px 0;
+    }
+
+
+    .viz-legend {
+
+      display: grid;
+
+      gap: 8px;
+
+      font-size: 13px;
+
+      color: #c9d1e3;
+    }
+
+
+    .viz-legend-row {
+
+      display: grid;
+
+      grid-template-columns: 12px auto auto;
+
+      align-items: center;
+
+      gap: 8px;
+    }
+
+
+    .viz-legend-row strong {
+
+      color: #e6e9f2;
+
+      font-variant-numeric: tabular-nums;
+
+      text-align: right;
+    }
+
+
+    .viz-swatch {
+
+      width: 12px;
+
+      height: 12px;
+
+      border-radius: 3px;
+    }
+
+
+    .viz-table summary {
+
+      cursor: pointer;
+
+      color: #8f9bff;
+
+      font-size: 14px;
+
+      margin-bottom: 8px;
+    }
+
+
+    .viz-tip {
+
+      position: fixed;
+
+      z-index: 300;
+
+      pointer-events: none;
+
+      max-width: 260px;
+
+      padding: 7px 10px;
+
+      border-radius: 8px;
+
+      background: #0b0d13;
+
+      border: 1px solid #343b4b;
+
+      color: #e6e9f2;
+
+      font-size: 13px;
+
+      line-height: 1.4;
+
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
+
+      opacity: 0;
+
+      transition: opacity .12s;
+    }
+
+
+    .viz-tip.show {
+
+      opacity: 1;
+    }
+
+
+    /* ==============================
+       🎴 今日運勢
+    ============================== */
+
+    .fortune-mini {
+
+      padding-top: 16px;
+
+      padding-bottom: 16px;
+    }
+
+
+    .fortune-mini .card-head {
+
+      margin-bottom: 8px;
+    }
+
+
+    .fortune-empty {
+
+      display: flex;
+
+      align-items: center;
+
+      justify-content: space-between;
+
+      gap: 10px;
+
+      flex-wrap: wrap;
+    }
+
+
+    .fortune-summary {
+
+      display: flex;
+
+      align-items: center;
+
+      gap: 12px;
+
+      width: 100%;
+
+      padding: 10px 12px;
+
+      border: 1px solid #2c3342;
+
+      border-radius: 12px;
+
+      background: #10131a;
+
+      color: #fff;
+
+      font: inherit;
+
+      text-align: left;
+    }
+
+
+    .fortune-summary:hover {
+
+      border-color: #5865f2;
+    }
+
+
+    .fortune-badge {
+
+      flex-shrink: 0;
+
+      display: grid;
+
+      place-items: center;
+
+      width: 54px;
+
+      height: 54px;
+
+      border-radius: 12px;
+
+      font-size: 19px;
+
+      font-weight: bold;
+
+      background: var(--fortune, #5865f2);
+
+      color: #10131a;
+    }
+
+
+    .fortune-lines {
+
+      flex: 1;
+
+      min-width: 0;
+
+      display: grid;
+
+      gap: 4px;
+    }
+
+
+    .fortune-poem-line {
+
+      font-size: 14px;
+
+      color: #e6e9f2;
+    }
+
+
+    .fortune-yiji {
+
+      display: flex;
+
+      flex-wrap: wrap;
+
+      gap: 4px 14px;
+
+      font-size: 13px;
+
+      color: #c9d1e3;
+    }
+
+
+    .fortune-yiji b,
+    .fortune-yiji-box b {
+
+      display: inline-grid;
+
+      place-items: center;
+
+      width: 20px;
+
+      height: 20px;
+
+      margin-right: 5px;
+
+      border-radius: 5px;
+
+      font-size: 12px;
+
+      color: #10131a;
+    }
+
+
+    b.yi {
+
+      background: #7bed9f;
+    }
+
+
+    b.ji {
+
+      background: #ff8a8a;
+    }
+
+
+    .fortune-more {
+
+      flex-shrink: 0;
+
+      font-size: 13px;
+
+      color: #8f9bff;
+    }
+
+
+    .f-great    { --fortune: #ffd76a; }
+    .f-good     { --fortune: #ff9f5a; }
+    .f-small    { --fortune: #42d392; }
+    .f-fair     { --fortune: #4fc3f7; }
+    .f-late     { --fortune: #b39dff; }
+    .f-headwind { --fortune: #ff6b81; }
+
+
+    .fortune-shaking {
+
+      text-align: center;
+
+      padding: 20px 0 6px;
+    }
+
+
+    .fortune-tube {
+
+      display: inline-block;
+
+      font-size: 64px;
+
+      animation: fortune-shake .35s ease-in-out infinite alternate;
+
+      transform-origin: 50% 90%;
+    }
+
+
+    @keyframes fortune-shake {
+
+      from { transform: rotate(-12deg); }
+      to   { transform: rotate(12deg); }
+    }
+
+
+    .fortune-card {
+
+      position: relative;
+
+      text-align: center;
+
+      padding: 18px 14px 14px;
+
+      border-radius: 14px;
+
+      background: #10131a;
+
+      border: 1px solid color-mix(in srgb, var(--fortune) 55%, #2c3342);
+
+      box-shadow: inset 0 3px 0 var(--fortune);
+    }
+
+
+    .fortune-card.reveal {
+
+      animation: fortune-reveal .45s ease-out;
+    }
+
+
+    @keyframes fortune-reveal {
+
+      from { transform: scale(.9); opacity: 0; }
+      to   { transform: scale(1); opacity: 1; }
+    }
+
+
+    .fortune-level {
+
+      font-size: 40px;
+
+      font-weight: bold;
+
+      letter-spacing: 6px;
+
+      color: var(--fortune);
+    }
+
+
+    .fortune-note {
+
+      font-size: 13px;
+
+      color: #c9d1e3;
+
+      margin-bottom: 12px;
+    }
+
+
+    .fortune-poem {
+
+      display: inline-grid;
+
+      gap: 4px;
+
+      padding: 10px 16px;
+
+      border-top: 1px solid #2c3342;
+
+      border-bottom: 1px solid #2c3342;
+
+      font-size: 17px;
+
+      letter-spacing: 3px;
+
+      line-height: 1.6;
+    }
+
+
+    .fortune-meaning {
+
+      margin: 12px 0;
+
+      font-size: 14px;
+
+      line-height: 1.6;
+
+      color: #c9d1e3;
+
+      text-align: left;
+    }
+
+
+    .fortune-meaning b {
+
+      margin-right: 8px;
+
+      color: var(--fortune);
+    }
+
+
+    .fortune-aspects {
+
+      display: grid;
+
+      grid-template-columns: 1fr 1fr;
+
+      gap: 6px 14px;
+
+      margin-bottom: 12px;
+
+      text-align: left;
+
+      font-size: 14px;
+    }
+
+
+    .fortune-aspect {
+
+      display: flex;
+
+      justify-content: space-between;
+
+      gap: 8px;
+    }
+
+
+    .fortune-aspect .stars {
+
+      color: var(--fortune);
+
+      letter-spacing: 1px;
+    }
+
+
+    .fortune-yiji-box {
+
+      display: grid;
+
+      gap: 6px;
+
+      text-align: left;
+
+      font-size: 14px;
+
+      padding: 10px 0;
+
+      border-top: 1px solid #2c3342;
+    }
+
+
+    .fortune-lucky {
+
+      display: flex;
+
+      justify-content: center;
+
+      gap: 18px;
+
+      flex-wrap: wrap;
+
+      padding-top: 10px;
+
+      border-top: 1px solid #2c3342;
+
+      font-size: 14px;
+
+      color: #c9d1e3;
+    }
+
+
+    .fortune-color {
+
+      display: inline-block;
+
+      width: 12px;
+
+      height: 12px;
+
+      margin: 0 5px 0 6px;
+
+      border-radius: 50%;
+
+      vertical-align: -1px;
+
+      border: 1px solid rgba(255, 255, 255, .3);
+    }
+
+
+    .fortune-reward {
+
+      margin-top: 12px;
+
+      font-size: 13px;
+
+      color: #ffd76a;
+    }
+
+
+    .fortune-history {
+
+      display: flex;
+
+      flex-wrap: wrap;
+
+      gap: 6px;
+
+      align-items: center;
+
+      margin-top: 12px;
+    }
+
+
+    .fortune-history .small-note {
+
+      width: 100%;
+    }
+
+
+    .fortune-history-chip {
+
+      font-size: 12px;
+
+      padding: 3px 8px;
+
+      border-radius: 999px;
+
+      background: color-mix(in srgb, var(--fortune) 18%, #10131a);
+
+      border: 1px solid color-mix(in srgb, var(--fortune) 45%, transparent);
+    }
+
+
+    @media (prefers-reduced-motion: reduce) {
+
+      .fortune-tube,
+      .fortune-card.reveal {
+
+        animation: none;
+      }
+    }
+
+
+    /* ==============================
        RWD
     ============================== */
 
     @media (max-width: 800px) {
+
+      .viz-grid {
+
+        grid-template-columns: 1fr;
+
+        gap: 0;
+
+      }
+
 
       .player-grid,
       .summary-grid {
@@ -3539,6 +4371,54 @@
       }
 
 
+      .viz-tiles {
+
+        grid-template-columns: 1fr 1fr;
+
+      }
+
+
+      .viz-tile-value {
+
+        font-size: 19px;
+
+      }
+
+
+      .fortune-badge {
+
+        width: 46px;
+
+        height: 46px;
+
+        font-size: 16px;
+
+      }
+
+
+      .fortune-more {
+
+        display: none;
+
+      }
+
+
+      .fortune-level {
+
+        font-size: 34px;
+
+      }
+
+
+      .fortune-poem {
+
+        font-size: 16px;
+
+        letter-spacing: 2px;
+
+      }
+
+
       /* 分類管理：手機也維持一行（名稱在左、按鈕在右） */
       .manage-row.cat-row {
 
@@ -3785,6 +4665,29 @@
       >
         ⚙️ 倒數
       </button>
+
+    </section>
+
+
+
+
+    <!-- ==============================
+         🎴 今日運勢（每天抽一支籤）
+    ============================== -->
+
+    <section class="card fortune-mini" id="fortune-card">
+
+      <div class="card-head">
+
+        <h2>
+          🎴 今日運勢
+        </h2>
+
+      </div>
+
+      <div id="fortune-body">
+        <span class="small-note">載入中...</span>
+      </div>
 
     </section>
 
@@ -4596,20 +5499,11 @@
       </div>
 
 
-      <div class="chip-row" id="idea-filters"></div>
+      <!-- 狀態：全部 / 待處理 / 已處理 / 已轉任務 -->
+      <div class="chip-row" id="idea-status-filters" style="margin-bottom:8px;"></div>
 
-
-      <label class="toggle-line">
-
-        <input
-          type="checkbox"
-          id="idea-show-processed"
-          onchange="toggleIdeaShowProcessed(this.checked)"
-        >
-
-        顯示已處理 / 已轉任務
-
-      </label>
+      <!-- 分類 -->
+      <div class="chip-row" id="idea-filters" style="margin-bottom:12px;"></div>
 
 
       <div id="idea-list">
@@ -4906,6 +5800,33 @@
 
       <!-- 在「📊 紀錄」頁，預設打開 -->
       <div id="habit-calendar"></div>
+
+    </section>
+
+
+
+    <!-- ==============================
+         📈 習慣圖表
+    ============================== -->
+
+    <section class="card" id="habit-chart-card">
+
+      <div class="card-head">
+
+        <h2>
+          📈 習慣圖表
+        </h2>
+
+      </div>
+
+      <!-- 選：全部習慣 / 某一個習慣（所有圖表一起切換） -->
+      <div class="chip-row" id="habit-chart-picker" style="margin-bottom:14px;"></div>
+
+      <div id="habit-charts">
+        <div class="empty-state">
+          載入中...
+        </div>
+      </div>
 
     </section>
 
