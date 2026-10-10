@@ -4448,6 +4448,62 @@
 
     }
 
+    /* 🤖 AI 記錄助手 */
+    .ai-box textarea {
+      width: 100%;
+      min-height: 72px;
+      resize: vertical;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(0, 0, 0, 0.25);
+      color: inherit;
+      font: inherit;
+    }
+
+    .ai-box [hidden] {
+      display: none !important;
+    }
+
+    .ai-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .ai-msg {
+      font-size: 0.9rem;
+      margin-top: 8px;
+      opacity: 0.85;
+    }
+
+    .ai-msg.is-error {
+      color: #ff6b81;
+      opacity: 1;
+    }
+
+    .ai-item {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      padding: 8px 10px;
+      margin-top: 6px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+
+    .ai-item input {
+      margin-top: 4px;
+    }
+
+    .ai-item-bad {
+      opacity: 0.55;
+      cursor: default;
+    }
   </style>
 
 </head>
@@ -4674,6 +4730,55 @@
     <!-- ==============================
          🎴 今日運勢（每天抽一支籤）
     ============================== -->
+
+    <!-- ==============================
+         🤖 AI 記錄助手：文字 → 預覽 → 勾選後才寫入
+    ============================== -->
+
+    <section class="card ai-box" id="ai-card">
+
+      <div class="card-head">
+        <h2>🤖 AI 記錄助手</h2>
+      </div>
+
+      <p class="small-note">
+        例如：「昨晚 11 點睡、今早 7 點起，午餐便當 80 元，今天要背 50 個單字」。
+        解析後你勾選，按寫入才會存。
+      </p>
+
+      <textarea
+        id="ai-input"
+        maxlength="1000"
+        placeholder="輸入文字…（Ctrl+Enter 解析）"
+      ></textarea>
+
+      <div class="ai-actions">
+
+        <button
+          class="btn btn-primary"
+          id="ai-parse-btn"
+          onclick="aiParse()"
+        >
+          解析
+        </button>
+
+        <button
+          class="btn"
+          id="ai-commit-btn"
+          onclick="aiCommit()"
+          hidden
+        >
+          寫入勾選的項目
+        </button>
+
+      </div>
+
+      <div class="ai-msg" id="ai-msg"></div>
+
+      <div id="ai-results"></div>
+
+    </section>
+
 
     <section class="card fortune-mini" id="fortune-card">
 
@@ -5940,6 +6045,7 @@
 ================================================== -->
 
 <script src="script.js"></script>
+<script src="ai.js"></script>
 
 
 <!-- 保險：10 秒後還在載入（例如網路斷線），提示重新整理 -->
