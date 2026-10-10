@@ -4504,6 +4504,47 @@
       opacity: 0.55;
       cursor: default;
     }
+    .ai-chat {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 420px;
+      overflow-y: auto;
+      margin-bottom: 10px;
+    }
+
+    .ai-bubble {
+      max-width: 90%;
+      padding: 8px 12px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    .ai-bubble.ai-user {
+      align-self: flex-end;
+      background: rgba(120, 160, 255, 0.15);
+    }
+
+    .ai-who {
+      display: block;
+      font-size: 0.75rem;
+      opacity: 0.6;
+      margin-bottom: 2px;
+    }
+
+    .ai-note {
+      align-self: center;
+      font-size: 0.85rem;
+      opacity: 0.7;
+    }
+
+    .ai-proposals {
+      display: flex;
+      flex-direction: column;
+    }
+
   </style>
 
 </head>
@@ -4738,44 +4779,29 @@
     <section class="card ai-box" id="ai-card">
 
       <div class="card-head">
-        <h2>🤖 AI 記錄助手</h2>
+        <h2>🤖 AI 助理</h2>
+        <button class="btn btn-small" onclick="aiClearChat()">清除對話</button>
       </div>
 
-      <p class="small-note">
-        例如：「昨晚 11 點睡、今早 7 點起，午餐便當 80 元，今天要背 50 個單字」。
-        解析後你勾選，按寫入才會存。
-      </p>
+      <div id="ai-chat" class="ai-chat"></div>
 
       <textarea
         id="ai-input"
         maxlength="1000"
-        placeholder="輸入文字…（Ctrl+Enter 解析）"
+        placeholder="跟我說話…（Ctrl+Enter 送出）"
       ></textarea>
 
       <div class="ai-actions">
-
         <button
           class="btn btn-primary"
-          id="ai-parse-btn"
-          onclick="aiParse()"
+          id="ai-send-btn"
+          onclick="aiSend()"
         >
-          解析
+          送出
         </button>
-
-        <button
-          class="btn"
-          id="ai-commit-btn"
-          onclick="aiCommit()"
-          hidden
-        >
-          寫入勾選的項目
-        </button>
-
       </div>
 
       <div class="ai-msg" id="ai-msg"></div>
-
-      <div id="ai-results"></div>
 
     </section>
 
