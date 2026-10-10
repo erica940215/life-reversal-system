@@ -1,16 +1,19 @@
 /* ==================================================
-   🤖 AI 記錄助手
-   流程：文字 → AI 拆成項目 → 預覽勾選 → 按「寫入」才存進資料庫
+   🤖 AI 助理（聊天）
+   流程：跟 AI 聊天 → AI 回覆，並拆出可記錄的項目 → 勾選後按「寫入」才存進資料庫
+   對話只存在這個頁面裡，重新整理就會清掉
    依賴 script.js 的全域函式與變數（db、currentUser、getToday…）
 ================================================== */
 
 const AI_FUNCTION_NAME = "ai-parse";
+const AI_MAX_INPUT = 1000;
 
 const AI_TYPE_LABELS = {
   sleep: "😴 睡眠",
   meal: "🍱 三餐",
   task: "✅ 任務",
-  idea: "💡 想法"
+  idea: "💡 想法",
+  habit: "🎯 習慣打卡"
 };
 
 const AI_DIFFICULTY_LABELS = {
@@ -20,7 +23,8 @@ const AI_DIFFICULTY_LABELS = {
   epic: "史詩"
 };
 
-let aiItems = [];      // 已驗證的建議；每筆都有 ok / problem
+/* 對話紀錄：role 是 user / assistant / note（note 只顯示寫入結果，不送給 AI） */
+let aiChat = [];
 let aiBusy = false;
 
 
@@ -49,7 +53,40 @@ function aiIsDate(value) {
 }
 
 
-/* 前端再驗一次 AI 回傳的內容，不信任伺服器原樣送來的資料 */
+/* 送給 AI 的今日資料（只帶必要的欄位） */
+function aiBuildContext() {
+
+  const today = getToday();
+  const activeHabits = habits.filter(habit => habit.active);
+  const lastNight = findSleepLog(shiftDate(today, -1));
+
+  return {
+    tasks: currentTasks.map(task => ({ title: task.title, done: Boolean(task.completed) })),
+    habits: activeHabits.map(habit => ({
+      id: habit.id,
+      title: habit.title,
+      done: isHabitDone(habit.id, today)
+    })),
+    meals_today: mealLogs
+      .filter(meal => meal.log_date === today)
+      .map(meal => ({
+        type: meal.meal_type,
+        content: meal.content,
+        skipped: Boolean(meal.skipped),
+        cost: meal.cost
+      })),
+    sleep_last_night: lastNight
+      ? {
+          bed: lastNight.bed_at ? isoToTaipeiTime(lastNight.bed_at) : null,
+          wake: lastNight.wake_at ? isoToTaipeiTime(lastNight.wake_at) : null
+        }
+      : null
+  };
+
+}
+
+
+/* 前端再驗一次 AI 回傳的項目，不信任伺服器原樣送來的資料 */
 function aiNormalizeItem(raw) {
 
   const today = getToday();
@@ -115,6 +152,16 @@ function aiNormalizeItem(raw) {
     return { type, ok: true, content, category };
   }
 
+  if (type === "habit") {
+
+    const id = Number(raw.habit_id);
+    const found = habits.find(habit => habit.active && Number(habit.id) === id);
+
+    if (!found) return bad("找不到對應的習慣");
+
+    return { type, ok: true, habit_id: found.id, title: found.title };
+  }
+
   return bad("不認識的類型");
 }
 
@@ -146,38 +193,73 @@ function aiItemText(item) {
     return `${item.content}（${found ? found.label : "💡 點子"}）`;
   }
 
+  if (item.type === "habit") {
+    return `${item.title}（今天完成）`;
+  }
+
   return "";
 }
 
 
-function aiRenderItems() {
+/* 把整段對話畫出來；每則 AI 回覆下面附上它的勾選項目 */
+function aiRenderChat() {
 
-  const box = aiEl("ai-results");
-  const commitBtn = aiEl("ai-commit-btn");
+  const box = aiEl("ai-chat");
 
-  if (!box || !commitBtn) return;
+  if (!box) return;
 
-  box.innerHTML = aiItems.map((item, index) => {
+  if (aiChat.length === 0) {
+    box.innerHTML = `<p class="small-note">直接跟我說，例如「我今天背了單字」「昨晚 11 點睡、今早 7 點起」，或問「我今天還剩什麼沒做」。</p>`;
+    return;
+  }
 
-    const label = escapeHtml(AI_TYPE_LABELS[item.type] || "❓ 未知");
+  box.innerHTML = aiChat.map((msg, mi) => {
 
-    if (!item.ok) {
-      return `
-        <label class="ai-item ai-item-bad">
-          <input type="checkbox" disabled>
-          <span><b>${label}</b> 無法寫入：${escapeHtml(item.problem)}</span>
-        </label>`;
+    if (msg.role === "note") {
+      return `<div class="ai-note">${escapeHtml(msg.text)}</div>`;
     }
 
-    return `
-      <label class="ai-item">
-        <input type="checkbox" data-ai-index="${index}" checked>
-        <span><b>${label}</b> ${escapeHtml(aiItemText(item))}</span>
-      </label>`;
+    const who = msg.role === "user" ? "你" : "🤖";
+    const text = escapeHtml(msg.text).replace(/\n/g, "<br>");
+    const bubble = `
+      <div class="ai-bubble ai-${msg.role}">
+        <span class="ai-who">${who}</span>
+        <div class="ai-text">${text}</div>
+      </div>`;
+
+    if (!msg.items || msg.items.length === 0) {
+      return bubble;
+    }
+
+    const rows = msg.items.map((item, ii) => {
+
+      const label = escapeHtml(AI_TYPE_LABELS[item.type] || "❓ 未知");
+
+      if (!item.ok) {
+        return `
+          <label class="ai-item ai-item-bad">
+            <input type="checkbox" disabled>
+            <span><b>${label}</b> 無法寫入：${escapeHtml(item.problem)}</span>
+          </label>`;
+      }
+
+      return `
+        <label class="ai-item">
+          <input type="checkbox" data-msg="${mi}" data-item="${ii}" checked>
+          <span><b>${label}</b> ${escapeHtml(aiItemText(item))}</span>
+        </label>`;
+
+    }).join("");
+
+    const commitBtn = msg.items.some(item => item.ok)
+      ? `<button class="btn btn-small" onclick="aiCommit(${mi})">寫入勾選的項目</button>`
+      : "";
+
+    return `${bubble}<div class="ai-proposals">${rows}${commitBtn ? `<div class="ai-actions">${commitBtn}</div>` : ""}</div>`;
 
   }).join("");
 
-  commitBtn.hidden = !aiItems.some(item => item.ok);
+  box.scrollTop = box.scrollHeight;
 
 }
 
@@ -199,7 +281,7 @@ async function aiErrorText(error) {
 }
 
 
-async function aiParse() {
+async function aiSend() {
 
   if (aiBusy) return;
 
@@ -209,7 +291,7 @@ async function aiParse() {
   }
 
   const input = aiEl("ai-input");
-  const button = aiEl("ai-parse-btn");
+  const button = aiEl("ai-send-btn");
   const text = input.value.trim();
 
   if (!text) {
@@ -218,16 +300,30 @@ async function aiParse() {
     return;
   }
 
+  if (text.length > AI_MAX_INPUT) {
+    aiSetMsg(`最多 ${AI_MAX_INPUT} 字`, true);
+    return;
+  }
+
+  aiChat.push({ role: "user", text });
+  input.value = "";
+  aiRenderChat();
+
   aiBusy = true;
   button.disabled = true;
-  aiSetMsg("AI 解析中…");
+  aiSetMsg("🤖 思考中…");
 
   try {
 
+    const messages = aiChat
+      .filter(msg => msg.role === "user" || msg.role === "assistant")
+      .map(msg => ({ role: msg.role, text: msg.text }));
+
     const { data, error } = await db.functions.invoke(AI_FUNCTION_NAME, {
       body: {
-        text,
+        messages,
         today: getToday(),
+        context: aiBuildContext(),
         taskCategories: taskCategories.map(category => ({ key: category.key })),
         ideaCategories: IDEA_CATEGORIES.map(category => ({ key: category.key }))
       }
@@ -236,21 +332,30 @@ async function aiParse() {
     if (error) throw error;
 
     const rawItems = data && Array.isArray(data.items) ? data.items : [];
+    const items = rawItems.slice(0, 20).map(aiNormalizeItem);
 
-    aiItems = rawItems.slice(0, 20).map(aiNormalizeItem);
+    aiChat.push({
+      role: "assistant",
+      text: (data && data.reply) || "（沒有回覆）",
+      items
+    });
 
-    aiSetMsg(
-      aiItems.length
-        ? `解析出 ${aiItems.length} 筆，確認後按「寫入勾選的項目」`
-        : "沒有解析出可記錄的內容"
-    );
-
-    aiRenderItems();
+    aiSetMsg("");
+    aiRenderChat();
 
   } catch (error) {
 
-    console.error("AI 解析失敗：", error);
-    aiSetMsg("解析失敗：" + await aiErrorText(error), true);
+    console.error("AI 呼叫失敗：", error);
+    aiSetMsg("失敗：" + await aiErrorText(error), true);
+
+    /* 失敗時把文字放回輸入框，並移除這一句，方便重送 */
+    const last = aiChat[aiChat.length - 1];
+    if (last && last.role === "user") {
+      aiChat.pop();
+      input.value = text;
+    }
+
+    aiRenderChat();
 
   } finally {
 
@@ -358,17 +463,34 @@ async function aiWriteItem(item) {
     return;
   }
 
+  if (item.type === "habit") {
+
+    /* 已經打過卡就略過，不重複寫 */
+    if (isHabitDone(item.habit_id, today)) return;
+
+    const ok = await setHabitLog(item.habit_id, today, true);
+
+    if (!ok) throw new Error("習慣打卡失敗");
+
+    return;
+  }
+
   throw new Error("不認識的類型");
 
 }
 
 
-async function aiCommit() {
+/* 寫入某一則回覆中勾選的項目 */
+async function aiCommit(messageIndex) {
 
   if (aiBusy || !currentUser) return;
 
-  const picked = [...document.querySelectorAll("input[data-ai-index]:checked")]
-    .map(el => aiItems[Number(el.dataset.aiIndex)])
+  const msg = aiChat[messageIndex];
+
+  if (!msg || !msg.items) return;
+
+  const picked = [...document.querySelectorAll(`input[data-msg="${messageIndex}"]:checked`)]
+    .map(el => msg.items[Number(el.dataset.item)])
     .filter(item => item && item.ok);
 
   if (!picked.length) {
@@ -376,10 +498,7 @@ async function aiCommit() {
     return;
   }
 
-  const button = aiEl("ai-commit-btn");
-
   aiBusy = true;
-  button.disabled = true;
   aiSetMsg("寫入中…");
 
   const done = [];
@@ -396,7 +515,7 @@ async function aiCommit() {
   }
 
   /* 重新載入各模組，讓畫面看到新資料 */
-  for (const loader of [loadTasks, loadTaskManagement, loadIdeas, loadMeals, loadSleep]) {
+  for (const loader of [loadTasks, loadTaskManagement, loadIdeas, loadMeals, loadSleep, loadHabits]) {
     try {
       await loader();
     } catch (error) {
@@ -404,40 +523,53 @@ async function aiCommit() {
     }
   }
 
-  aiItems = aiItems.filter(item => !done.includes(item));
+  msg.items = msg.items.filter(item => !done.includes(item));
 
-  if (failed.length === 0) {
-    aiEl("ai-input").value = "";
-    aiItems = [];
+  if (done.length) {
+    aiChat.push({
+      role: "note",
+      text: `✅ 已寫入 ${done.length} 筆：` + done.map(aiItemText).join("、")
+    });
   }
 
-  aiRenderItems();
-
   aiBusy = false;
-  button.disabled = false;
+  aiRenderChat();
 
   if (failed.length) {
-    aiSetMsg(`已寫入 ${done.length} 筆；失敗：${failed.join("、")}`, true);
+    aiSetMsg(`失敗：${failed.join("、")}`, true);
   } else {
-    aiSetMsg(`✅ 已寫入 ${done.length} 筆`);
+    aiSetMsg("");
     showToast(`🤖 已寫入 ${done.length} 筆`);
   }
 
 }
 
 
-/* Ctrl+Enter（Mac 用 Cmd+Enter）快速解析 */
-(function aiInitShortcut() {
+function aiClearChat() {
+
+  if (aiBusy) return;
+
+  aiChat = [];
+  aiSetMsg("");
+  aiRenderChat();
+
+}
+
+
+/* Ctrl+Enter（Mac 用 Cmd+Enter）送出 */
+(function aiInit() {
 
   const input = document.getElementById("ai-input");
 
-  if (!input) return;
+  if (input) {
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        aiSend();
+      }
+    });
+  }
 
-  input.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-      event.preventDefault();
-      aiParse();
-    }
-  });
+  aiRenderChat();
 
 })();
