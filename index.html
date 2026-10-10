@@ -4545,6 +4545,66 @@
       flex-direction: column;
     }
 
+    /* 📊 數據中心 ＆ ⏱️ 今日進度 */
+    .dc-progress-card {
+      margin-bottom: 12px;
+    }
+
+    .dc-bar-row {
+      margin-bottom: 10px;
+    }
+
+    .dc-bar-head {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.9rem;
+      margin-bottom: 4px;
+    }
+
+    .dc-track {
+      height: 8px;
+      border-radius: 999px;
+      background: #343b4d;
+      overflow: hidden;
+    }
+
+    .dc-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: #3987e5;
+      transition: width 0.6s ease;
+    }
+
+    .dc-fill-time {
+      background: #6b7385;
+    }
+
+    .dc-ahead {
+      color: #0ca30c;
+      font-size: 0.9rem;
+    }
+
+    .dc-behind {
+      color: #fab219;
+      font-size: 0.9rem;
+    }
+
+    .dc-period {
+      margin-bottom: 12px;
+    }
+
+    .dc-card .viz-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    @media (max-width: 800px) {
+      .dc-card .viz-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
   </style>
 
 </head>
@@ -4775,6 +4835,9 @@
     <!-- ==============================
          🤖 AI 記錄助手：文字 → 預覽 → 勾選後才寫入
     ============================== -->
+
+    <!-- ⏱️ 今日進度（由 datacenter.js 繪製） -->
+    <div id="dc-progress"></div>
 
     <section class="card ai-box" id="ai-card">
 
@@ -5740,6 +5803,10 @@
     <!-- ================= 📄 分頁：records ================= -->
     <div class="page" data-page="records">
 
+    <!-- 📊 數據中心（由 datacenter.js 繪製） -->
+    <div id="dc-root"></div>
+
+
     <!-- ==============================
          今日統計
     ============================== -->
@@ -6072,6 +6139,7 @@
 
 <script src="script.js"></script>
 <script src="ai.js"></script>
+<script src="datacenter.js"></script>
 
 
 <!-- 保險：10 秒後還在載入（例如網路斷線），提示重新整理 -->
