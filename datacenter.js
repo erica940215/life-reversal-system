@@ -67,6 +67,108 @@ function dcLabels(days) {
   return days.map((day, i) => (i % step === 0 || i === days.length - 1 ? formatShortDate(day) : ""));
 }
 
+/* 數字取「好看的上限」：例如 37 → 50，128 → 200 */
+function dcNiceCeil(x) {
+  if (!(x > 0)) return 1;
+  const exp = Math.floor(Math.log10(x));
+  const base = Math.pow(10, exp);
+  const f = x / base;
+  const nice = f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10;
+  return nice * base;
+}
+
+/* 軸上的數字，太大用 k／萬 縮寫 */
+function dcTickText(v) {
+  const abs = Math.abs(v);
+  if (abs >= 10000) return (v / 10000).toFixed(1) + "萬";
+  if (abs >= 1000) return (v / 1000).toFixed(1) + "k";
+  return String(Math.round(v * 10) / 10);
+}
+
+/*
+  折線圖（Y 軸依資料最大值自動調整）
+  values 可以有 null，null 會斷開線
+*/
+function dcLine(labels, values, tips, width) {
+
+  const W = Math.max(280, Math.round(width)), H = 200;
+  const left = 44, right = 44, top = 14, bottom = 28;
+  const plotW = W - left - right, plotH = H - top - bottom;
+  const n = labels.length;
+
+  const present = values.filter(v => v !== null && Number.isFinite(v));
+  const ceiling = dcNiceCeil(Math.max(0, ...present));
+
+  const x = i => left + (n === 1 ? plotW / 2 : (i * plotW) / (n - 1));
+  const y = v => top + plotH * (1 - v / ceiling);
+
+  let out = `<svg class="viz-svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img">`;
+
+  /* 格線：0 / 一半 / 上限 */
+  [0, 0.5, 1].forEach(ratio => {
+    const value = ceiling * ratio;
+    out += `<line x1="${left}" x2="${W - right}" y1="${y(value)}" y2="${y(value)}" stroke="${ratio === 0 ? VIZ.axis : VIZ.grid}" stroke-width="1"/>`;
+    out += `<text x="${left - 6}" y="${y(value) + 4}" text-anchor="end" class="viz-tick">${dcTickText(value)}</text>`;
+  });
+
+  /* x 軸：太擠就隔幾個顯示 */
+  const every = Math.ceil(n / Math.max(2, Math.floor(plotW / 46)));
+
+  labels.forEach((label, i) => {
+    if (i % every !== 0 && i !== n - 1) return;
+    out += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" class="viz-tick">${escapeHtml(label)}</text>`;
+  });
+
+  /* 線段（null 斷開） */
+  const segments = [];
+  let current = [];
+
+  values.forEach((v, i) => {
+    if (v === null || !Number.isFinite(v)) {
+      if (current.length) segments.push(current);
+      current = [];
+    } else {
+      current.push([x(i), y(v)]);
+    }
+  });
+
+  if (current.length) segments.push(current);
+
+  segments.forEach(seg => {
+    const line = seg.map(([px, py], i) => `${i ? "L" : "M"}${px.toFixed(1)},${py.toFixed(1)}`).join(" ");
+    if (seg.length > 1) {
+      out += `<path d="${line} L${seg[seg.length - 1][0].toFixed(1)},${y(0)} L${seg[0][0].toFixed(1)},${y(0)} Z" fill="${VIZ.accentWash}"/>`;
+    }
+    out += `<path d="${line}" fill="none" stroke="${VIZ.accent}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    if (seg.length === 1) {
+      out += `<circle cx="${seg[0][0]}" cy="${seg[0][1]}" r="4" fill="${VIZ.accent}"/>`;
+    }
+  });
+
+  /* 最後一個有資料的點 + 數字 */
+  const lastIndex = values.map(v => v !== null && Number.isFinite(v)).lastIndexOf(true);
+
+  if (lastIndex >= 0) {
+    out += `<circle cx="${x(lastIndex)}" cy="${y(values[lastIndex])}" r="4.5" fill="${VIZ.accent}" stroke="${VIZ.surface}" stroke-width="2"/>`;
+    out += `<text x="${x(lastIndex) + 8}" y="${y(values[lastIndex]) + 4}" class="viz-value">${dcTickText(values[lastIndex])}</text>`;
+  }
+
+  /* 滑過去看數字 */
+  const band = n === 1 ? plotW : plotW / (n - 1);
+
+  values.forEach((v, i) => {
+    out += `<g class="viz-hover">
+      <line x1="${x(i)}" x2="${x(i)}" y1="${top}" y2="${y(0)}" stroke="${VIZ.muted}" stroke-width="1"/>
+      <rect x="${(x(i) - band / 2).toFixed(1)}" y="${top}" width="${band.toFixed(1)}" height="${plotH}"
+        fill="transparent" tabindex="0" data-tip="${escapeHtml(tips[i])}"/>
+    </g>`;
+  });
+
+  return out + `</svg>`;
+
+}
+
+
 function dcLegend(segments) {
   return `
     <div class="viz-legend">
@@ -443,7 +545,10 @@ function dcRender() {
 
   if (!width) return;
 
-  const chartWidth = Math.max(280, width - 40);
+  /* 寬螢幕是兩欄，每張圖要比格子窄；手機是一欄 */
+  const chartWidth = width > 800
+    ? Math.max(280, (width - 40 - 12) / 2 - 32)
+    : Math.max(280, width - 40 - 32);
   const days = dcDayList(dcRange);
   const s = dcBuildSeries(days);
   const labels = dcLabels(days);
@@ -473,7 +578,7 @@ function dcRender() {
   const expLine = vizPanel(
     "📈 每日 EXP",
     "任務、習慣、專注、作息等加總",
-    svgLine(labels, s.exp, days.map((d, i) => `${formatShortDate(d)}：${s.exp[i]} EXP`), chartWidth)
+    dcLine(labels, s.exp, days.map((d, i) => `${formatShortDate(d)}：${s.exp[i]} EXP`), chartWidth)
   );
 
   const rateLine = vizPanel(
@@ -495,10 +600,10 @@ function dcRender() {
 
   const sleepLine = vizPanel(
     "😴 每晚睡眠時數",
-    "沒有紀錄的晚上以 0 計",
-    svgLine(
+    "沒有紀錄的晚上會斷開",
+    dcLine(
       labels,
-      s.sleepH.map(h => h || 0),
+      s.sleepH,
       days.map((d, i) => `${formatShortDate(d)}：${s.sleepH[i] === null ? "沒有紀錄" : s.sleepH[i].toFixed(1) + " 小時"}`),
       chartWidth
     )
