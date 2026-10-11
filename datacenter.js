@@ -1006,7 +1006,10 @@ applyTheme(currentThemeKey());
    📅 日曆
    - 週檢視：拖移行程到任何時間（可跨天），點空白處新增
    - 今日頁：顯示今天的行程，同樣可以拖移
-   - Google 日曆：登入或連結後，手動同步（唯讀，不會改動 Google）
+   - Google 日曆：登入或連結後，手動同步
+     · 有時間的 Google 行程可以直接編輯、拖移、刪除、改顏色，會同步改到 Google
+     · 新增行程時可勾選「同時新增到 Google 日曆」
+     · 全天行程維持唯讀
    依賴 script.js（db、currentUser、getToday、shiftDate、taipeiToIso、showToast、escapeHtml、safeColor）
 ================================================== */
 
@@ -1016,7 +1019,32 @@ const CAL_PX_PER_HOUR = 40;      // 需和 index.html 的 .cal-col 背景線距�
 const CAL_SNAP_MINUTES = 15;
 const CAL_DEFAULT_MINUTES = 60;
 const CAL_COLORS = ["#5865f2", "#0ca30c", "#e0764b", "#ff6b81", "#9b6cff", "#22b8cf", "#8a93a8"];
-const GCAL_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
+
+/*
+  Google 行程的 11 種顏色（colorId 1～11）
+  hex 是 Google 預設調色盤的近似值，只用來顯示與比對
+*/
+const GCAL_COLORS = [
+  { id: "1",  name: "薰衣草", hex: "#a4bdfc" },
+  { id: "2",  name: "鼠尾草", hex: "#7ae7bf" },
+  { id: "3",  name: "葡萄",   hex: "#dbadff" },
+  { id: "4",  name: "火鶴",   hex: "#ff887c" },
+  { id: "5",  name: "香蕉",   hex: "#fbd75b" },
+  { id: "6",  name: "橘子",   hex: "#ffb878" },
+  { id: "7",  name: "孔雀",   hex: "#46d6db" },
+  { id: "8",  name: "石墨",   hex: "#e1e1e1" },
+  { id: "9",  name: "藍莓",   hex: "#5484ed" },
+  { id: "10", name: "羅勒",   hex: "#51b749" },
+  { id: "11", name: "番茄",   hex: "#dc2127" }
+];
+
+/* 可讀寫行程 + 讀取日曆清單（兩個都要在 Google Cloud Console 的「資料存取」勾選） */
+const GCAL_SCOPE = [
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/calendar.calendarlist.readonly"
+].join(" ");
+
+const GCAL_API = "https://www.googleapis.com/calendar/v3";
 const GCAL_LAST_SYNC_KEY = "gcalLastSync";
 
 /* 把「📅 日曆」插在「📋 任務」後面 */
@@ -1089,6 +1117,22 @@ function calSetMsg(text, isError = false, id = "cal-msg") {
   el.classList.toggle("is-error", isError);
 }
 
+function calFindEvent(id) {
+  return [...calWeekEvents, ...calTodayEvents].find(item => String(item.id) === String(id)) || null;
+}
+
+/* Google 全天行程維持唯讀；有時間的 Google 行程可以編輯 */
+function calIsReadonly(ev) {
+  return ev.source === "google" && ev.all_day;
+}
+
+/* 依 hex 找出 Google 的顏色（找不到代表是日曆預設色） */
+function gcalColorByHex(hex) {
+  if (!hex) return null;
+  const target = String(hex).toLowerCase();
+  return GCAL_COLORS.find(item => item.hex.toLowerCase() === target) || null;
+}
+
 
 /* ---------- 讀取 ---------- */
 
@@ -1152,7 +1196,7 @@ async function calRefreshAll() {
 
 function calChipHtml(ev) {
 
-  const readonly = ev.source === "google";
+  const readonly = calIsReadonly(ev);
   const color = safeColor(ev.color);
 
   return `<div class="cal-chip ${readonly ? "is-readonly" : ""}" data-id="${ev.id}" style="background:${color}">${escapeHtml(ev.title)}</div>`;
@@ -1177,15 +1221,16 @@ function calEventHtml(ev, dateText) {
   const top = ((startMin - dayStart) / 60) * CAL_PX_PER_HOUR;
   const height = Math.max(((shownEnd - startMin) / 60) * CAL_PX_PER_HOUR, 20);
 
-  const readonly = ev.source === "google";
+  const readonly = calIsReadonly(ev);
+  const isGoogle = ev.source === "google";
 
   return `
-    <div class="cal-ev ${readonly ? "is-readonly" : ""}"
+    <div class="cal-ev ${readonly ? "is-readonly" : ""} ${isGoogle ? "is-google" : ""}"
       data-id="${ev.id}"
       data-date="${dateText}"
       data-real-dur="${realDuration}"
       style="top:${top}px;height:${height}px;background:${safeColor(ev.color)}"
-      title="${escapeHtml(ev.title)}">
+      title="${escapeHtml(ev.title)}${isGoogle ? "（Google 日曆）" : ""}">
       <div class="cal-ev-title">${escapeHtml(ev.title)}</div>
       <div class="cal-ev-time">${calHHMM(startMin)}–${calHHMM(shownEnd)}</div>
     </div>`;
@@ -1358,9 +1403,77 @@ function calPickColor(button) {
 }
 
 
+/* 色票：Google 行程（或勾選同步到 Google）用 Google 的 11 色，否則用本地 7 色 */
+function calSwatchesHtml(selectedHex, useGoogle) {
+
+  if (useGoogle) {
+
+    const selected = (selectedHex || "").toLowerCase();
+
+    return `
+      <div class="cal-msg">Google 行程顏色（會同步到 Google 日曆）</div>
+      <div class="cal-colors" id="ce-colors">
+        ${GCAL_COLORS.map(item => `
+          <button type="button"
+            class="cal-swatch ${item.hex.toLowerCase() === selected ? "active" : ""}"
+            data-color="${item.hex}"
+            data-color-id="${item.id}"
+            style="background:${item.hex}"
+            onclick="calPickColor(this)"
+            title="${item.name}"
+            aria-label="${item.name}"></button>`).join("")}
+      </div>`;
+
+  }
+
+  return `
+    <div class="cal-colors" id="ce-colors">
+      ${CAL_COLORS.map(color => `
+        <button type="button"
+          class="cal-swatch ${color === selectedHex ? "active" : ""}"
+          data-color="${color}"
+          style="background:${color}"
+          onclick="calPickColor(this)"
+          aria-label="${color}"></button>`).join("")}
+    </div>`;
+
+}
+
+
+/* 勾選／取消「同時新增到 Google 日曆」時，切換色票 */
+function calToggleGoogleColors(checked) {
+
+  const box = calEl("ce-colors");
+  if (!box) return;
+
+  const active = document.querySelector("#cal-editor .cal-swatch.active");
+  const current = active ? active.dataset.color : "";
+
+  const wrap = document.createElement("div");
+  wrap.innerHTML = calSwatchesHtml(
+    checked ? (gcalColorByHex(current) ? current : GCAL_COLORS[0].hex) : (CAL_COLORS.includes(current) ? current : CAL_COLORS[0]),
+    checked
+  );
+
+  const oldTip = box.previousElementSibling && box.previousElementSibling.classList.contains("cal-msg")
+    ? box.previousElementSibling : null;
+
+  if (oldTip && !checked) oldTip.remove();
+
+  box.replaceWith(wrap.querySelector("#ce-colors"));
+
+  if (checked && !(box.parentElement && box.parentElement.querySelector(".cal-msg")?.textContent)) {
+    const tip = wrap.querySelector(".cal-msg");
+    if (tip) calEl("ce-colors").before(tip);
+  }
+
+}
+
+
 /*
   編輯視窗
-  options：{ id, title, date, start, end, color }（時間是 HH:MM）
+  options：{ id, title, date, start, end, color, google }（時間是 HH:MM）
+  google = true 代表這是 Google 日曆的行程，儲存/刪除會同步到 Google
 */
 function calOpenEditor(options) {
 
@@ -1373,6 +1486,7 @@ function calOpenEditor(options) {
     start: "09:00",
     end: "10:00",
     color: CAL_COLORS[0],
+    google: false,
     ...options
   };
 
@@ -1381,9 +1495,22 @@ function calOpenEditor(options) {
   overlay.id = "cal-editor";
   overlay.className = "cal-overlay";
 
+  const googleNote = o.google
+    ? `<div class="cal-msg">📅 這是 Google 日曆的行程，儲存或刪除會同步到 Google。</div>`
+    : "";
+
+  const googleCheck = !o.id
+    ? `<label class="cal-field" style="flex-direction:row;align-items:center;gap:8px;cursor:pointer">
+         <input id="ce-google" type="checkbox" style="width:auto" onchange="calToggleGoogleColors(this.checked)">
+         同時新增到 Google 日曆
+       </label>`
+    : "";
+
   overlay.innerHTML = `
     <div class="modal-box cal-dialog" role="dialog" aria-modal="true">
       <div class="cal-dialog-title">${o.id ? "編輯行程" : "新增行程"}</div>
+
+      ${googleNote}
 
       <label class="cal-field">
         標題
@@ -1406,15 +1533,9 @@ function calOpenEditor(options) {
         </label>
       </div>
 
-      <div class="cal-colors">
-        ${CAL_COLORS.map(color => `
-          <button type="button"
-            class="cal-swatch ${color === o.color ? "active" : ""}"
-            data-color="${color}"
-            style="background:${color}"
-            onclick="calPickColor(this)"
-            aria-label="${color}"></button>`).join("")}
-      </div>
+      ${calSwatchesHtml(o.color, o.google)}
+
+      ${googleCheck}
 
       <div class="cal-msg" id="ce-msg"></div>
 
@@ -1460,12 +1581,12 @@ function calNewAt(startMinutes = null) {
 
 function calOpenEditorFromId(id) {
 
-  const ev = [...calWeekEvents, ...calTodayEvents].find(item => String(item.id) === String(id));
+  const ev = calFindEvent(id);
 
   if (!ev) return;
 
-  if (ev.source === "google") {
-    showToast("這是 Google 日曆的行程，請到 Google 日曆修改");
+  if (calIsReadonly(ev)) {
+    showToast("Google 的全天行程請到 Google 日曆修改");
     return;
   }
 
@@ -1475,7 +1596,8 @@ function calOpenEditorFromId(id) {
     date: calDateOf(ev.starts_at),
     start: calTimeOf(ev.starts_at),
     end: calTimeOf(ev.ends_at),
-    color: ev.color
+    color: ev.color,
+    google: ev.source === "google"
   });
 
 }
@@ -1492,7 +1614,8 @@ async function calSaveFromEditor(id) {
   const date = calEl("ce-date").value;
   const start = calEl("ce-start").value;
   const end = calEl("ce-end").value;
-  const color = document.querySelector("#cal-editor .cal-swatch.active")?.dataset.color || CAL_COLORS[0];
+  const activeSwatch = document.querySelector("#cal-editor .cal-swatch.active");
+  const pickedColor = activeSwatch?.dataset.color || CAL_COLORS[0];
 
   if (!title) return msg("請輸入標題");
   if (!date || !start || !end) return msg("請選日期與時間");
@@ -1502,17 +1625,79 @@ async function calSaveFromEditor(id) {
 
   if (new Date(endsAt) <= new Date(startsAt)) return msg("結束時間要比開始晚");
 
+  const existing = id ? calFindEvent(id) : null;
+  const isGoogle = Boolean(existing && existing.source === "google");
+  const addToGoogle = !id && Boolean(calEl("ce-google")?.checked);
+  const toGoogle = isGoogle || addToGoogle;
+
+  /* 只有選到 Google 色票時才送 colorId；沒選就不動 Google 上的顏色 */
+  const googleColor = toGoogle ? gcalColorByHex(pickedColor) : null;
+
+  let googleInfo = null;
+
+  /* 先寫到 Google，成功後再寫進自己的資料庫 */
+  if (toGoogle) {
+
+    const token = await gcalToken();
+
+    if (!token) return msg("Google 授權已過期或尚未連結，請先按「連結 Google 日曆」。");
+
+    msg("儲存到 Google 日曆中…");
+
+    try {
+
+      const body = { summary: title, ...gcalTimeBody(startsAt, endsAt) };
+
+      if (googleColor) body.colorId = googleColor.id;
+
+      if (isGoogle) {
+
+        await gcalRequest("PATCH", gcalEventUrl(existing), token, body);
+
+      } else {
+
+        const created = await gcalRequest("POST", `${GCAL_API}/calendars/primary/events`, token, body);
+
+        googleInfo = {
+          source: "google",
+          google_calendar_id: (created.organizer && created.organizer.email) || "primary",
+          google_event_id: created.id,
+          calendar_name: null
+        };
+
+      }
+
+    } catch (error) {
+
+      console.error("Google 日曆儲存失敗：", error);
+      return msg(gcalErrorText(error));
+
+    }
+
+  }
+
+  /* Google 行程：有選 Google 色就用它；否則保留原本的顯示色 */
+  const savedColor = toGoogle
+    ? (googleColor ? googleColor.hex : (existing ? existing.color : pickedColor))
+    : pickedColor;
+
   const row = {
     title,
     starts_at: startsAt,
     ends_at: endsAt,
-    color,
+    color: savedColor,
     updated_at: new Date().toISOString()
   };
 
   const { error } = id
     ? await db.from("events").update(row).eq("id", id).eq("user_id", currentUser.id)
-    : await db.from("events").insert({ ...row, user_id: currentUser.id, source: "local", all_day: false });
+    : await db.from("events").insert({
+        ...row,
+        user_id: currentUser.id,
+        source: "local",
+        all_day: false,
+        ...(googleInfo || {})
+      });
 
   if (error) {
     console.error("行程儲存失敗：", error);
@@ -1520,7 +1705,7 @@ async function calSaveFromEditor(id) {
   }
 
   calCloseEditor();
-  calSetMsg("✅ 已儲存");
+  calSetMsg(toGoogle ? "✅ 已儲存（已同步到 Google 日曆）" : "✅ 已儲存");
   await calRefreshAll();
 
 }
@@ -1528,7 +1713,32 @@ async function calSaveFromEditor(id) {
 
 async function calDeleteFromEditor(id) {
 
-  if (!confirm("刪除這個行程？")) return;
+  const ev = calFindEvent(id);
+  const isGoogle = Boolean(ev && ev.source === "google");
+
+  if (!confirm(isGoogle ? "這會同時從 Google 日曆刪除，確定嗎？" : "刪除這個行程？")) return;
+
+  if (isGoogle) {
+
+    const token = await gcalToken();
+
+    if (!token) {
+      alert("Google 授權已過期或尚未連結，請先按「連結 Google 日曆」。");
+      return;
+    }
+
+    try {
+      await gcalRequest("DELETE", gcalEventUrl(ev), token);
+    } catch (error) {
+      /* Google 上已經不存在，就當作刪除成功 */
+      if (error.status !== 404 && error.status !== 410) {
+        console.error("Google 日曆刪除失敗：", error);
+        alert(gcalErrorText(error));
+        return;
+      }
+    }
+
+  }
 
   const { error } = await db
     .from("events")
@@ -1549,11 +1759,14 @@ async function calDeleteFromEditor(id) {
 
 /* ---------- 拖移 ---------- */
 
-/* 把一個行程移到指定日期與開始時間（先更新畫面，再寫入資料庫） */
+/* 把一個行程移到指定日期與開始時間（先更新畫面，再寫入 Google 與資料庫） */
 async function calMoveEvent(id, dateText, startMin, duration) {
 
   const startsAt = calIsoAt(dateText, startMin);
   const endsAt = calIsoAt(dateText, startMin + duration);
+
+  const target = calFindEvent(id);
+  const isGoogle = Boolean(target && target.source === "google");
 
   for (const list of [calWeekEvents, calTodayEvents]) {
     const ev = list.find(item => String(item.id) === String(id));
@@ -1565,6 +1778,27 @@ async function calMoveEvent(id, dateText, startMin, duration) {
 
   calRenderWeek();
   calRenderToday();
+
+  if (isGoogle) {
+
+    const token = await gcalToken();
+
+    if (!token) {
+      calSetMsg("Google 授權已過期或尚未連結，請先按「連結 Google 日曆」。", true);
+      await calRefreshAll();
+      return;
+    }
+
+    try {
+      await gcalRequest("PATCH", gcalEventUrl(target), token, gcalTimeBody(startsAt, endsAt));
+    } catch (error) {
+      console.error("Google 日曆移動失敗：", error);
+      calSetMsg(gcalErrorText(error), true);
+      await calRefreshAll();
+      return;
+    }
+
+  }
 
   const { error } = await db
     .from("events")
@@ -1641,22 +1875,81 @@ async function gcalLink() {
 }
 
 
-async function gcalGet(url, token) {
+async function gcalToken() {
 
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const { data } = await db.auth.getSession();
+
+  return data && data.session ? data.session.provider_token : null;
+
+}
+
+
+/* 呼叫 Google Calendar API（GET / POST / PATCH / DELETE） */
+async function gcalRequest(method, url, token, body) {
+
+  const headers = { Authorization: `Bearer ${token}` };
+
+  if (body) headers["Content-Type"] = "application/json";
+
+  const res = await fetch(url, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined
+  });
 
   if (!res.ok) {
-    const error = new Error(`Google 回應 ${res.status}`);
+
+    let detail = "";
+
+    try {
+      const json = await res.json();
+      detail = json && json.error ? json.error.message : "";
+    } catch (_) {}
+
+    const error = new Error(`Google 回應 ${res.status}${detail ? "：" + detail : ""}`);
     error.status = res.status;
     throw error;
+
   }
+
+  if (res.status === 204) return null;
 
   return res.json();
 
 }
 
 
-/* Google 的一筆行程 → 我們的 events 格式（唯讀） */
+function gcalGet(url, token) {
+  return gcalRequest("GET", url, token);
+}
+
+
+function gcalEventUrl(ev) {
+  return `${GCAL_API}/calendars/${encodeURIComponent(ev.google_calendar_id)}/events/${encodeURIComponent(ev.google_event_id)}`;
+}
+
+
+function gcalTimeBody(startsAt, endsAt) {
+  return {
+    start: { dateTime: startsAt, timeZone: "Asia/Taipei" },
+    end: { dateTime: endsAt, timeZone: "Asia/Taipei" }
+  };
+}
+
+
+function gcalErrorText(error) {
+
+  if (error.status === 401) return "Google 授權已過期，請按「連結 Google 日曆」重新授權。";
+  if (error.status === 403) return "沒有權限修改這個 Google 行程（可能是唯讀日曆，或授權時沒勾選日曆權限）。";
+  if (error.status === 404 || error.status === 410) return "Google 上找不到這個行程，可能已被刪除，請重新同步。";
+
+  return "Google 日曆錯誤：" + (error.message || error);
+
+}
+
+
+/* Google 的一筆行程 → 我們的 events 格式
+   行程有自己的顏色（colorId）就用 Google 調色盤；否則用所在日曆的顏色 */
 function gcalRow(item, cal) {
 
   const allDay = Boolean(item.start && item.start.date);
@@ -1673,12 +1966,14 @@ function gcalRow(item, cal) {
     endsAt = new Date(new Date(startsAt).getTime() + 30 * 60000).toISOString();
   }
 
+  const eventColor = item.colorId ? GCAL_COLORS.find(c => c.id === String(item.colorId)) : null;
+
   return {
     title: String(item.summary || "（無標題）").slice(0, 120),
     starts_at: startsAt,
     ends_at: endsAt,
     all_day: allDay,
-    color: safeColor(cal.backgroundColor),
+    color: safeColor(eventColor ? eventColor.hex : cal.backgroundColor),
     source: "google",
     google_calendar_id: cal.id,
     google_event_id: item.id,
@@ -1693,8 +1988,7 @@ async function gcalSync() {
 
   if (!currentUser || calBusy) return;
 
-  const { data } = await db.auth.getSession();
-  const token = data && data.session ? data.session.provider_token : null;
+  const token = await gcalToken();
 
   if (!token) {
     calSetMsg("還沒有 Google 日曆授權。請按「連結 Google 日曆」，或用 Google 登入後再同步。", true, "cal-gcal-msg");
@@ -1706,10 +2000,16 @@ async function gcalSync() {
 
   try {
 
-    const calendars = await gcalGet(
-      "https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=250",
-      token
-    );
+    /* 讀日曆清單；沒有清單權限時，退回只同步主要日曆 */
+    let calendarItems;
+
+    try {
+      const calendars = await gcalGet(`${GCAL_API}/users/me/calendarList?maxResults=250`, token);
+      calendarItems = calendars.items || [];
+    } catch (error) {
+      if (error.status !== 403) throw error;
+      calendarItems = [{ id: "primary", summary: "主要日曆", backgroundColor: CAL_COLORS[0] }];
+    }
 
     const now = Date.now();
     const timeMin = new Date(now - 30 * 86400000).toISOString();
@@ -1717,7 +2017,7 @@ async function gcalSync() {
 
     const rows = [];
 
-    for (const cal of calendars.items || []) {
+    for (const cal of calendarItems) {
 
       let pageToken = "";
 
@@ -1734,7 +2034,7 @@ async function gcalSync() {
         if (pageToken) params.set("pageToken", pageToken);
 
         const page = await gcalGet(
-          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?${params}`,
+          `${GCAL_API}/calendars/${encodeURIComponent(cal.id)}/events?${params}`,
           token
         );
 
@@ -1779,7 +2079,7 @@ async function gcalSync() {
     } catch (_) {}
 
     calRenderGcalInfo();
-    calSetMsg(`✅ 已同步 ${rows.length} 筆（${(calendars.items || []).length} 個日曆）`, false, "cal-gcal-msg");
+    calSetMsg(`✅ 已同步 ${rows.length} 筆（${calendarItems.length} 個日曆）`, false, "cal-gcal-msg");
 
     await calRefreshAll();
 
@@ -1909,13 +2209,13 @@ document.addEventListener("pointerup", async (event) => {
 });
 
 
-/* 點 Google 行程：提示唯讀 */
+/* 點 Google 全天行程：提示唯讀 */
 document.addEventListener("click", (event) => {
 
   const block = event.target.closest(".cal-ev.is-readonly, .cal-chip.is-readonly");
 
   if (block) {
-    showToast("這是 Google 日曆的行程，請到 Google 日曆修改");
+    showToast("Google 的全天行程請到 Google 日曆修改");
   }
 
 });
