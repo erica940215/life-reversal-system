@@ -4891,6 +4891,274 @@
       margin-top: 8px;
     }
 
+    /* 📅 檢視切換（週／月／時間表） */
+    .cal-toolbar .cal-viewseg {
+      margin-bottom: 0;
+    }
+
+    .cal-toolbar .cal-viewseg .seg-btn {
+      padding: 6px 14px;
+    }
+
+    /* 📅 月檢視 */
+    .calm-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      border-top: 1px solid rgba(128, 128, 128, 0.25);
+      border-left: 1px solid rgba(128, 128, 128, 0.25);
+    }
+
+    .calm-head {
+      text-align: center;
+      font-size: 12px;
+      opacity: 0.7;
+      padding: 6px 0;
+      border-right: 1px solid rgba(128, 128, 128, 0.25);
+      border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+    }
+
+    .calm-cell {
+      min-width: 0;
+      min-height: 100px;
+      padding: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      border-right: 1px solid rgba(128, 128, 128, 0.25);
+      border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+      cursor: pointer;
+    }
+
+    .calm-cell:hover {
+      background: rgba(128, 128, 128, 0.07);
+    }
+
+    .calm-cell.is-other > * {
+      opacity: 0.45;
+    }
+
+    .calm-date {
+      align-self: center;
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      background: transparent;
+      color: inherit;
+      font-size: 12px;
+      line-height: 26px;
+      text-align: center;
+    }
+
+    .calm-date:hover {
+      background: rgba(128, 128, 128, 0.25);
+    }
+
+    .calm-cell.is-today .calm-date {
+      background: #5865f2;
+      color: #fff;
+      font-weight: bold;
+    }
+
+    .calm-chip {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+      padding: 1px 4px;
+      border-radius: 4px;
+      font-size: 11px;
+      line-height: 1.4;
+      white-space: nowrap;
+      overflow: hidden;
+      cursor: grab;
+      touch-action: none;
+      user-select: none;
+    }
+
+    .calm-chip:hover {
+      background: rgba(128, 128, 128, 0.2);
+    }
+
+    .calm-chip.is-allday {
+      display: block;
+      color: #fff;
+      text-overflow: ellipsis;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    }
+
+    .calm-chip.is-readonly {
+      cursor: default;
+    }
+
+    .calm-chip.is-dragging {
+      position: relative;
+      z-index: 50;
+      opacity: 0.9;
+      cursor: grabbing;
+      background: rgba(40, 44, 60, 0.95);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    }
+
+    .calm-dot {
+      flex: 0 0 8px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .calm-time {
+      flex: 0 0 auto;
+      opacity: 0.75;
+    }
+
+    .calm-title {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .calm-more {
+      padding: 0 4px;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 11px;
+      text-align: left;
+      opacity: 0.75;
+    }
+
+    .calm-more:hover {
+      opacity: 1;
+      text-decoration: underline;
+    }
+
+    /* 📅 時間表 */
+    .cals-day {
+      display: flex;
+      gap: 14px;
+      padding: 10px 4px;
+      border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+    }
+
+    .cals-date {
+      flex: 0 0 100px;
+      padding-top: 6px;
+      font-size: 13px;
+      opacity: 0.8;
+    }
+
+    .cals-day.is-today .cals-date {
+      opacity: 1;
+      font-weight: bold;
+      color: #8f9bff;
+    }
+
+    .cals-date small {
+      display: block;
+      font-size: 11px;
+      font-weight: normal;
+      margin-top: 2px;
+    }
+
+    .cals-list {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .cals-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .cals-row:hover {
+      background: rgba(128, 128, 128, 0.12);
+    }
+
+    .cals-row.is-readonly {
+      cursor: default;
+    }
+
+    .cals-dot {
+      flex: 0 0 10px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .cals-time {
+      flex: 0 0 96px;
+      font-size: 13px;
+      opacity: 0.8;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .cals-title {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .cals-title small {
+      margin-left: 8px;
+      opacity: 0.6;
+    }
+
+    @media (max-width: 600px) {
+
+      .calm-cell {
+        min-height: 72px;
+        padding: 2px;
+      }
+
+      .calm-time,
+      .calm-more-word {
+        display: none;
+      }
+
+      .calm-chip {
+        padding: 1px 2px;
+        font-size: 10px;
+      }
+
+      .calm-dot {
+        flex-basis: 6px;
+        width: 6px;
+        height: 6px;
+      }
+
+      .cals-day {
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .cals-date {
+        flex: none;
+        padding-top: 0;
+      }
+
+      .cals-date small {
+        display: inline;
+        margin-left: 6px;
+      }
+
+      .cals-time {
+        flex-basis: 84px;
+      }
+
+    }
+
   </style>
 
 </head>
@@ -5985,9 +6253,14 @@
 
     <section class="card">
       <div class="cal-toolbar">
-        <button class="btn btn-small" onclick="calShiftWeek(-7)">‹ 上一週</button>
-        <button class="btn btn-small" onclick="calGoThisWeek()">本週</button>
-        <button class="btn btn-small" onclick="calShiftWeek(7)">下一週 ›</button>
+        <div class="segmented cal-viewseg">
+          <button class="seg-btn cal-view-btn" data-view="week" onclick="calSetView('week')">週</button>
+          <button class="seg-btn cal-view-btn" data-view="month" onclick="calSetView('month')">月</button>
+          <button class="seg-btn cal-view-btn" data-view="schedule" onclick="calSetView('schedule')">時間表</button>
+        </div>
+        <button class="btn btn-small" onclick="calNav(-1)" aria-label="上一段">‹</button>
+        <button class="btn btn-small" onclick="calGoToday()">今天</button>
+        <button class="btn btn-small" onclick="calNav(1)" aria-label="下一段">›</button>
         <span class="cal-range" id="cal-range-label"></span>
         <span style="flex:1"></span>
         <button class="btn btn-primary btn-small" onclick="calNewAt()">＋ 新增</button>
