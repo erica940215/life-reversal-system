@@ -59,6 +59,17 @@ function aiSetMsg(text, isError = false) {
 }
 
 
+/* 把 AI 給的時間整理成 HH:MM（接受 6:00、18:00:00 這類寫法），整理不了就回傳空字串 */
+function aiCleanTime(value) {
+  const match = String(value || "").trim().match(/^(\d{1,2})[:：](\d{2})/);
+  if (!match) return "";
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) return "";
+  return String(hour).padStart(2, "0") + ":" + String(minute).padStart(2, "0");
+}
+
+
 function aiIsTime(value) {
   return typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 }
@@ -198,12 +209,14 @@ function aiNormalizeItem(raw) {
 
       const title = String(raw.title || "").trim().slice(0, 120);
       const date = raw.date || today;
-      const startTime = raw.start_time || "";
-      const endTime = raw.end_time || "";
+      const startTime = aiCleanTime(raw.start_time);
+      const endTime = aiCleanTime(raw.end_time);
 
       if (!title) return bad("沒有行程名稱");
       if (!aiIsAnyDate(date)) return bad("日期不正確");
-      if (!aiIsTime(startTime) || !aiIsTime(endTime)) return bad("時間格式不正確");
+      if (!startTime || !endTime) {
+        return bad(`時間格式不正確（AI 給的是 ${raw.start_time || "空"} ～ ${raw.end_time || "空"}）`);
+      }
       if (endTime <= startTime) return bad("結束要比開始晚");
 
       return {
@@ -224,12 +237,14 @@ function aiNormalizeItem(raw) {
 
     const title = String(raw.title || found.title).trim().slice(0, 120);
     const date = raw.date || calDateOf(found.starts_at);
-    const startTime = raw.start_time || calTimeOf(found.starts_at);
-    const endTime = raw.end_time || calTimeOf(found.ends_at);
+    const startTime = raw.start_time ? aiCleanTime(raw.start_time) : calTimeOf(found.starts_at);
+    const endTime = raw.end_time ? aiCleanTime(raw.end_time) : calTimeOf(found.ends_at);
 
     if (!title) return bad("沒有行程名稱");
     if (!aiIsAnyDate(date)) return bad("日期不正確");
-    if (!aiIsTime(startTime) || !aiIsTime(endTime)) return bad("時間格式不正確");
+    if (!startTime || !endTime) {
+      return bad(`時間格式不正確（AI 給的是 ${raw.start_time || "空"} ～ ${raw.end_time || "空"}）`);
+    }
     if (endTime <= startTime) return bad("結束要比開始晚");
 
     return {
