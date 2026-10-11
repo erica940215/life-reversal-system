@@ -4644,6 +4644,238 @@
       flex: 0 0 auto;
     }
 
+    /* 📅 日曆 */
+    .cal-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .cal-range {
+      font-size: 0.95rem;
+      opacity: 0.85;
+      margin-left: 4px;
+    }
+
+    .cal-msg {
+      font-size: 0.9rem;
+      min-height: 1.2em;
+      margin: 6px 0;
+      opacity: 0.9;
+    }
+
+    .cal-msg.is-error {
+      color: #ff6b81;
+    }
+
+    .cal-scroll {
+      overflow: auto;
+      border-radius: 12px;
+    }
+
+    .cal-today-card .cal-scroll {
+      max-height: 420px;
+    }
+
+    .cal-table {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .cal-row {
+      display: flex;
+    }
+
+    .cal-gutter {
+      flex: 0 0 44px;
+      position: relative;
+      font-size: 11px;
+      opacity: 0.7;
+    }
+
+    .cal-gutter-label {
+      padding-top: 6px;
+    }
+
+    .cal-hour {
+      position: absolute;
+      left: 0;
+      transform: translateY(-6px);
+      white-space: nowrap;
+    }
+
+    .cal-dayhead {
+      flex: 1 1 0;
+      min-width: 0;
+      text-align: center;
+      font-size: 12px;
+      padding: 6px 2px;
+      opacity: 0.85;
+    }
+
+    .cal-dayhead.is-today {
+      opacity: 1;
+      font-weight: 500;
+    }
+
+    .cal-allday-col {
+      flex: 1 1 0;
+      min-width: 0;
+      min-height: 24px;
+      padding: 2px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .cal-col {
+      flex: 1 1 0;
+      min-width: 0;
+      position: relative;
+      border-left: 1px solid rgba(128, 128, 128, 0.2);
+      background-image: repeating-linear-gradient(
+        to bottom,
+        rgba(128, 128, 128, 0.2) 0 1px,
+        transparent 1px 40px
+      );
+    }
+
+    .cal-ev {
+      position: absolute;
+      left: 3px;
+      right: 3px;
+      padding: 3px 6px;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 12px;
+      line-height: 1.3;
+      overflow: hidden;
+      box-sizing: border-box;
+      cursor: grab;
+      touch-action: none;
+      user-select: none;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    }
+
+    .cal-ev.is-readonly {
+      cursor: default;
+      opacity: 0.85;
+      border: 1px dashed rgba(255, 255, 255, 0.6);
+    }
+
+    .cal-ev.is-dragging {
+      z-index: 5;
+      opacity: 0.85;
+      cursor: grabbing;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    }
+
+    .cal-ev-title {
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .cal-ev-time {
+      font-size: 11px;
+      opacity: 0.9;
+    }
+
+    .cal-chip {
+      padding: 2px 6px;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    }
+
+    .cal-now {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: #ff6b81;
+      z-index: 3;
+    }
+
+    .cal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 200;
+    }
+
+    .cal-dialog {
+      width: 100%;
+      max-width: 420px;
+    }
+
+    .cal-dialog-title {
+      font-size: 18px;
+      font-weight: 500;
+      margin-bottom: 12px;
+    }
+
+    .cal-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.9rem;
+      flex: 1;
+      margin-bottom: 10px;
+    }
+
+    .cal-field input {
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(128, 128, 128, 0.35);
+      background: transparent;
+      color: inherit;
+      font: inherit;
+    }
+
+    .cal-field-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .cal-colors {
+      display: flex;
+      gap: 8px;
+      margin: 4px 0 10px;
+    }
+
+    .cal-swatch {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      padding: 0;
+    }
+
+    .cal-swatch.active {
+      border-color: #fff;
+      box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4);
+    }
+
+    .cal-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
   </style>
 
 </head>
@@ -4712,6 +4944,14 @@
         onclick="login()"
       >
         🔐 登入
+      </button>
+
+
+      <button
+        class="btn"
+        onclick="gcalSignIn()"
+      >
+        🔵 用 Google 登入
       </button>
 
 
@@ -4800,6 +5040,11 @@
       <span class="tab-label" id="nav-focus-label">專注</span>
     </button>
 
+    <button class="tab-btn" data-page="calendar" onclick="showPage('calendar')">
+      <span class="tab-icon">📅</span>
+      <span class="tab-label">日曆</span>
+    </button>
+
     <button class="tab-btn" data-page="ideas" onclick="showPage('ideas')">
       <span class="tab-icon">💡</span>
       <span class="tab-label">想法</span>
@@ -4877,6 +5122,14 @@
 
     <!-- ⏱️ 今日進度（由 datacenter.js 繪製） -->
     <div id="dc-progress"></div>
+
+    <section class="card cal-today-card" id="cal-today-card">
+      <div class="card-head">
+        <h2>📅 今日行程</h2>
+        <button class="btn btn-small" onclick="calNewAt()">＋ 新增</button>
+      </div>
+      <div id="cal-today"></div>
+    </section>
 
     <section class="card ai-box" id="ai-card">
 
@@ -5697,6 +5950,42 @@
 
 
     <!-- ================= 📄 分頁：ideas ================= -->
+    <div class="page" data-page="calendar">
+
+    <div class="page-title">
+      <h1>📅 日曆</h1>
+      <p>拖移行程就能換到任何時間，點空白處可以新增。</p>
+    </div>
+
+    <section class="card">
+      <div class="cal-toolbar">
+        <button class="btn btn-small" onclick="calShiftWeek(-7)">‹ 上一週</button>
+        <button class="btn btn-small" onclick="calGoThisWeek()">本週</button>
+        <button class="btn btn-small" onclick="calShiftWeek(7)">下一週 ›</button>
+        <span class="cal-range" id="cal-range-label"></span>
+        <span style="flex:1"></span>
+        <button class="btn btn-primary btn-small" onclick="calNewAt()">＋ 新增</button>
+      </div>
+      <div class="cal-msg" id="cal-msg"></div>
+      <div id="cal-week"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>🔄 Google 日曆</h2>
+      </div>
+      <p class="small-note" id="cal-gcal-last">尚未同步</p>
+      <div class="cal-toolbar">
+        <button class="btn btn-small" onclick="gcalSync()">同步 Google 日曆</button>
+        <button class="btn btn-small" onclick="gcalLink()">連結 Google 日曆</button>
+      </div>
+      <p class="small-note">只會讀取，不會改動你的 Google 日曆。授權約 1 小時後會過期，過期時按「連結 Google 日曆」重新授權即可。</p>
+      <div class="cal-msg" id="cal-gcal-msg"></div>
+    </section>
+
+    </div>
+
+
     <div class="page" data-page="ideas">
 
     <!-- ==============================
@@ -6184,6 +6473,7 @@
 <script src="ai.js"></script>
 <script src="datacenter.js"></script>
 <script src="theme.js"></script>
+<script src="calendar.js"></script>
 
 
 <!-- 保險：10 秒後還在載入（例如網路斷線），提示重新整理 -->
