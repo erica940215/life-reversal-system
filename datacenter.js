@@ -1058,6 +1058,21 @@ let calTodayEvents = [];
 let calDrag = null;
 let calBusy = false;
 
+/* 檢視：week（週）／month（月）／schedule（時間表），記在這台裝置的瀏覽器 */
+const CAL_VIEW_KEY = "calView";
+const CAL_SCHED_DAYS = 30;     // 時間表一次顯示幾天
+let calView = "week";
+let calFocusDate = null;       // 目前看的日期（三種檢視共用，切換檢視時停在同一段時間）
+let calMonthEvents = [];
+let calSchedEvents = [];
+let calMDrag = null;           // 月檢視的拖移
+let calMDragEndedAt = 0;
+
+try {
+  const savedView = localStorage.getItem(CAL_VIEW_KEY);
+  if (["week", "month", "schedule"].includes(savedView)) calView = savedView;
+} catch (_) {}
+
 
 /* ---------- 小工具（時間一律用台灣時間） ---------- */
 
@@ -1105,9 +1120,36 @@ function calMondayOf(dateText) {
   return shiftDate(dateText, -dow);
 }
 
+function calFocus() {
+  if (!calFocusDate) calFocusDate = getToday();
+  return calFocusDate;
+}
+
 function calWeekDays() {
-  if (!calWeekStart) calWeekStart = calMondayOf(getToday());
+  calWeekStart = calMondayOf(calFocus());
   return Array.from({ length: 7 }, (_, i) => shiftDate(calWeekStart, i));
+}
+
+/* 月檢視要畫的日期：從當月 1 號那週的週一開始，排滿 5～6 週 */
+function calMonthDays() {
+
+  const first = calFocus().slice(0, 8) + "01";
+  const [y, m] = first.split("-").map(Number);
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const offset = (new Date(first + "T00:00:00Z").getUTCDay() + 6) % 7;
+  const weeks = Math.ceil((offset + daysInMonth) / 7);
+  const start = calMondayOf(first);
+
+  return Array.from({ length: weeks * 7 }, (_, i) => shiftDate(start, i));
+
+}
+
+/* 某一天要列出的行程：全天行程每一天都列；有時間的列在開始那天 */
+function calEventsOnDay(events, day) {
+  return events
+    .filter(ev => ev.all_day ? calOverlapsDay(ev, day) : calDateOf(ev.starts_at) === day)
+    .sort((a, b) => (Number(b.all_day) - Number(a.all_day))
+      || (new Date(a.starts_at) - new Date(b.starts_at)));
 }
 
 function calSetMsg(text, isError = false, id = "cal-msg") {
@@ -1118,7 +1160,8 @@ function calSetMsg(text, isError = false, id = "cal-msg") {
 }
 
 function calFindEvent(id) {
-  return [...calWeekEvents, ...calTodayEvents].find(item => String(item.id) === String(id)) || null;
+  return [...calWeekEvents, ...calTodayEvents, ...calMonthEvents, ...calSchedEvents]
+    .find(item => String(item.id) === String(id)) || null;
 }
 
 /* Google 全天行程維持唯讀；有時間的 Google 行程可以編輯 */
@@ -1158,16 +1201,37 @@ async function calFetch(fromDate, toDate) {
 }
 
 
+/* 日曆頁重新讀取：依目前的檢視（週／月／時間表）決定讀哪一段 */
 async function calRefreshWeek() {
+
+  calRenderViewButtons();
 
   if (!currentUser) return;
 
-  const days = calWeekDays();
-  const rows = await calFetch(days[0], shiftDate(days[6], 1));
+  if (calView === "month") {
 
-  if (rows) calWeekEvents = rows;
+    const days = calMonthDays();
+    const rows = await calFetch(days[0], shiftDate(days[days.length - 1], 1));
 
-  calRenderWeek();
+    if (rows) calMonthEvents = rows;
+
+  } else if (calView === "schedule") {
+
+    const from = calFocus();
+    const rows = await calFetch(from, shiftDate(from, CAL_SCHED_DAYS));
+
+    if (rows) calSchedEvents = rows;
+
+  } else {
+
+    const days = calWeekDays();
+    const rows = await calFetch(days[0], shiftDate(days[6], 1));
+
+    if (rows) calWeekEvents = rows;
+
+  }
+
+  calRenderView();
 
 }
 
@@ -1296,7 +1360,7 @@ function calRenderWeek() {
 
   const box = calEl("cal-week");
 
-  if (!box) return;
+  if (!box || calView !== "week") return;
 
   if (!currentUser) {
     box.innerHTML = "";
@@ -1311,6 +1375,153 @@ function calRenderWeek() {
   }
 
   box.innerHTML = calGridHtml(days, calWeekEvents);
+
+}
+
+
+/* 依目前的檢視重畫日曆頁（不重新讀資料） */
+function calRenderView() {
+  if (calView === "month") return calRenderMonth();
+  if (calView === "schedule") return calRenderSchedule();
+  return calRenderWeek();
+}
+
+
+function calRenderViewButtons() {
+  document.querySelectorAll(".cal-view-btn").forEach(button => {
+    button.classList.toggle("active", button.dataset.view === calView);
+  });
+}
+
+
+/* ---------- 月檢視 ---------- */
+
+function calMonthChipHtml(ev) {
+
+  const readonly = calIsReadonly(ev);
+  const color = safeColor(ev.color);
+  const title = escapeHtml(ev.title);
+  const tip = `${title}${ev.source === "google" ? "（Google 日曆）" : ""}`;
+
+  if (ev.all_day) {
+    return `<div class="calm-chip is-allday ${readonly ? "is-readonly" : ""}" data-id="${ev.id}" style="background:${color}" title="${tip}">${title}</div>`;
+  }
+
+  return `
+    <div class="calm-chip ${readonly ? "is-readonly" : ""}" data-id="${ev.id}" title="${tip}">
+      <span class="calm-dot" style="background:${color}"></span>
+      <span class="calm-time">${calTimeOf(ev.starts_at)}</span>
+      <span class="calm-title">${title}</span>
+    </div>`;
+
+}
+
+
+function calRenderMonth() {
+
+  const box = calEl("cal-week");
+
+  if (!box || calView !== "month") return;
+
+  if (!currentUser) {
+    box.innerHTML = "";
+    return;
+  }
+
+  const days = calMonthDays();
+  const today = getToday();
+  const month = calFocus().slice(0, 7);
+  const range = calEl("cal-range-label");
+
+  if (range) {
+    range.textContent = `${Number(month.slice(0, 4))} 年 ${Number(month.slice(5, 7))} 月`;
+  }
+
+  /* 手機格子小，每天最多顯示 2 筆，其餘收進「+N 更多」 */
+  const maxChips = window.innerWidth <= 600 ? 2 : 3;
+
+  const heads = ["一", "二", "三", "四", "五", "六", "日"]
+    .map(name => `<div class="calm-head">${name}</div>`)
+    .join("");
+
+  const cells = days.map(day => {
+
+    const items = calEventsOnDay(calMonthEvents, day);
+    const shown = items.slice(0, maxChips);
+    const more = items.length - shown.length;
+
+    const classes = [
+      "calm-cell",
+      day.slice(0, 7) !== month ? "is-other" : "",
+      day === today ? "is-today" : ""
+    ].join(" ");
+
+    return `
+      <div class="${classes}" data-date="${day}">
+        <button type="button" class="calm-date" data-date="${day}" title="看這一週">${Number(day.slice(8))}</button>
+        ${shown.map(calMonthChipHtml).join("")}
+        ${more > 0 ? `<button type="button" class="calm-more" data-date="${day}">+${more}<span class="calm-more-word"> 更多</span></button>` : ""}
+      </div>`;
+
+  }).join("");
+
+  box.innerHTML = `<div class="calm-grid">${heads}${cells}</div>`;
+
+}
+
+
+/* ---------- 時間表檢視 ---------- */
+
+function calRenderSchedule() {
+
+  const box = calEl("cal-week");
+
+  if (!box || calView !== "schedule") return;
+
+  if (!currentUser) {
+    box.innerHTML = "";
+    return;
+  }
+
+  const from = calFocus();
+  const today = getToday();
+  const days = Array.from({ length: CAL_SCHED_DAYS }, (_, i) => shiftDate(from, i));
+  const range = calEl("cal-range-label");
+
+  if (range) {
+    range.textContent = `${formatShortDate(days[0])} – ${formatShortDate(days[days.length - 1])}`;
+  }
+
+  const groups = days.map(day => {
+
+    const items = calEventsOnDay(calSchedEvents, day);
+
+    if (!items.length) return "";
+
+    const rows = items.map(ev => {
+
+      const readonly = calIsReadonly(ev);
+      const time = ev.all_day ? "全天" : `${calTimeOf(ev.starts_at)}–${calTimeOf(ev.ends_at)}`;
+      const place = ev.location ? `<small>${escapeHtml(ev.location)}</small>` : "";
+
+      return `
+        <div class="cals-row ${readonly ? "is-readonly" : ""}" data-id="${ev.id}">
+          <span class="cals-dot" style="background:${safeColor(ev.color)}"></span>
+          <span class="cals-time">${time}</span>
+          <span class="cals-title">${escapeHtml(ev.title)}${place}</span>
+        </div>`;
+
+    }).join("");
+
+    return `
+      <div class="cals-day ${day === today ? "is-today" : ""}">
+        <div class="cals-date">${shortDateWithWeekday(day)}${day === today ? `<small>今天</small>` : ""}</div>
+        <div class="cals-list">${rows}</div>
+      </div>`;
+
+  }).join("");
+
+  box.innerHTML = groups || `<p class="small-note">這 ${CAL_SCHED_DAYS} 天內沒有行程。</p>`;
 
 }
 
@@ -1361,13 +1572,11 @@ function calRenderGcalInfo() {
 }
 
 
-/* ---------- 週導覽 ---------- */
+/* ---------- 導覽（上一段／今天／下一段、切換檢視） ---------- */
 
 function calShiftWeek(n) {
 
-  if (!calWeekStart) calWeekStart = calMondayOf(getToday());
-
-  calWeekStart = shiftDate(calWeekStart, n);
+  calFocusDate = shiftDate(calFocus(), n);
 
   calRefreshWeek();
 
@@ -1376,9 +1585,62 @@ function calShiftWeek(n) {
 
 function calGoThisWeek() {
 
-  calWeekStart = calMondayOf(getToday());
+  calFocusDate = getToday();
 
   calRefreshWeek();
+
+}
+
+
+/* ‹ › 按鈕：週檢視移 7 天，月檢視移一個月，時間表移 30 天 */
+function calNav(direction) {
+
+  const step = direction < 0 ? -1 : 1;
+
+  if (calView === "month") {
+    const [y, m] = calFocus().split("-").map(Number);
+    calFocusDate = new Date(Date.UTC(y, m - 1 + step, 1)).toISOString().slice(0, 10);
+  } else if (calView === "schedule") {
+    calFocusDate = shiftDate(calFocus(), step * CAL_SCHED_DAYS);
+  } else {
+    calFocusDate = shiftDate(calFocus(), step * 7);
+  }
+
+  calRefreshWeek();
+
+}
+
+
+function calGoToday() {
+
+  calFocusDate = getToday();
+
+  calRefreshWeek();
+
+}
+
+
+function calSetView(view) {
+
+  if (!["week", "month", "schedule"].includes(view)) return;
+
+  calView = view;
+
+  try {
+    localStorage.setItem(CAL_VIEW_KEY, view);
+  } catch (_) {}
+
+  calRefreshWeek();
+
+}
+
+
+/* 從月檢視跳到某一天所在的週 */
+function calGoWeekOf(dateText) {
+
+  calFocusDate = dateText;
+
+  calSetView("week");
 
 }
 
@@ -1768,7 +2030,7 @@ async function calMoveEvent(id, dateText, startMin, duration) {
   const target = calFindEvent(id);
   const isGoogle = Boolean(target && target.source === "google");
 
-  for (const list of [calWeekEvents, calTodayEvents]) {
+  for (const list of [calWeekEvents, calTodayEvents, calMonthEvents, calSchedEvents]) {
     const ev = list.find(item => String(item.id) === String(id));
     if (ev) {
       ev.starts_at = startsAt;
@@ -1776,7 +2038,7 @@ async function calMoveEvent(id, dateText, startMin, duration) {
     }
   }
 
-  calRenderWeek();
+  calRenderView();
   calRenderToday();
 
   if (isGoogle) {
@@ -2217,6 +2479,140 @@ document.addEventListener("click", (event) => {
   if (block) {
     showToast("Google 的全天行程請到 Google 日曆修改");
   }
+
+});
+
+
+/* ---------- 月檢視：拖移行程到其他天（時間不變） ---------- */
+
+document.addEventListener("pointerdown", (event) => {
+
+  const chip = event.target.closest(".calm-chip");
+
+  if (!chip) return;
+
+  const cell = chip.closest(".calm-cell");
+
+  calMDrag = {
+    el: chip,
+    id: chip.dataset.id,
+    grabDate: cell ? cell.dataset.date : null,
+    sx: event.clientX,
+    sy: event.clientY,
+    moved: false,
+    readonly: chip.classList.contains("is-readonly")
+  };
+
+});
+
+
+document.addEventListener("pointermove", (event) => {
+
+  const drag = calMDrag;
+
+  if (!drag || drag.readonly) return;
+
+  const dx = event.clientX - drag.sx;
+  const dy = event.clientY - drag.sy;
+
+  if (!drag.moved && Math.hypot(dx, dy) < 6) return;
+
+  drag.moved = true;
+  drag.el.classList.add("is-dragging");
+  drag.el.style.pointerEvents = "none";
+  drag.el.style.transform = `translate(${dx}px, ${dy}px)`;
+
+});
+
+
+function calMDragReset(drag) {
+  drag.el.classList.remove("is-dragging");
+  drag.el.style.transform = "";
+  drag.el.style.pointerEvents = "";
+}
+
+
+document.addEventListener("pointercancel", () => {
+
+  if (!calMDrag) return;
+
+  calMDragReset(calMDrag);
+  calMDrag = null;
+
+});
+
+
+document.addEventListener("pointerup", async (event) => {
+
+  const drag = calMDrag;
+
+  calMDrag = null;
+
+  if (!drag) return;
+
+  /* 沒有拖動：當作點一下 */
+  if (!drag.moved) {
+    if (drag.readonly) showToast("Google 的全天行程請到 Google 日曆修改");
+    else calOpenEditorFromId(drag.id);
+    return;
+  }
+
+  calMDragEndedAt = Date.now();
+  calMDragReset(drag);
+
+  const under = document.elementFromPoint(event.clientX, event.clientY);
+  const cell = under ? under.closest(".calm-cell") : null;
+  const ev = calFindEvent(drag.id);
+
+  if (!cell || !ev || !drag.grabDate) {
+    calRenderMonth();
+    return;
+  }
+
+  /* 依「拖了幾天」移動，全天、跨天的行程也一樣 */
+  const dayShift = Math.round(
+    (new Date(cell.dataset.date + "T00:00:00Z") - new Date(drag.grabDate + "T00:00:00Z")) / 86400000
+  );
+
+  if (dayShift === 0) {
+    calRenderMonth();
+    return;
+  }
+
+  const oldDate = calDateOf(ev.starts_at);
+  const startMin = calMinutesInDay(ev.starts_at, oldDate);
+  const duration = Math.max(15, Math.round((new Date(ev.ends_at) - new Date(ev.starts_at)) / 60000));
+
+  await calMoveEvent(ev.id, shiftDate(oldDate, dayShift), startMin, duration);
+
+});
+
+
+/* 月檢視與時間表的點擊 */
+document.addEventListener("click", (event) => {
+
+  /* 剛拖完放開時瀏覽器也會送出 click，略過 */
+  if (Date.now() - calMDragEndedAt < 400) return;
+
+  const jump = event.target.closest(".calm-date, .calm-more");
+
+  if (jump) {
+    calGoWeekOf(jump.dataset.date);
+    return;
+  }
+
+  if (event.target.closest(".calm-chip")) return;
+
+  const cell = event.target.closest(".calm-cell");
+
+  if (cell) {
+    calOpenEditor({ date: cell.dataset.date, start: "09:00", end: "10:00" });
+    return;
+  }
+
+  const row = event.target.closest(".cals-row");
+
+  if (row) calOpenEditorFromId(row.dataset.id);
 
 });
 
