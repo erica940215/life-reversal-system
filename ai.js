@@ -13,7 +13,8 @@ const AI_TYPE_LABELS = {
   meal: "🍱 三餐",
   task: "✅ 任務",
   idea: "💡 想法",
-  habit: "🎯 習慣打卡"
+  habit: "🎯 習慣打卡",
+  event: "📅 行程"
 };
 
 const AI_DIFFICULTY_LABELS = {
@@ -26,6 +27,23 @@ const AI_DIFFICULTY_LABELS = {
 /* 對話紀錄：role 是 user / assistant / note（note 只顯示寫入結果，不送給 AI） */
 let aiChat = [];
 let aiBusy = false;
+
+/* 這次送出時載入的接下來 8 天行程（給 AI 看，也用來找要修改的行程） */
+let aiUpcoming = [];
+
+
+function aiFindEvent(id) {
+  const key = String(id);
+  return aiUpcoming.find(ev => String(ev.id) === key) || calFindEvent(id);
+}
+
+
+/* 行程可以排在未來，所以只檢查格式與是否為真實日期 */
+function aiIsAnyDate(value) {
+  return typeof value === "string"
+    && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && !Number.isNaN(new Date(value + "T00:00:00Z").getTime());
+}
 
 
 function aiEl(id) {
@@ -61,6 +79,16 @@ function aiBuildContext() {
   const lastNight = findSleepLog(shiftDate(today, -1));
 
   return {
+    events: aiUpcoming
+      .filter(ev => !ev.all_day && !calIsReadonly(ev))
+      .map(ev => ({
+        id: ev.id,
+        title: ev.title,
+        date: calDateOf(ev.starts_at),
+        start: calTimeOf(ev.starts_at),
+        end: calTimeOf(ev.ends_at),
+        google: ev.source === "google"
+      })),
     tasks: currentTasks.map(task => ({ title: task.title, done: Boolean(task.completed) })),
     habits: activeHabits.map(habit => ({
       id: habit.id,
@@ -162,6 +190,55 @@ function aiNormalizeItem(raw) {
     return { type, ok: true, habit_id: found.id, title: found.title };
   }
 
+  if (type === "event") {
+
+    const op = ["create", "update", "delete"].includes(raw.op) ? raw.op : "create";
+
+    if (op === "create") {
+
+      const title = String(raw.title || "").trim().slice(0, 120);
+      const date = raw.date || today;
+      const startTime = raw.start_time || "";
+      const endTime = raw.end_time || "";
+
+      if (!title) return bad("沒有行程名稱");
+      if (!aiIsAnyDate(date)) return bad("日期不正確");
+      if (!aiIsTime(startTime) || !aiIsTime(endTime)) return bad("時間格式不正確");
+      if (endTime <= startTime) return bad("結束要比開始晚");
+
+      return {
+        type, ok: true, op, title, date,
+        start_time: startTime, end_time: endTime,
+        google: raw.google === true
+      };
+    }
+
+    const found = aiFindEvent(raw.event_id);
+
+    if (!found) return bad("找不到要修改的行程");
+    if (found.all_day || calIsReadonly(found)) return bad("全天的 Google 行程不能用 AI 修改");
+
+    if (op === "delete") {
+      return { type, ok: true, op, event_id: found.id, title: found.title };
+    }
+
+    const title = String(raw.title || found.title).trim().slice(0, 120);
+    const date = raw.date || calDateOf(found.starts_at);
+    const startTime = raw.start_time || calTimeOf(found.starts_at);
+    const endTime = raw.end_time || calTimeOf(found.ends_at);
+
+    if (!title) return bad("沒有行程名稱");
+    if (!aiIsAnyDate(date)) return bad("日期不正確");
+    if (!aiIsTime(startTime) || !aiIsTime(endTime)) return bad("時間格式不正確");
+    if (endTime <= startTime) return bad("結束要比開始晚");
+
+    return {
+      type, ok: true, op,
+      event_id: found.id, old_title: found.title,
+      title, date, start_time: startTime, end_time: endTime
+    };
+  }
+
   return bad("不認識的類型");
 }
 
@@ -195,6 +272,17 @@ function aiItemText(item) {
 
   if (item.type === "habit") {
     return `${item.title}（今天完成）`;
+  }
+
+  if (item.type === "event") {
+
+    if (item.op === "delete") return `刪除行程「${item.title}」`;
+
+    const when = `${shortDateWithWeekday(item.date || getToday())} ${item.start_time}–${item.end_time}`;
+
+    if (item.op === "update") return `修改「${item.old_title}」→ ${item.title}，${when}`;
+
+    return `${item.title}（${when}${item.google ? "．同步 Google" : ""}）`;
   }
 
   return "";
@@ -318,6 +406,9 @@ async function aiSend() {
     const messages = aiChat
       .filter(msg => msg.role === "user" || msg.role === "assistant")
       .map(msg => ({ role: msg.role, text: msg.text }));
+
+    const todayText = getToday();
+    aiUpcoming = (await calFetch(todayText, shiftDate(todayText, 8))) || [];
 
     const { data, error } = await db.functions.invoke(AI_FUNCTION_NAME, {
       body: {
@@ -475,6 +566,113 @@ async function aiWriteItem(item) {
     return;
   }
 
+  if (item.type === "event") {
+
+    if (item.op === "create") {
+
+      const startsAt = taipeiToIso(item.date, item.start_time);
+      const endsAt = taipeiToIso(item.date, item.end_time);
+      let googleInfo = null;
+
+      if (item.google) {
+
+        const token = await gcalToken();
+        if (!token) throw new Error("Google 授權已過期或尚未連結");
+
+        const created = await gcalRequest(
+          "POST",
+          `${GCAL_API}/calendars/primary/events`,
+          token,
+          { summary: item.title, ...gcalTimeBody(startsAt, endsAt) }
+        );
+
+        googleInfo = {
+          source: "google",
+          google_calendar_id: (created.organizer && created.organizer.email) || "primary",
+          google_event_id: created.id,
+          calendar_name: null
+        };
+      }
+
+      const { error } = await db.from("events").insert({
+        user_id: uid,
+        title: item.title,
+        starts_at: startsAt,
+        ends_at: endsAt,
+        color: CAL_COLORS[0],
+        all_day: false,
+        source: "local",
+        ...(googleInfo || {})
+      });
+
+      if (error) throw error;
+
+      return;
+    }
+
+    const ev = aiFindEvent(item.event_id);
+
+    if (!ev) throw new Error("行程已不存在，請重新整理");
+
+    const isGoogle = ev.source === "google";
+    const token = isGoogle ? await gcalToken() : null;
+
+    if (isGoogle && !token) throw new Error("Google 授權已過期或尚未連結");
+
+    if (item.op === "update") {
+
+      const startsAt = taipeiToIso(item.date, item.start_time);
+      const endsAt = taipeiToIso(item.date, item.end_time);
+
+      if (isGoogle) {
+        await gcalRequest(
+          "PATCH",
+          gcalEventUrl(ev),
+          token,
+          { summary: item.title, ...gcalTimeBody(startsAt, endsAt) }
+        );
+      }
+
+      const { error } = await db
+        .from("events")
+        .update({
+          title: item.title,
+          starts_at: startsAt,
+          ends_at: endsAt,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", ev.id)
+        .eq("user_id", uid);
+
+      if (error) throw error;
+
+      return;
+    }
+
+    if (item.op === "delete") {
+
+      if (isGoogle) {
+        try {
+          await gcalRequest("DELETE", gcalEventUrl(ev), token);
+        } catch (error) {
+          /* Google 上已經不存在，就當作刪除成功 */
+          if (error.status !== 404 && error.status !== 410) throw new Error(gcalErrorText(error));
+        }
+      }
+
+      const { error } = await db
+        .from("events")
+        .delete()
+        .eq("id", ev.id)
+        .eq("user_id", uid);
+
+      if (error) throw error;
+
+      return;
+    }
+
+  }
+
   throw new Error("不認識的類型");
 
 }
@@ -515,7 +713,7 @@ async function aiCommit(messageIndex) {
   }
 
   /* 重新載入各模組，讓畫面看到新資料 */
-  for (const loader of [loadTasks, loadTaskManagement, loadIdeas, loadMeals, loadSleep, loadHabits]) {
+  for (const loader of [loadTasks, loadTaskManagement, loadIdeas, loadMeals, loadSleep, loadHabits, calRefreshAll]) {
     try {
       await loader();
     } catch (error) {
