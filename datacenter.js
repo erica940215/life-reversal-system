@@ -1007,7 +1007,7 @@ applyTheme(currentThemeKey());
    - 週檢視：拖移行程到任何時間（可跨天），點空白處新增
    - 今日頁：顯示今天的行程，同樣可以拖移
    - Google 日曆：登入或連結後，手動同步
-     · 有時間的 Google 行程可以直接編輯、拖移、刪除，會同步改到 Google
+     · 有時間的 Google 行程可以直接編輯、拖移、刪除、改顏色，會同步改到 Google
      · 新增行程時可勾選「同時新增到 Google 日曆」
      · 全天行程維持唯讀
    依賴 script.js（db、currentUser、getToday、shiftDate、taipeiToIso、showToast、escapeHtml、safeColor）
@@ -1019,6 +1019,24 @@ const CAL_PX_PER_HOUR = 40;      // 需和 index.html 的 .cal-col 背景線距�
 const CAL_SNAP_MINUTES = 15;
 const CAL_DEFAULT_MINUTES = 60;
 const CAL_COLORS = ["#5865f2", "#0ca30c", "#e0764b", "#ff6b81", "#9b6cff", "#22b8cf", "#8a93a8"];
+
+/*
+  Google 行程的 11 種顏色（colorId 1～11）
+  hex 是 Google 預設調色盤的近似值，只用來顯示與比對
+*/
+const GCAL_COLORS = [
+  { id: "1",  name: "薰衣草", hex: "#a4bdfc" },
+  { id: "2",  name: "鼠尾草", hex: "#7ae7bf" },
+  { id: "3",  name: "葡萄",   hex: "#dbadff" },
+  { id: "4",  name: "火鶴",   hex: "#ff887c" },
+  { id: "5",  name: "香蕉",   hex: "#fbd75b" },
+  { id: "6",  name: "橘子",   hex: "#ffb878" },
+  { id: "7",  name: "孔雀",   hex: "#46d6db" },
+  { id: "8",  name: "石墨",   hex: "#e1e1e1" },
+  { id: "9",  name: "藍莓",   hex: "#5484ed" },
+  { id: "10", name: "羅勒",   hex: "#51b749" },
+  { id: "11", name: "番茄",   hex: "#dc2127" }
+];
 
 /* 可讀寫行程 + 讀取日曆清單（兩個都要在 Google Cloud Console 的「資料存取」勾選） */
 const GCAL_SCOPE = [
@@ -1106,6 +1124,13 @@ function calFindEvent(id) {
 /* Google 全天行程維持唯讀；有時間的 Google 行程可以編輯 */
 function calIsReadonly(ev) {
   return ev.source === "google" && ev.all_day;
+}
+
+/* 依 hex 找出 Google 的顏色（找不到代表是日曆預設色） */
+function gcalColorByHex(hex) {
+  if (!hex) return null;
+  const target = String(hex).toLowerCase();
+  return GCAL_COLORS.find(item => item.hex.toLowerCase() === target) || null;
 }
 
 
@@ -1378,6 +1403,73 @@ function calPickColor(button) {
 }
 
 
+/* 色票：Google 行程（或勾選同步到 Google）用 Google 的 11 色，否則用本地 7 色 */
+function calSwatchesHtml(selectedHex, useGoogle) {
+
+  if (useGoogle) {
+
+    const selected = (selectedHex || "").toLowerCase();
+
+    return `
+      <div class="cal-msg">Google 行程顏色（會同步到 Google 日曆）</div>
+      <div class="cal-colors" id="ce-colors">
+        ${GCAL_COLORS.map(item => `
+          <button type="button"
+            class="cal-swatch ${item.hex.toLowerCase() === selected ? "active" : ""}"
+            data-color="${item.hex}"
+            data-color-id="${item.id}"
+            style="background:${item.hex}"
+            onclick="calPickColor(this)"
+            title="${item.name}"
+            aria-label="${item.name}"></button>`).join("")}
+      </div>`;
+
+  }
+
+  return `
+    <div class="cal-colors" id="ce-colors">
+      ${CAL_COLORS.map(color => `
+        <button type="button"
+          class="cal-swatch ${color === selectedHex ? "active" : ""}"
+          data-color="${color}"
+          style="background:${color}"
+          onclick="calPickColor(this)"
+          aria-label="${color}"></button>`).join("")}
+    </div>`;
+
+}
+
+
+/* 勾選／取消「同時新增到 Google 日曆」時，切換色票 */
+function calToggleGoogleColors(checked) {
+
+  const box = calEl("ce-colors");
+  if (!box) return;
+
+  const active = document.querySelector("#cal-editor .cal-swatch.active");
+  const current = active ? active.dataset.color : "";
+
+  const wrap = document.createElement("div");
+  wrap.innerHTML = calSwatchesHtml(
+    checked ? (gcalColorByHex(current) ? current : GCAL_COLORS[0].hex) : (CAL_COLORS.includes(current) ? current : CAL_COLORS[0]),
+    checked
+  );
+
+  const oldTip = box.previousElementSibling && box.previousElementSibling.classList.contains("cal-msg")
+    ? box.previousElementSibling : null;
+
+  if (oldTip && !checked) oldTip.remove();
+
+  box.replaceWith(wrap.querySelector("#ce-colors"));
+
+  if (checked && !(box.parentElement && box.parentElement.querySelector(".cal-msg")?.textContent)) {
+    const tip = wrap.querySelector(".cal-msg");
+    if (tip) calEl("ce-colors").before(tip);
+  }
+
+}
+
+
 /*
   編輯視窗
   options：{ id, title, date, start, end, color, google }（時間是 HH:MM）
@@ -1403,25 +1495,13 @@ function calOpenEditor(options) {
   overlay.id = "cal-editor";
   overlay.className = "cal-overlay";
 
-  /* Google 行程的顏色跟著 Google 日曆，所以不顯示色票 */
-  const colorsHtml = o.google ? "" : `
-      <div class="cal-colors">
-        ${CAL_COLORS.map(color => `
-          <button type="button"
-            class="cal-swatch ${color === o.color ? "active" : ""}"
-            data-color="${color}"
-            style="background:${color}"
-            onclick="calPickColor(this)"
-            aria-label="${color}"></button>`).join("")}
-      </div>`;
-
   const googleNote = o.google
     ? `<div class="cal-msg">📅 這是 Google 日曆的行程，儲存或刪除會同步到 Google。</div>`
     : "";
 
   const googleCheck = !o.id
     ? `<label class="cal-field" style="flex-direction:row;align-items:center;gap:8px;cursor:pointer">
-         <input id="ce-google" type="checkbox" style="width:auto">
+         <input id="ce-google" type="checkbox" style="width:auto" onchange="calToggleGoogleColors(this.checked)">
          同時新增到 Google 日曆
        </label>`
     : "";
@@ -1453,7 +1533,7 @@ function calOpenEditor(options) {
         </label>
       </div>
 
-      ${colorsHtml}
+      ${calSwatchesHtml(o.color, o.google)}
 
       ${googleCheck}
 
@@ -1534,7 +1614,8 @@ async function calSaveFromEditor(id) {
   const date = calEl("ce-date").value;
   const start = calEl("ce-start").value;
   const end = calEl("ce-end").value;
-  const color = document.querySelector("#cal-editor .cal-swatch.active")?.dataset.color || CAL_COLORS[0];
+  const activeSwatch = document.querySelector("#cal-editor .cal-swatch.active");
+  const pickedColor = activeSwatch?.dataset.color || CAL_COLORS[0];
 
   if (!title) return msg("請輸入標題");
   if (!date || !start || !end) return msg("請選日期與時間");
@@ -1547,11 +1628,15 @@ async function calSaveFromEditor(id) {
   const existing = id ? calFindEvent(id) : null;
   const isGoogle = Boolean(existing && existing.source === "google");
   const addToGoogle = !id && Boolean(calEl("ce-google")?.checked);
+  const toGoogle = isGoogle || addToGoogle;
+
+  /* 只有選到 Google 色票時才送 colorId；沒選就不動 Google 上的顏色 */
+  const googleColor = toGoogle ? gcalColorByHex(pickedColor) : null;
 
   let googleInfo = null;
 
   /* 先寫到 Google，成功後再寫進自己的資料庫 */
-  if (isGoogle || addToGoogle) {
+  if (toGoogle) {
 
     const token = await gcalToken();
 
@@ -1562,6 +1647,8 @@ async function calSaveFromEditor(id) {
     try {
 
       const body = { summary: title, ...gcalTimeBody(startsAt, endsAt) };
+
+      if (googleColor) body.colorId = googleColor.id;
 
       if (isGoogle) {
 
@@ -1589,11 +1676,16 @@ async function calSaveFromEditor(id) {
 
   }
 
+  /* Google 行程：有選 Google 色就用它；否則保留原本的顯示色 */
+  const savedColor = toGoogle
+    ? (googleColor ? googleColor.hex : (existing ? existing.color : pickedColor))
+    : pickedColor;
+
   const row = {
     title,
     starts_at: startsAt,
     ends_at: endsAt,
-    color: isGoogle ? existing.color : color,
+    color: savedColor,
     updated_at: new Date().toISOString()
   };
 
@@ -1613,7 +1705,7 @@ async function calSaveFromEditor(id) {
   }
 
   calCloseEditor();
-  calSetMsg(isGoogle || addToGoogle ? "✅ 已儲存（已同步到 Google 日曆）" : "✅ 已儲存");
+  calSetMsg(toGoogle ? "✅ 已儲存（已同步到 Google 日曆）" : "✅ 已儲存");
   await calRefreshAll();
 
 }
@@ -1856,7 +1948,8 @@ function gcalErrorText(error) {
 }
 
 
-/* Google 的一筆行程 → 我們的 events 格式 */
+/* Google 的一筆行程 → 我們的 events 格式
+   行程有自己的顏色（colorId）就用 Google 調色盤；否則用所在日曆的顏色 */
 function gcalRow(item, cal) {
 
   const allDay = Boolean(item.start && item.start.date);
@@ -1873,12 +1966,14 @@ function gcalRow(item, cal) {
     endsAt = new Date(new Date(startsAt).getTime() + 30 * 60000).toISOString();
   }
 
+  const eventColor = item.colorId ? GCAL_COLORS.find(c => c.id === String(item.colorId)) : null;
+
   return {
     title: String(item.summary || "（無標題）").slice(0, 120),
     starts_at: startsAt,
     ends_at: endsAt,
     all_day: allDay,
-    color: safeColor(cal.backgroundColor),
+    color: safeColor(eventColor ? eventColor.hex : cal.backgroundColor),
     source: "google",
     google_calendar_id: cal.id,
     google_event_id: item.id,
