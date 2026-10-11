@@ -28,6 +28,9 @@ const AI_DIFFICULTY_LABELS = {
 let aiChat = [];
 let aiBusy = false;
 
+/* 這次送給 AI 的原始文字（AI 漏填時間時，用來在本地補時間） */
+let aiLastUserText = "";
+
 /* 這次送出時載入的接下來 8 天行程（給 AI 看，也用來找要修改的行程） */
 let aiUpcoming = [];
 
@@ -67,6 +70,33 @@ function aiCleanTime(value) {
   const minute = Number(match[2]);
   if (hour > 23 || minute > 59) return "";
   return String(hour).padStart(2, "0") + ":" + String(minute).padStart(2, "0");
+}
+
+
+/* 從使用者原文找時間範圍，例如「6.-7.」「6-7」「六點到七點」「6點到7點」；找不到回傳 null */
+function aiTimeFromText(text) {
+
+  const source = String(text || "");
+  const match = source.match(/(\d{1,2})\s*(?:點|[.:：])?\s*[-~到至]\s*(\d{1,2})/);
+
+  if (!match) return null;
+
+  let startHour = Number(match[1]);
+  let endHour = Number(match[2]);
+
+  if (startHour > 23 || endHour > 23) return null;
+
+  /* 有「晚、夜、下午」這類字，而且小時數還是 12 以下，就換成 24 小時制 */
+  if (/晚|夜|下午/.test(source)) {
+    if (startHour < 12) startHour += 12;
+    if (endHour < 12) endHour += 12;
+  }
+
+  const start = String(startHour).padStart(2, "0") + ":00";
+  const end = String(endHour).padStart(2, "0") + ":00";
+
+  return { start, end };
+
 }
 
 
@@ -209,8 +239,10 @@ function aiNormalizeItem(raw) {
 
       const title = String(raw.title || "").trim().slice(0, 120);
       const date = raw.date || today;
-      const startTime = aiCleanTime(raw.start_time);
-      const endTime = aiCleanTime(raw.end_time);
+      /* AI 漏填時間時，從使用者原文補上 */
+      const fallback = aiTimeFromText(aiLastUserText);
+      const startTime = aiCleanTime(raw.start_time) || (fallback ? fallback.start : "");
+      const endTime = aiCleanTime(raw.end_time) || (fallback ? fallback.end : "");
 
       if (!title) return bad("沒有行程名稱");
       if (!aiIsAnyDate(date)) return bad("日期不正確");
@@ -409,6 +441,7 @@ async function aiSend() {
   }
 
   aiChat.push({ role: "user", text });
+  aiLastUserText = text;
   input.value = "";
   aiRenderChat();
 
