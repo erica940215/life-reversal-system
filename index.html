@@ -4611,6 +4611,39 @@
       }
     }
 
+    /* 🎨 主題選擇 */
+    .theme-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 8px;
+    }
+
+    .theme-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(128, 128, 128, 0.35);
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      font-size: 0.9rem;
+      text-align: left;
+    }
+
+    .theme-option.active {
+      outline: 2px solid currentColor;
+      outline-offset: 2px;
+    }
+
+    .theme-swatch {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      flex: 0 0 auto;
+    }
+
   </style>
 
 </head>
@@ -5809,6 +5842,10 @@
     <!-- ================= 📄 分頁：records ================= -->
     <div class="page" data-page="records">
 
+    <!-- 🎨 主題選擇（由 theme.js 繪製） -->
+    <div id="theme-picker"></div>
+
+
 
     <!-- ==============================
          今日統計
@@ -6146,6 +6183,7 @@
 <script src="script.js"></script>
 <script src="ai.js"></script>
 <script src="datacenter.js"></script>
+<script src="theme.js"></script>
 
 
 <!-- 保險：10 秒後還在載入（例如網路斷線），提示重新整理 -->
