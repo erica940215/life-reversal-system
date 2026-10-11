@@ -821,21 +821,6 @@ const THEMES = {
     accentText: "#120a24"
   },
 
-  mist: {
-    name: "🌫️ 晨霧白",
-    light: true,
-    bg: "linear-gradient(160deg, #f7f9fc 0%, #e9eefc 100%)",
-    card: "rgba(255, 255, 255, 0.85)",
-    cardBorder: "#dfe5f3",
-    nav: "rgba(255, 255, 255, 0.75)",
-    field: "#ffffff",
-    track: "#dfe5f3",
-    text: "#1a1f2e",
-    sub: "#5f6678",
-    accent: "linear-gradient(90deg, #6c7cff, #9b6cff)",
-    accentText: "#0f1220"
-  },
-
   forest: {
     name: "🌲 森林黃昏",
     bg: "linear-gradient(160deg, #0d1a14 0%, #1f3a2a 55%, #3b3018 100%)",
@@ -848,21 +833,6 @@ const THEMES = {
     sub: "#93a89a",
     accent: "linear-gradient(90deg, #7bed9f, #f2c36b)",
     accentText: "#0d1a14"
-  },
-
-  sakura: {
-    name: "🌸 櫻花漸層",
-    light: true,
-    bg: "linear-gradient(160deg, #fff5f8 0%, #ffe3ee 100%)",
-    card: "rgba(255, 255, 255, 0.85)",
-    cardBorder: "#f6d3e0",
-    nav: "rgba(255, 255, 255, 0.75)",
-    field: "#ffffff",
-    track: "#f6d3e0",
-    text: "#3a1a2a",
-    sub: "#8a5a70",
-    accent: "linear-gradient(90deg, #ff8fb1, #c58cff)",
-    accentText: "#3a1a2a"
   },
 
   starlight: {
@@ -886,7 +856,6 @@ const THEME_OPTIONS = [
   { key: "default", name: "🌑 原本", accent: "linear-gradient(90deg, #5865f2, #8f9bff)" },
   ...Object.entries(THEMES).map(([key, t]) => ({ key, name: t.name, accent: t.accent }))
 ];
-
 
 function themeCss(t) {
 
@@ -939,7 +908,6 @@ function themeCss(t) {
 
 }
 
-
 function applyTheme(key) {
 
   const theme = THEMES[key] || null;
@@ -960,7 +928,6 @@ function applyTheme(key) {
 
 }
 
-
 function setTheme(key) {
 
   const valid = key === "default" || Boolean(THEMES[key]);
@@ -975,7 +942,6 @@ function setTheme(key) {
 
 }
 
-
 function currentThemeKey() {
 
   try {
@@ -986,7 +952,6 @@ function currentThemeKey() {
   return "default";
 
 }
-
 
 function renderThemePicker() {
 
@@ -1014,7 +979,6 @@ function renderThemePicker() {
     </section>`;
 
 }
-
 
 /* 一打開網頁就套用上次選的主題 */
 applyTheme(currentThemeKey());
