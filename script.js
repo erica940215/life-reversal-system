@@ -4015,6 +4015,86 @@ function storageSet(key, value) {
    1. 載入 / 重置（給 script.js 呼叫）
 ========================================================= */
 
+/* =========================================================
+   遊戲模式開關（存在 user_settings.game_mode，預設關閉）
+   關閉時畫面與原本完全相同
+========================================================= */
+
+let gameMode = false;
+
+
+function renderGameModeToggle() {
+
+  document.body.classList.toggle("game-mode-on", gameMode);
+
+  const btn = document.getElementById("game-mode-toggle");
+
+  if (!btn) return;
+
+  btn.textContent = gameMode
+    ? "🎲 遊戲模式：開"
+    : "🎲 遊戲模式：關";
+
+  btn.classList.toggle("is-on", gameMode);
+
+  btn.setAttribute("aria-pressed", String(gameMode));
+
+}
+
+
+async function loadGameMode() {
+
+  if (!currentUser) return;
+
+  const { data, error } = await db
+    .from("user_settings")
+    .select("game_mode")
+    .eq("user_id", currentUser.id)
+    .maybeSingle();
+
+  if (error) {
+    console.error("遊戲模式載入失敗：", error);
+    gameMode = false;
+  } else {
+    gameMode = data?.game_mode === true;
+  }
+
+  renderGameModeToggle();
+
+}
+
+
+async function toggleGameMode() {
+
+  if (!currentUser) return;
+
+  const next = !gameMode;
+
+  /* 先切換畫面，失敗再還原 */
+  gameMode = next;
+  renderGameModeToggle();
+
+  const { error } = await db
+    .from("user_settings")
+    .upsert(
+      {
+        user_id: currentUser.id,
+        game_mode: next,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: "user_id" }
+    );
+
+  if (error) {
+    console.error("遊戲模式儲存失敗：", error);
+    alert("遊戲模式儲存失敗：" + error.message);
+    gameMode = !next;
+    renderGameModeToggle();
+  }
+
+}
+
+
 async function loadTodayModules() {
 
   if (!currentUser) return;
@@ -4024,6 +4104,7 @@ async function loadTodayModules() {
   /* 一個模組壞掉不影響其他模組 */
 
   for (const loader of [
+    loadGameMode,
     loadCountdowns,
     loadMainline,
     loadMorning,

@@ -1355,6 +1355,44 @@
     }
 
 
+    .game-mode-bar {
+
+      display: flex;
+
+      justify-content: flex-end;
+
+      margin: 0 0 12px;
+    }
+
+
+    .game-mode-toggle {
+
+      border: 1px solid #3a4152;
+
+      background: #252b38;
+
+      color: #cfd6e4;
+
+      border-radius: 999px;
+
+      padding: 6px 14px;
+
+      font-size: 13px;
+
+      cursor: pointer;
+    }
+
+
+    .game-mode-toggle.is-on {
+
+      border-color: #f5b942;
+
+      background: #3a2f12;
+
+      color: #ffd978;
+    }
+
+
     .icon-btn:disabled {
 
       opacity: .35;
@@ -5378,6 +5416,18 @@
         今天也要完成主線任務。
       </p>
 
+    </div>
+
+    <div class="game-mode-bar">
+      <button
+        id="game-mode-toggle"
+        class="game-mode-toggle"
+        type="button"
+        aria-pressed="false"
+        onclick="toggleGameMode()"
+      >
+        🎲 遊戲模式：關
+      </button>
     </div>
 
 
