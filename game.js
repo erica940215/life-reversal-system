@@ -1,512 +1,1426 @@
--- =========================================================
--- 序光計畫：🕑 凌晨 2 點換日 ＋ 📅 每月簽到獎勵 ＋ 💰 補簽 ＋ 🪞 每日反省
--- 整段貼到 Supabase 的 SQL Editor 按 Run，可以重複執行。
--- 已經包含「遊戲_每日簽到.sql」的內容，之前沒執行過也沒關係。
--- =========================================================
-
-
--- ---------- 🕑 一天從凌晨 2 點開始（凌晨 0:00–1:59 還算前一天） ----------
-create or replace function public.app_today()
-returns date language sql stable
-as $$
-  select ((now() at time zone 'Asia/Taipei') - interval '2 hours')::date
-$$;
-
-grant execute on function public.app_today() to authenticated, anon;
-
-
--- 新增資料時的預設日期也改成 2 點換日
-alter table public.daily_reports    alter column report_date  set default public.app_today();
-alter table public.morning_checkins alter column check_date   set default public.app_today();
-alter table public.focus_sessions   alter column session_date set default public.app_today();
-alter table public.ideas            alter column idea_date    set default public.app_today();
-alter table public.mainlines        alter column main_date    set default public.app_today();
-alter table public.habits           alter column start_date   set default public.app_today();
-alter table public.meal_logs        alter column log_date     set default public.app_today();
-
-do $$
-begin
-  if exists (select 1 from information_schema.columns
-             where table_schema = 'public' and table_name = 'tasks' and column_name = 'task_date') then
-    alter table public.tasks alter column task_date set default public.app_today();
-  end if;
-end $$;
-
-
--- ---------- 🎲 遊戲模式開關 ----------
-alter table public.user_settings
-  add column if not exists game_mode boolean not null default false;
-
-
--- ---------- 📅 簽到紀錄：一天一筆 ----------
-create table if not exists public.checkins (
-  id bigint generated always as identity primary key,
-  user_id uuid not null references auth.users(id) on delete cascade,
-  checkin_date date not null,
-  streak integer not null check (streak >= 1),
-  crit boolean not null default false,
-  crit_chance integer not null default 0,
-  exp integer not null default 0,
-  gold integer not null default 0,
-  created_at timestamptz not null default now(),
-  unique (user_id, checkin_date)
-);
-
-alter table public.checkins add column if not exists is_makeup boolean not null default false;  -- 補簽的
-alter table public.checkins add column if not exists cost integer not null default 0;            -- 補簽花了多少金幣
-
-alter table public.checkins enable row level security;
-drop policy if exists "own select" on public.checkins;
-create policy "own select" on public.checkins for select using (auth.uid() = user_id);
-revoke insert, update, delete on public.checkins from authenticated;
-grant select on public.checkins to authenticated;
-
-
--- ---------- 🪞 每日反省 ＋ 改善 ----------
-create table if not exists public.daily_reflections (
-  id bigint generated always as identity primary key,
-  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  reflect_date date not null default public.app_today(),
-  reflection text not null default '' check (char_length(reflection) <= 2000),
-  improvement text not null default '' check (char_length(improvement) <= 2000),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique (user_id, reflect_date)
-);
-
-alter table public.daily_reflections enable row level security;
-drop policy if exists "own select" on public.daily_reflections;
-drop policy if exists "own insert" on public.daily_reflections;
-drop policy if exists "own update" on public.daily_reflections;
-drop policy if exists "own delete" on public.daily_reflections;
-create policy "own select" on public.daily_reflections for select using (auth.uid() = user_id);
-create policy "own insert" on public.daily_reflections for insert with check (auth.uid() = user_id);
-create policy "own update" on public.daily_reflections for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "own delete" on public.daily_reflections for delete using (auth.uid() = user_id);
-grant select, insert, update, delete on public.daily_reflections to authenticated;
-
-
--- ---------- 🕑 用到「今天」的函式改成 2 點換日（內容和原本一樣，只換日期） ----------
--- 😴 作息維持原本的「凌晨 0–6 點睡算前一晚」，不受影響
-
-create or replace function public.carry_over_tasks()
-returns integer language plpgsql security invoker set search_path to 'public'
-as $function$
-declare
-  v_today date := public.app_today();
-  v_count integer;
-begin
-  update public.tasks
-  set original_date = coalesce(original_date, task_date), task_date = v_today
-  where user_id = auth.uid() and completed = false and skipped = false
-    and template_id is null and coalesce(repeat_type, 'none') = 'none'
-    and task_date < v_today;
-  get diagnostics v_count = row_count;
-  return v_count;
-end;
-$function$;
-
-create or replace function public.sync_morning_reward()
-returns json language plpgsql security definer set search_path to 'public'
-as $function$
-declare
-  v_user uuid := auth.uid();
-  v_today date := public.app_today();
-  v_total integer;
-  v_done integer;
-  v_all boolean;
-begin
-  if v_user is null then raise exception '尚未登入'; end if;
-  select count(*) into v_total from public.morning_items where user_id = v_user and enabled;
-  select count(*) into v_done from public.morning_items i
-    join public.morning_checkins c on c.item_id = i.id and c.user_id = v_user and c.check_date = v_today
-    where i.user_id = v_user and i.enabled;
-  v_all := v_total > 0 and v_done >= v_total;
-  return public.set_reward(v_user, 'morning:' || v_today, v_today,
-    case when v_all then 20 else 0 end, case when v_all then 10 else 0 end);
-end;
-$function$;
-
-create or replace function public.sync_focus_reward(p_date date)
-returns json language plpgsql security definer set search_path to 'public'
-as $function$
-declare
-  v_user uuid := auth.uid();
-  v_today date := public.app_today();
-  v_seconds integer;
-  v_units integer;
-  v_old record;
-begin
-  if v_user is null then raise exception '尚未登入'; end if;
-  if p_date <> v_today then
-    select exp, gold into v_old from public.reward_events
-      where user_id = v_user and source_key = 'focus:' || p_date;
-    return json_build_object('exp', coalesce(v_old.exp, 0), 'gold', coalesce(v_old.gold, 0),
-                             'delta_exp', 0, 'delta_gold', 0);
-  end if;
-  select coalesce(sum(duration_seconds), 0) into v_seconds
-    from public.focus_sessions where user_id = v_user and session_date = p_date;
-  v_units := v_seconds / 1500;
-  return public.set_reward(v_user, 'focus:' || p_date, p_date, v_units * 10, v_units * 5);
-end;
-$function$;
-
-create or replace function public.habit_log_rules()
-returns trigger language plpgsql set search_path to 'public'
-as $function$
-declare
-  v_today date := public.app_today();
-begin
-  if new.log_date > v_today then raise exception '不能幫未來的日子打卡'; end if;
-  if not exists (select 1 from public.habits where id = new.habit_id and user_id = new.user_id) then
-    raise exception '找不到這個習慣';
-  end if;
-  new.is_makeup := new.log_date < v_today;
-  return new;
-end;
-$function$;
-
-create or replace function public.sync_habit_reward(p_habit_id bigint)
-returns json language plpgsql security definer set search_path to 'public'
-as $function$
-declare
-  v_user uuid := auth.uid();
-  v_today date := public.app_today();
-  v_done boolean;
-begin
-  if v_user is null then raise exception '尚未登入'; end if;
-  select exists (
-    select 1 from public.habit_logs
-    where user_id = v_user and habit_id = p_habit_id and log_date = v_today and is_makeup = false
-  ) into v_done;
-  return public.set_reward(v_user, 'habit:' || p_habit_id || ':' || v_today, v_today,
-    case when v_done then 5 else 0 end, case when v_done then 3 else 0 end);
-end;
-$function$;
-
-create or replace function public.meal_log_rules()
-returns trigger language plpgsql set search_path to 'public'
-as $function$
-begin
-  if new.log_date > public.app_today() then
-    raise exception '不能記錄未來的日子';
-  end if;
-  new.updated_at := now();
-  return new;
-end;
-$function$;
-
-create or replace function public.draw_fortune()
-returns json language plpgsql security definer set search_path to 'public'
-as $function$
-declare
-  v_user uuid := auth.uid();
-  v_today date := public.app_today();
-  v_row public.fortune_draws%rowtype;
-  v_seed integer;
-  v_roll integer;
-  v_level text;
-  v_exp integer;
-  v_gold integer;
-  v_reward json;
-begin
-  if v_user is null then raise exception '尚未登入'; end if;
-
-  select * into v_row from public.fortune_draws where user_id = v_user and draw_date = v_today;
-  if found then
-    return json_build_object('already', true, 'draw_date', v_row.draw_date, 'seed', v_row.seed,
-      'level', v_row.level, 'exp', v_row.exp, 'gold', v_row.gold, 'delta_exp', 0, 'delta_gold', 0);
-  end if;
-
-  v_seed := ('x' || substr(md5(v_user::text || ':' || v_today::text || ':fortune'), 1, 7))::bit(28)::integer;
-  v_roll := v_seed % 100;
-  v_level := case
-    when v_roll < 8 then 'great'
-    when v_roll < 28 then 'good'
-    when v_roll < 53 then 'small'
-    when v_roll < 78 then 'fair'
-    when v_roll < 93 then 'late'
-    else 'headwind' end;
-  v_exp := case v_level when 'great' then 20 when 'good' then 15 when 'small' then 12
-                        when 'fair' then 10 when 'late' then 8 else 25 end;
-  v_gold := case v_level when 'great' then 10 when 'headwind' then 10 else 5 end;
-
-  insert into public.fortune_draws (user_id, draw_date, seed, level, exp, gold)
-  values (v_user, v_today, v_seed, v_level, v_exp, v_gold)
-  on conflict (user_id, draw_date) do nothing;
-
-  v_reward := public.set_reward(v_user, 'fortune:' || v_today, v_today, v_exp, v_gold);
-
-  return json_build_object('already', false, 'draw_date', v_today, 'seed', v_seed,
-    'level', v_level, 'exp', v_exp, 'gold', v_gold,
-    'delta_exp', (v_reward->>'delta_exp')::int, 'delta_gold', (v_reward->>'delta_gold')::int);
-end;
-$function$;
-
-
--- ---------- 📅 簽到規則 ----------
--- 爆擊機率：第 1 天 5%，之後每天 +2%，最高 35%；每連續 7 天必定爆擊
--- 獎勵：+5 EXP、金幣 10 起跳，連續每多一天 +1，最多 20；爆擊 ×2
--- 斷簽（昨天沒簽）就從第 1 天重新開始
-create or replace function public.checkin_crit_chance(p_streak integer)
-returns integer language sql immutable
-as $$
-  select case
-    when p_streak % 7 = 0 then 100
-    else least(5 + 2 * (p_streak - 1), 35)
-  end
-$$;
-
-
--- ---------- 📅 每月簽到獎勵（當月累計，不用連續） ----------
--- 累計 7 天：+20 EXP / +50 金幣；當月每天都簽（含補簽）：+100 EXP / +300 金幣
--- 每個月各領一次，網頁不能直接呼叫
-create or replace function public.checkin_month_bonus(p_user uuid, p_date date)
-returns json language plpgsql security definer set search_path to 'public'
-as $function$
-declare
-  v_start date := date_trunc('month', p_date)::date;
-  v_days integer := extract(day from (date_trunc('month', p_date) + interval '1 month - 1 day'))::integer;
-  v_month text := to_char(date_trunc('month', p_date), 'YYYY-MM');
-  v_today date := public.app_today();
-  v_count integer;
-  v_got7 boolean := false;
-  v_got_all boolean := false;
-  v_exp integer := 0;
-  v_gold integer := 0;
-begin
-  select count(*) into v_count from public.checkins
-    where user_id = p_user and checkin_date >= v_start and checkin_date < v_start + v_days;
-
-  if v_count >= 7 and not exists (
-    select 1 from public.reward_events where user_id = p_user and source_key = 'checkin-m7:' || v_month
-  ) then
-    perform public.set_reward(p_user, 'checkin-m7:' || v_month, v_today, 20, 50);
-    v_got7 := true;
-    v_exp := v_exp + 20;
-    v_gold := v_gold + 50;
-  end if;
-
-  if v_count >= v_days and not exists (
-    select 1 from public.reward_events where user_id = p_user and source_key = 'checkin-mall:' || v_month
-  ) then
-    perform public.set_reward(p_user, 'checkin-mall:' || v_month, v_today, 100, 300);
-    v_got_all := true;
-    v_exp := v_exp + 100;
-    v_gold := v_gold + 300;
-  end if;
-
-  return json_build_object('month_count', v_count, 'month_days', v_days,
-    'bonus7', v_got7, 'bonus_all', v_got_all, 'bonus_exp', v_exp, 'bonus_gold', v_gold);
-end;
-$function$;
-
-revoke all on function public.checkin_month_bonus(uuid, date) from public, anon, authenticated;
-
-
--- ---------- 📅 每日簽到 ----------
-create or replace function public.daily_checkin()
-returns json language plpgsql security definer set search_path to 'public'
-as $function$
-declare
-  v_user uuid := auth.uid();
-  v_today date := public.app_today();
-  v_row public.checkins%rowtype;
-  v_prev integer;
-  v_streak integer;
-  v_chance integer;
-  v_crit boolean;
-  v_exp integer;
-  v_gold integer;
-  v_reward json;
-  v_month json;
-begin
-  if v_user is null then raise exception '尚未登入'; end if;
-
-  -- 鎖住玩家資料，連按兩次也只會簽到一次
-  perform 1 from public.profiles where id = v_user for update;
-
-  select * into v_row from public.checkins where user_id = v_user and checkin_date = v_today;
-  if found then
-    return json_build_object('already', true, 'checkin_date', v_row.checkin_date,
-      'streak', v_row.streak, 'crit', v_row.crit, 'crit_chance', v_row.crit_chance,
-      'exp', v_row.exp, 'gold', v_row.gold, 'delta_exp', 0, 'delta_gold', 0);
-  end if;
-
-  select streak into v_prev from public.checkins
-    where user_id = v_user and checkin_date = v_today - 1;
-
-  v_streak := coalesce(v_prev, 0) + 1;
-  v_chance := public.checkin_crit_chance(v_streak);
-  v_crit := random() * 100 < v_chance;
-  v_exp := 5;
-  v_gold := 10 + least(v_streak - 1, 10);
-  if v_crit then
-    v_exp := v_exp * 2;
-    v_gold := v_gold * 2;
-  end if;
-
-  insert into public.checkins (user_id, checkin_date, streak, crit, crit_chance, exp, gold)
-  values (v_user, v_today, v_streak, v_crit, v_chance, v_exp, v_gold);
-
-  v_reward := public.set_reward(v_user, 'checkin:' || v_today, v_today, v_exp, v_gold);
-  v_month := public.checkin_month_bonus(v_user, v_today);
-
-  return json_build_object('already', false, 'checkin_date', v_today,
-    'streak', v_streak, 'crit', v_crit, 'crit_chance', v_chance,
-    'exp', v_exp, 'gold', v_gold,
-    'month_count', (v_month->>'month_count')::int, 'month_days', (v_month->>'month_days')::int,
-    'bonus7', (v_month->>'bonus7')::boolean, 'bonus_all', (v_month->>'bonus_all')::boolean,
-    'delta_exp', (v_reward->>'delta_exp')::int + (v_month->>'bonus_exp')::int,
-    'delta_gold', (v_reward->>'delta_gold')::int + (v_month->>'bonus_gold')::int);
-end;
-$function$;
-
-
--- ---------- 💰 補簽 ----------
--- 只能補這個月、今天以前沒簽的日子；這個月第 1 次 30 金幣，之後每次多 20
--- 補簽不給當天的簽到獎勵，但會接回連續天數、算進每月累計
-create or replace function public.makeup_checkin(p_date date)
-returns json language plpgsql security definer set search_path to 'public'
-as $function$
-declare
-  v_user uuid := auth.uid();
-  v_today date := public.app_today();
-  v_start date := date_trunc('month', public.app_today())::date;
-  v_gold integer;
-  v_used integer;
-  v_cost integer;
-  v_prev integer;
-  v_streak integer;
-  v_day date;
-  v_month json;
-begin
-  if v_user is null then raise exception '尚未登入'; end if;
-  if p_date is null or p_date >= v_today then raise exception '只能補簽今天以前的日子'; end if;
-  if p_date < v_start then raise exception '只能補簽這個月的日子'; end if;
-
-  select gold into v_gold from public.profiles where id = v_user for update;
-  if not found then raise exception '找不到玩家資料'; end if;
-
-  if exists (select 1 from public.checkins where user_id = v_user and checkin_date = p_date) then
-    raise exception '這天已經簽到過了';
-  end if;
-
-  select count(*) into v_used from public.checkins
-    where user_id = v_user and is_makeup and checkin_date >= v_start;
-
-  v_cost := 30 + 20 * v_used;
-
-  if coalesce(v_gold, 0) < v_cost then
-    raise exception '金幣不夠：補簽要 % 金幣，你現在有 % 金幣', v_cost, coalesce(v_gold, 0);
-  end if;
-
-  update public.profiles set gold = gold - v_cost, updated_at = now() where id = v_user;
-
-  select streak into v_prev from public.checkins
-    where user_id = v_user and checkin_date = p_date - 1;
-
-  v_streak := coalesce(v_prev, 0) + 1;
-
-  insert into public.checkins (user_id, checkin_date, streak, crit, crit_chance, exp, gold, is_makeup, cost)
-  values (v_user, p_date, v_streak, false, 0, 0, 0, true, v_cost);
-
-  -- 接回後面的連續天數（補了中間斷掉的那天，後面每天都 +）
-  v_day := p_date + 1;
-  loop
-    update public.checkins set streak = v_streak + 1
-      where user_id = v_user and checkin_date = v_day;
-    exit when not found;
-    v_streak := v_streak + 1;
-    v_day := v_day + 1;
-  end loop;
-
-  v_month := public.checkin_month_bonus(v_user, p_date);
-
-  return json_build_object('checkin_date', p_date, 'cost', v_cost, 'next_cost', v_cost + 20,
-    'gold_left', coalesce(v_gold, 0) - v_cost,
-    'month_count', (v_month->>'month_count')::int, 'month_days', (v_month->>'month_days')::int,
-    'bonus7', (v_month->>'bonus7')::boolean, 'bonus_all', (v_month->>'bonus_all')::boolean,
-    'delta_exp', (v_month->>'bonus_exp')::int, 'delta_gold', (v_month->>'bonus_gold')::int - v_cost);
-end;
-$function$;
-
-revoke all on function public.daily_checkin() from public, anon;
-revoke all on function public.makeup_checkin(date) from public, anon;
-grant execute on function public.daily_checkin() to authenticated;
-grant execute on function public.makeup_checkin(date) to authenticated;
-grant execute on function public.checkin_crit_chance(integer) to authenticated;
-
-
--- ---------- 🕑 自動改寫「產生每日任務」「完成任務」裡的日期 ----------
--- 這兩個函式是早期在 Supabase 建的，這裡直接把裡面「台灣今天」的寫法換成 app_today()
--- 換不到的會在最下面的檢查結果提醒
-do $$
-declare
-  v_oid oid;
-  v_def text;
-  v_new text;
-begin
-  for v_oid in
-    select p.oid from pg_proc p
-    where p.pronamespace = 'public'::regnamespace
-      and p.proname in ('generate_daily_tasks', 'complete_task')
-  loop
-    v_def := pg_get_functiondef(v_oid);
-    v_new := v_def;
-    v_new := regexp_replace(v_new, '\(\s*\(\s*now\(\)\s+at\s+time\s+zone\s+''Asia/Taipei''\s*\)\s*::\s*date\s*\)', 'public.app_today()', 'gi');
-    v_new := regexp_replace(v_new, '\(\s*now\(\)\s+at\s+time\s+zone\s+''Asia/Taipei''\s*\)\s*::\s*date', 'public.app_today()', 'gi');
-    v_new := regexp_replace(v_new, '\(\s*timezone\(\s*''Asia/Taipei''\s*,\s*now\(\)\s*\)\s*\)\s*::\s*date', 'public.app_today()', 'gi');
-    v_new := regexp_replace(v_new, 'timezone\(\s*''Asia/Taipei''\s*,\s*now\(\)\s*\)\s*::\s*date', 'public.app_today()', 'gi');
-    v_new := regexp_replace(v_new, '\mcurrent_date\M', 'public.app_today()', 'gi');
-    v_new := regexp_replace(v_new, '\mnow\(\)\s*::\s*date', 'public.app_today()', 'gi');
-    if v_new <> v_def then
-      execute v_new;
-    end if;
-  end loop;
-end $$;
-
-
--- ---------- 誰可以呼叫 ----------
-revoke all on function public.sync_morning_reward() from public, anon;
-revoke all on function public.sync_focus_reward(date) from public, anon;
-revoke all on function public.sync_habit_reward(bigint) from public, anon;
-revoke all on function public.draw_fortune() from public, anon;
-grant execute on function public.carry_over_tasks() to authenticated;
-grant execute on function public.sync_morning_reward() to authenticated;
-grant execute on function public.sync_focus_reward(date) to authenticated;
-grant execute on function public.sync_habit_reward(bigint) to authenticated;
-grant execute on function public.draw_fortune() to authenticated;
-
-
--- ---------- 讓網站馬上看到新的表 ----------
-notify pgrst, 'reload schema';
-
-
--- ---------- ✅ 檢查結果 ----------
-select coalesce(string_agg(missing, '、'), '✅ 2 點換日＋每月獎勵＋補簽＋每日反省 設定完成') as 檢查結果
-from (
-  select '缺少函式 ' || f as missing
-  from unnest(array['app_today', 'daily_checkin', 'makeup_checkin', 'checkin_month_bonus']) f
-  where not exists (select 1 from pg_proc where proname = f and pronamespace = 'public'::regnamespace)
-  union all
-  select '缺少表 ' || t
-  from unnest(array['checkins', 'daily_reflections']) t
-  where to_regclass('public.' || t) is null
-  union all
-  select '缺少欄位 checkins.is_makeup'
-  where not exists (select 1 from information_schema.columns
-                    where table_schema = 'public' and table_name = 'checkins' and column_name = 'is_makeup')
-  union all
-  select '⚠️ ' || p.proname || ' 裡還有台灣時間的寫法沒改到，請把它的內容貼給我'
-  from pg_proc p
-  where p.pronamespace = 'public'::regnamespace
-    and p.proname in ('generate_daily_tasks', 'complete_task')
-    and pg_get_functiondef(p.oid) ilike '%Asia/Taipei%'
-  union all
-  select '⚠️ generate_daily_tasks 沒找到日期的寫法，請把它的內容貼給我'
-  from pg_proc p
-  where p.pronamespace = 'public'::regnamespace
-    and p.proname = 'generate_daily_tasks'
-    and pg_get_functiondef(p.oid) not ilike '%app_today%'
-) x;
+/* =========================================================
+   🎲 序光計畫：遊戲功能
+   只在主頁「遊戲模式：開」的時候出現，關閉時畫面和原本一樣。
+   之後的遊戲功能（抽獎、圖鑑、主線王…）都放在這個檔案。
+
+   需要 script.js 先載入（會用到 db、currentUser、getToday、
+   shiftDate、showToast、escapeHtml、afterRewardChange）。
+   script.js 有沒有遊戲模式那一段都可以用（沒有的話這裡自己處理開關）。
+========================================================= */
+
+/* 版本號：會顯示在簽到卡最下面，用來確認瀏覽器載入的是新版 */
+const GAME_JS_VERSION = "2026-10-16 v6";
+
+
+/* =========================================================
+   1. 規則（和資料庫的 daily_checkin 一致，改數字要兩邊一起改）
+========================================================= */
+
+const GAME_CHECKIN_EXP = 5;
+
+/* 爆擊機率：第 1 天 5%，每天 +2%，最高 35%；每連續 7 天必定爆擊 */
+function gameCheckinCritChance(streak) {
+  if (streak % 7 === 0) return 100;
+  return Math.min(5 + 2 * (streak - 1), 35);
+}
+
+/* 金幣：10 起跳，連續每多一天 +1，最多 20；爆擊 ×2 */
+function gameCheckinGold(streak) {
+  return 10 + Math.min(streak - 1, 10);
+}
+
+
+/* =========================================================
+   2. 接上遊戲模式開關
+   新版 script.js：它的 loadGameMode / toggleGameMode 最後都會呼叫
+   renderGameModeToggle()，在它後面接著更新遊戲區塊。
+   舊版 script.js（沒有遊戲模式）：開關改由這裡處理。
+========================================================= */
+
+const GAME_HAS_CORE = typeof renderGameModeToggle === "function";
+
+let gameFallbackOn = false;   // 只有 script.js 是舊版時才會用到
+
+
+function gameIsOn() {
+
+  if (GAME_HAS_CORE) {
+    return typeof gameMode !== "undefined" && gameMode === true;
+  }
+
+  return gameFallbackOn;
+
+}
+
+
+if (GAME_HAS_CORE) {
+
+  const gameBaseRenderToggle = renderGameModeToggle;
+
+  renderGameModeToggle = function () {
+    gameBaseRenderToggle();
+    gameOnModeChange();
+  };
+
+} else {
+
+  window.renderGameModeToggle = function () {
+
+    document.body.classList.toggle("game-mode-on", gameFallbackOn);
+
+    const btn = document.getElementById("game-mode-toggle");
+
+    if (btn) {
+      btn.textContent = gameFallbackOn ? "🎲 遊戲模式：開" : "🎲 遊戲模式：關";
+      btn.classList.toggle("is-on", gameFallbackOn);
+      btn.setAttribute("aria-pressed", String(gameFallbackOn));
+    }
+
+    gameOnModeChange();
+
+  };
+
+
+  window.loadGameMode = async function () {
+
+    if (!currentUser) return;
+
+    const { data, error } = await db
+      .from("user_settings")
+      .select("game_mode")
+      .eq("user_id", currentUser.id)
+      .maybeSingle();
+
+    if (error) {
+      console.warn("遊戲模式載入失敗：", error);
+      gameFallbackOn = false;
+    } else {
+      gameFallbackOn = data?.game_mode === true;
+    }
+
+    renderGameModeToggle();
+
+  };
+
+
+  window.toggleGameMode = async function () {
+
+    if (!currentUser) return;
+
+    const next = !gameFallbackOn;
+
+    gameFallbackOn = next;
+    renderGameModeToggle();
+
+    const { error } = await db
+      .from("user_settings")
+      .upsert(
+        { user_id: currentUser.id, game_mode: next, updated_at: new Date().toISOString() },
+        { onConflict: "user_id" }
+      );
+
+    if (error) {
+      console.error("遊戲模式儲存失敗：", error);
+      alert("遊戲模式儲存失敗：" + error.message);
+      gameFallbackOn = !next;
+      renderGameModeToggle();
+    }
+
+  };
+
+
+  /* 舊版 script.js 載入今日資料時不會讀遊戲模式，這裡接在後面補讀 */
+  if (typeof loadTodayModules === "function") {
+
+    const gameBaseLoadToday = loadTodayModules;
+
+    loadTodayModules = async function (...args) {
+      const result = await gameBaseLoadToday.apply(this, args);
+      await loadGameMode();
+      return result;
+    };
+
+  }
+
+}
+
+
+function gameOnModeChange() {
+
+  const on = gameIsOn() && !!currentUser;
+
+  const chip = gameEnsureChip();
+  const card = gameEnsureMonthCard();
+
+  if (chip) chip.hidden = !on;
+  if (card) card.hidden = !on;
+
+  if (!on) {
+    gameClosePopup();
+    return;
+  }
+
+  const stale =
+    !gameCheckinState.loaded ||
+    gameCheckinState.date !== getToday() ||
+    gameCheckinState.userId !== currentUser.id;
+
+  if (stale) {
+    loadGameCheckin();
+  } else {
+    renderGameCheckin();
+  }
+
+}
+
+
+/* =========================================================
+   3. 📅 每日簽到
+   - 主頁：只有遊戲模式按鈕旁邊一個小按鈕，點了打開簽到彈窗
+   - 彈窗：今天還沒簽，每次打開網頁都會自動跳出來
+   - 日曆頁：本月簽到月曆、每月獎勵、補簽、規則
+========================================================= */
+
+let gameCheckinState = {
+  loaded: false,
+  loading: false,
+  busy: false,
+  error: null,
+  userId: null,
+  date: null,
+  rows: [],          // 這個月 ＋ 最近 8 天的簽到紀錄（新的在前）
+  justDone: null     // 剛剛簽到的結果（用來播動畫）
+};
+
+
+/* 主頁：遊戲模式按鈕旁邊的「📅 簽到」小按鈕 */
+function gameEnsureChip() {
+
+  let chip = document.getElementById("game-checkin-chip");
+
+  if (chip) return chip;
+
+  const bar = document.querySelector(".game-mode-bar");
+
+  if (!bar) return null;
+
+  chip = document.createElement("button");
+  chip.id = "game-checkin-chip";
+  chip.type = "button";
+  chip.className = "game-checkin-chip";
+  chip.hidden = true;
+  chip.textContent = "📅 簽到";
+  chip.addEventListener("click", () => gameOpenPopup());
+
+  bar.prepend(chip);
+
+  return chip;
+
+}
+
+
+/* 日曆頁：本月簽到卡（放在日曆下面、Google 日曆上面） */
+function gameEnsureMonthCard() {
+
+  let card = document.getElementById("game-month-card");
+
+  if (card) return card;
+
+  const page = document.querySelector('.page[data-page="calendar"]');
+
+  if (!page) return null;
+
+  card = document.createElement("section");
+  card.className = "card game-checkin";
+  card.id = "game-month-card";
+  card.hidden = true;
+
+  const firstCard = page.querySelector("section.card");
+
+  if (firstCard) {
+    firstCard.after(card);
+  } else {
+    page.appendChild(card);
+  }
+
+  return card;
+
+}
+
+
+async function loadGameCheckin() {
+
+  if (!currentUser || gameCheckinState.loading) return;
+
+  const today = getToday();
+
+  gameCheckinState.loading = true;
+
+  /* 這個月全部（月曆、每月獎勵、補簽要用）＋最近 8 天（連續天數要用） */
+  const monthStart = today.slice(0, 8) + "01";
+  const weekAgo = shiftDate(today, -7);
+  const from = monthStart < weekAgo ? monthStart : weekAgo;
+
+  const { data, error } = await db
+    .from("checkins")
+    .select("checkin_date, streak, crit, crit_chance, exp, gold, is_makeup, cost")
+    .eq("user_id", currentUser.id)
+    .gte("checkin_date", from)
+    .order("checkin_date", { ascending: false });
+
+  gameCheckinState.loading = false;
+  gameCheckinState.loaded = true;
+  gameCheckinState.userId = currentUser.id;
+  gameCheckinState.date = today;
+
+  if (error) {
+    console.warn("簽到紀錄載入失敗：", error);
+    gameCheckinState.error = error.message;
+    gameCheckinState.rows = [];
+  } else {
+    gameCheckinState.error = null;
+    gameCheckinState.rows = data || [];
+  }
+
+  renderGameCheckin();
+
+}
+
+
+/* 算出現在的狀態：今天簽了沒、連續幾天、下一次是第幾天 */
+function gameCheckinSummary() {
+
+  const today = getToday();
+  const yesterday = shiftDate(today, -1);
+  const rows = gameCheckinState.rows;
+
+  const todayRow = rows.find(r => r.checkin_date === today) || null;
+  const yesterdayRow = rows.find(r => r.checkin_date === yesterday) || null;
+
+  /* 已簽到：連續天數就是今天那筆；還沒簽：接昨天的（昨天沒簽就是 0） */
+  const streak = todayRow
+    ? todayRow.streak
+    : (yesterdayRow ? yesterdayRow.streak : 0);
+
+  /* 下一次簽到會是第幾天（今天簽了 → 明天） */
+  const nextStreak = streak + 1;
+
+  /* 有舊紀錄、但昨天和今天都沒有 → 斷簽了 */
+  const broken = !todayRow && !yesterdayRow && rows.length > 0;
+
+  /* 這一輪 7 天裡，每一天有沒有爆擊（從今天 / 昨天往回連續找） */
+  const critByStreak = {};
+  let expect = todayRow ? today : yesterday;
+
+  for (const row of rows) {
+    if (row.checkin_date !== expect) continue;
+    critByStreak[row.streak] = row.crit;
+    expect = shiftDate(expect, -1);
+  }
+
+  return { today, todayRow, streak, nextStreak, broken, critByStreak };
+
+}
+
+
+function renderGameCheckin() {
+
+  renderGameChip();
+  renderGameMonthCard();
+  gameRefreshPopup();
+
+}
+
+
+function renderGameChip() {
+
+  const chip = document.getElementById("game-checkin-chip");
+
+  if (!chip || chip.hidden) return;
+
+  if (!gameCheckinState.loaded || gameCheckinState.error) {
+    chip.textContent = "📅 簽到";
+    chip.classList.remove("is-done");
+    return;
+  }
+
+  const s = gameCheckinSummary();
+
+  chip.classList.toggle("is-done", !!s.todayRow);
+  chip.textContent = s.todayRow ? `✅ 已簽到・🔥 ${s.streak} 天` : "📅 簽到";
+
+}
+
+
+function renderGameMonthCard() {
+
+  const card = document.getElementById("game-month-card");
+
+  if (!card || card.hidden) return;
+
+  const loaded = gameCheckinState.loaded && !gameCheckinState.error;
+  const signed = loaded && !!gameCheckinSummary().todayRow;
+
+  const head = `
+    <div class="card-head">
+      <h2>📆 簽到月曆</h2>
+      <button class="btn btn-small ${signed ? "" : "btn-primary"}" type="button" onclick="gameOpenPopup()">
+        ${signed ? "✅ 今天已簽到" : "📅 今天簽到"}
+      </button>
+    </div>`;
+
+  const rules = gameCheckinRulesHtml(true);
+
+  if (!gameCheckinState.loaded) {
+    card.innerHTML = head + `<span class="small-note">載入中...</span>` + rules;
+    return;
+  }
+
+  if (gameCheckinState.error) {
+    card.innerHTML = head + gameSetupErrorHtml() + rules;
+    return;
+  }
+
+  card.innerHTML = head + gameMonthHtml() + rules;
+
+}
+
+
+function gameSetupErrorHtml() {
+
+  return `
+    <div class="ck-error">
+      簽到功能還沒設定好：請先到 Supabase 的 SQL Editor 執行「更新_2點換日_補簽_反省.sql」，再重新整理。
+      <div class="small-note">${escapeHtml(gameCheckinState.error || "")}</div>
+    </div>`;
+
+}
+
+
+/* 連續 7 天的格子（第 7 天必定爆擊） */
+function gameStreakDotsHtml(s) {
+
+  const done = !!s.todayRow;
+
+  /* 這一輪 7 格：目前停在第幾輪 */
+  const shown = done ? s.streak : s.nextStreak;
+  const cycleStart = Math.floor((shown - 1) / 7) * 7 + 1;
+
+  let dots = "";
+
+  for (let day = cycleStart; day < cycleStart + 7; day++) {
+
+    const isDone = day <= s.streak;
+    const isNext = !done && day === s.nextStreak;
+    const isCrit = isDone && s.critByStreak[day] === true;
+    const isBonus = day % 7 === 0;
+
+    const cls = [
+      "ck-dot",
+      isDone ? "done" : "",
+      isCrit ? "crit" : "",
+      isNext ? "next" : "",
+      isBonus ? "bonus" : "",
+      isDone && done && day === s.streak && gameCheckinState.justDone ? "pop" : ""
+    ].filter(Boolean).join(" ");
+
+    const icon = isCrit ? "💥" : (isDone ? "✓" : (isBonus ? "💥" : ""));
+
+    dots += `
+      <div class="${cls}" title="連續第 ${day} 天">
+        <span class="ck-day">${day}</span>
+        <span class="ck-icon">${icon}</span>
+      </div>`;
+  }
+
+  return `<div class="ck-dots">${dots}</div>`;
+
+}
+
+
+/* 簽到規則：日曆頁預設展開；彈窗裡收起來 */
+function gameCheckinRulesHtml(open) {
+
+  const startHour = typeof DAY_START_HOUR === "number" ? DAY_START_HOUR : 0;
+
+  return `
+    <details class="ck-rules" ${open ? "open" : ""}>
+      <summary>📖 簽到規則</summary>
+      <ul>
+        <li>每天按一次「📅 簽到」，可以拿到 +${GAME_CHECKIN_EXP} EXP 和金幣。金幣從 10 開始，連續每多一天 +1，最多 20。</li>
+        <li>爆擊時獎勵 ×2。爆擊機率第 1 天是 5%，之後每天 +2%，最高 35%。</li>
+        <li>每連續第 7 天必定爆擊，那天的按鈕會變成金色。</li>
+        <li>昨天沒簽就算斷簽，連續天數從第 1 天重新算。</li>
+        <li>一天從凌晨 ${startHour} 點開始：凌晨 0 點到 ${startHour} 點前簽到，算前一天。</li>
+        <li>每月獎勵（當月累計，不用連續）：累計 7 天 +${GAME_MONTH7.gold} 金幣・+${GAME_MONTH7.exp} EXP；當月每天都簽（全勤）再 +${GAME_MONTH_ALL.gold} 金幣・+${GAME_MONTH_ALL.exp} EXP。每個月各領一次。</li>
+        <li>補簽：在「📅 日曆」頁的簽到月曆點沒簽的日子（只能補這個月、今天以前）。這個月第 1 次 ${GAME_MAKEUP_BASE} 金幣，之後每次多 ${GAME_MAKEUP_STEP}。補簽不拿當天的簽到獎勵，但會接回連續天數、算進每月累計。</li>
+        <li>爆擊和獎勵都由資料庫決定，從網頁端改不了，連按兩次也只算一次。</li>
+      </ul>
+      <div class="ck-version">game.js 版本：${GAME_JS_VERSION}</div>
+    </details>`;
+
+}
+
+
+async function gameCheckin() {
+
+  if (!currentUser || gameCheckinState.busy) return;
+
+  gameCheckinState.busy = true;
+  renderGameCheckin();
+
+  const { data, error } = await db.rpc("daily_checkin");
+
+  gameCheckinState.busy = false;
+
+  if (error) {
+    console.error("簽到失敗：", error);
+    alert("簽到失敗：" + error.message);
+    renderGameCheckin();
+    return;
+  }
+
+  /* 把結果放進紀錄（不用再讀一次資料庫） */
+  const row = {
+    checkin_date: data.checkin_date,
+    streak: data.streak,
+    crit: data.crit,
+    crit_chance: data.crit_chance,
+    exp: data.exp,
+    gold: data.gold,
+    is_makeup: false,
+    cost: 0
+  };
+
+  gameCheckinState.rows = [
+    row,
+    ...gameCheckinState.rows.filter(r => r.checkin_date !== row.checkin_date)
+  ];
+
+  gameCheckinState.justDone = data.already ? null : row;
+
+  renderGameCheckin();
+
+  gameCheckinState.justDone = null;
+
+  if (!data.already) {
+    showToast(
+      (data.crit
+        ? `💥 爆擊！簽到獎勵 ×2：+${data.gold} 金幣 / +${data.exp} EXP`
+        : `📅 簽到成功（連續 ${data.streak} 天）：+${data.gold} 金幣 / +${data.exp} EXP`) +
+      gameMonthBonusText(data)
+    );
+  }
+
+  /* 更新上方的等級 / 金幣和今日獎勵 */
+  await afterRewardChange(data, null, null);
+
+}
+
+
+/* =========================================================
+   3-a. 📆 本月簽到：每月獎勵 ＋ 補簽
+========================================================= */
+
+const GAME_MONTH7 = { exp: 20, gold: 50 };        // 當月累計 7 天
+const GAME_MONTH_ALL = { exp: 100, gold: 300 };   // 當月全勤
+const GAME_MAKEUP_BASE = 30;                      // 這個月第 1 次補簽
+const GAME_MAKEUP_STEP = 20;                      // 之後每次多多少
+
+
+/* 剛拿到的每月獎勵 → 接在提示後面的文字 */
+function gameMonthBonusText(data) {
+
+  let text = "";
+
+  if (data && data.bonus7) {
+    text += `　🎁 本月累計 7 天：+${GAME_MONTH7.gold} 金幣 / +${GAME_MONTH7.exp} EXP`;
+  }
+
+  if (data && data.bonus_all) {
+    text += `　🏆 本月全勤：+${GAME_MONTH_ALL.gold} 金幣 / +${GAME_MONTH_ALL.exp} EXP`;
+  }
+
+  return text;
+
+}
+
+
+function gameMonthSummary() {
+
+  const today = getToday();
+  const [y, m] = today.split("-").map(Number);
+  const monthStart = today.slice(0, 8) + "01";
+  const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const firstWeekday = (new Date(Date.UTC(y, m - 1, 1)).getUTCDay() + 6) % 7;   // 週一 = 0
+
+  const rows = gameCheckinState.rows.filter(r => r.checkin_date >= monthStart && r.checkin_date <= today.slice(0, 8) + "31");
+  const byDate = {};
+
+  for (const row of rows) byDate[row.checkin_date] = row;
+
+  const count = rows.length;
+  const makeupsUsed = rows.filter(r => r.is_makeup).length;
+  const nextCost = GAME_MAKEUP_BASE + GAME_MAKEUP_STEP * makeupsUsed;
+  const missed = [];
+
+  for (let d = 1; d <= days; d++) {
+    const date = today.slice(0, 8) + String(d).padStart(2, "0");
+    if (date < today && !byDate[date]) missed.push(date);
+  }
+
+  return { today, y, m, monthStart, days, firstWeekday, byDate, count, makeupsUsed, nextCost, missed };
+
+}
+
+
+function gameMonthHtml() {
+
+  const ms = gameMonthSummary();
+
+  const goal = (reached, label, reward, progressText, ratio) => `
+    <div class="ck-goal ${reached ? "done" : ""}">
+      <div class="ck-goal-top">
+        <span>${label}</span>
+        <span class="ck-goal-reward">${reward}</span>
+      </div>
+      <div class="ck-bar"><i style="width:${Math.round(Math.min(ratio, 1) * 100)}%"></i></div>
+      <div class="ck-goal-state">${reached ? "✅ 已領取" : progressText}</div>
+    </div>`;
+
+  let cells = ["一", "二", "三", "四", "五", "六", "日"]
+    .map(w => `<div class="ck-cal-head">${w}</div>`).join("");
+
+  for (let i = 0; i < ms.firstWeekday; i++) cells += `<div class="ck-cal-blank"></div>`;
+
+  for (let d = 1; d <= ms.days; d++) {
+
+    const date = ms.today.slice(0, 8) + String(d).padStart(2, "0");
+    const row = ms.byDate[date];
+
+    if (row) {
+      const kind = row.is_makeup ? "makeup" : (row.crit ? "crit" : "done");
+      const icon = row.is_makeup ? "補" : (row.crit ? "💥" : "✓");
+      const title = row.is_makeup ? `補簽（${row.cost} 金幣）` : (row.crit ? "爆擊" : "已簽到");
+      cells += `
+        <div class="ck-cal-day ${kind} ${date === ms.today ? "is-today" : ""}" title="${ms.m}/${d} ${title}">
+          <span>${d}</span><b>${icon}</b>
+        </div>`;
+    } else if (date < ms.today) {
+      cells += `
+        <button class="ck-cal-day missed" type="button" title="補簽 ${ms.m}/${d}（${ms.nextCost} 金幣）"
+          onclick="gameMakeup('${date}')" ${gameCheckinState.busy ? "disabled" : ""}>
+          <span>${d}</span><b>補簽</b>
+        </button>`;
+    } else if (date === ms.today) {
+      cells += `
+        <div class="ck-cal-day is-today pending" title="今天還沒簽到">
+          <span>${d}</span><b>今天</b>
+        </div>`;
+    } else {
+      cells += `
+        <div class="ck-cal-day future">
+          <span>${d}</span><b></b>
+        </div>`;
+    }
+
+  }
+
+  return `
+    <div class="ck-month">
+      <div class="ck-month-head">
+        <b>📆 ${ms.m} 月簽到 ${ms.count} / ${ms.days} 天</b>
+        <span class="small-note">
+          ${ms.missed.length > 0
+            ? `有 ${ms.missed.length} 天沒簽・點「補簽」花 ${ms.nextCost} 金幣`
+            : "這個月目前沒有漏簽"}
+        </span>
+      </div>
+
+      <div class="ck-goals">
+        ${goal(ms.count >= 7, "🎁 累計 7 天", `+${GAME_MONTH7.gold} 金幣・+${GAME_MONTH7.exp} EXP`,
+               `${Math.min(ms.count, 7)} / 7 天`, ms.count / 7)}
+        ${goal(ms.count >= ms.days, `🏆 全勤 ${ms.days} 天`, `+${GAME_MONTH_ALL.gold} 金幣・+${GAME_MONTH_ALL.exp} EXP`,
+               `${ms.count} / ${ms.days} 天`, ms.count / ms.days)}
+      </div>
+
+      <div class="ck-cal">${cells}</div>
+    </div>`;
+
+}
+
+
+/* 💰 補簽：只能補這個月、今天以前沒簽的日子 */
+async function gameMakeup(date) {
+
+  if (!currentUser || gameCheckinState.busy) return;
+
+  const ms = gameMonthSummary();
+  const [, mm, dd] = date.split("-").map(Number);
+
+  const ok = confirm(
+    `補簽 ${mm}/${dd} 要花 ${ms.nextCost} 金幣（這個月第 ${ms.makeupsUsed + 1} 次補簽）。\n` +
+    `補簽不會拿到當天的簽到獎勵，但會接回連續天數、算進本月累計。\n\n確定要補簽嗎？`
+  );
+
+  if (!ok) return;
+
+  gameCheckinState.busy = true;
+  renderGameCheckin();
+
+  const { data, error } = await db.rpc("makeup_checkin", { p_date: date });
+
+  gameCheckinState.busy = false;
+
+  if (error) {
+    console.error("補簽失敗：", error);
+    alert("補簽失敗：" + error.message);
+    renderGameCheckin();
+    return;
+  }
+
+  showToast(`💰 補簽 ${mm}/${dd} 成功（−${data.cost} 金幣）` + gameMonthBonusText(data));
+
+  /* 補簽會改到後面幾天的連續天數，重新讀一次 */
+  gameCheckinState.loaded = false;
+  await loadGameCheckin();
+
+  /* 金幣變了 → 更新上方的金幣和今日獎勵 */
+  await loadPlayer();
+  await loadTodayRewards();
+
+}
+
+
+/* =========================================================
+   3-b. 🪟 簽到彈窗
+   今天還沒簽到，每次打開網頁都會自動跳出來（按「稍後再說」就先關掉，
+   主頁的「📅 簽到」按鈕隨時能再打開）。簽完後顯示結果。
+========================================================= */
+
+let gamePopupAutoDate = null;   // 這次打開網頁，哪一天已經自動跳過了
+
+
+function gameShouldAutoPopup() {
+
+  if (!gameIsOn() || !currentUser) return false;
+
+  if (!gameCheckinState.loaded || gameCheckinState.error) return false;
+
+  const today = getToday();
+
+  if (gameCheckinState.userId !== currentUser.id || gameCheckinState.date !== today) return false;
+
+  if (gamePopupAutoDate === today) return false;
+
+  return !gameCheckinSummary().todayRow;
+
+}
+
+
+/* 每次簽到資料重繪都會呼叫：彈窗開著就更新內容；沒開就看要不要自動跳 */
+function gameRefreshPopup() {
+
+  if (document.getElementById("game-ck-popup")) {
+    gameRenderPopup();
+    return;
+  }
+
+  if (gameShouldAutoPopup()) {
+    gamePopupAutoDate = getToday();
+    gameOpenPopup();
+  }
+
+}
+
+
+function gameOpenPopup() {
+
+  if (!gameIsOn()) return;
+
+  if (!document.getElementById("game-ck-popup")) {
+
+    const overlay = document.createElement("div");
+    overlay.id = "game-ck-popup";
+    overlay.className = "game-pop-overlay";
+    overlay.addEventListener("click", e => {
+      if (e.target === overlay) gameClosePopup();
+    });
+
+    document.body.appendChild(overlay);
+
+  }
+
+  gameRenderPopup();
+
+}
+
+
+function gameClosePopup() {
+
+  const overlay = document.getElementById("game-ck-popup");
+
+  if (overlay) overlay.remove();
+
+}
+
+
+/* 彈窗的「去日曆補簽」：跳到日曆頁的簽到月曆 */
+function gameGoMakeup() {
+
+  gameClosePopup();
+
+  showPage("calendar");
+
+  setTimeout(() => {
+    const card = document.getElementById("game-month-card");
+    if (card) card.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 150);
+
+}
+
+
+function gameRenderPopup() {
+
+  const overlay = document.getElementById("game-ck-popup");
+
+  if (!overlay) return;
+
+  const busy = gameCheckinState.busy;
+
+  const wrap = inner => `
+    <div class="game-pop-box game-checkin" role="dialog" aria-modal="true" aria-labelledby="game-pop-title">
+      <button class="game-pop-close" type="button" aria-label="關閉" onclick="gameClosePopup()">✕</button>
+      <div class="game-pop-title" id="game-pop-title">📅 今天的簽到</div>
+      ${inner}
+    </div>`;
+
+  if (gameCheckinState.error) {
+    overlay.innerHTML = wrap(gameSetupErrorHtml());
+    return;
+  }
+
+  if (!gameCheckinState.loaded) {
+    overlay.innerHTML = wrap(`<div class="small-note">載入中...</div>`);
+    return;
+  }
+
+  const s = gameCheckinSummary();
+  const ms = gameMonthSummary();
+
+  const makeupLink = ms.missed.length > 0 ? `
+    <button class="link-btn ck-go-makeup" type="button" onclick="gameGoMakeup()">
+      📆 這個月有 ${ms.missed.length} 天沒簽 → 去日曆補簽
+    </button>` : "";
+
+  let body;
+
+  if (s.todayRow) {
+
+    const r = s.todayRow;
+    const nextChance = gameCheckinCritChance(s.nextStreak);
+
+    body = `
+      ${gameStreakDotsHtml(s)}
+      <div class="ck-result ${r.crit ? "is-crit" : ""} ${gameCheckinState.justDone ? "reveal" : ""}">
+        <div class="ck-result-title">${r.crit ? "💥 爆擊！獎勵 ×2" : "✅ 今天簽到完成"}</div>
+        <div class="ck-result-reward">+${r.gold} 金幣・+${r.exp} EXP</div>
+      </div>
+      <div class="ck-stats">
+        <div><b>${s.streak}</b><span>連續天數</span></div>
+        <div><b>${nextChance}%</b><span>明天爆擊機率</span></div>
+        <div><b>+${gameCheckinGold(s.nextStreak)}</b><span>明天金幣</span></div>
+      </div>
+      ${gamePopupMonthLine(true, ms)}
+      ${makeupLink}
+      <div class="game-pop-actions">
+        <button class="btn btn-primary" type="button" onclick="gameClosePopup()">完成</button>
+      </div>`;
+
+  } else {
+
+    const chance = gameCheckinCritChance(s.nextStreak);
+    const gold = gameCheckinGold(s.nextStreak);
+
+    body = `
+      ${s.broken ? `<div class="ck-broken">昨天沒簽到，連續天數從第 1 天重新開始</div>` : ""}
+      ${gameStreakDotsHtml(s)}
+      <div class="ck-stats">
+        <div><b>${s.streak}</b><span>目前連續</span></div>
+        <div><b>${chance}%</b><span>今天爆擊機率</span></div>
+        <div><b>+${gold}</b><span>今天金幣</span></div>
+      </div>
+      ${gamePopupMonthLine(false, ms)}
+      ${makeupLink}
+      <div class="game-pop-actions">
+        <button
+          class="btn btn-primary game-pop-btn ${chance === 100 ? "is-sure" : ""}"
+          type="button"
+          onclick="gameCheckin()"
+          ${busy ? "disabled" : ""}
+        >
+          ${busy ? "簽到中..." : (chance === 100 ? "💥 簽到（今天必定爆擊！）" : "📅 簽到")}
+        </button>
+        <button class="btn" type="button" onclick="gameClosePopup()">稍後再說</button>
+      </div>`;
+
+  }
+
+  overlay.innerHTML = wrap(body + gameCheckinRulesHtml(false));
+
+}
+
+
+/* 彈窗裡的一行本月進度 */
+function gamePopupMonthLine(signedToday, ms) {
+
+  const after = signedToday ? ms.count : ms.count + 1;   // 今天簽完之後的天數
+
+  let goal;
+
+  if (after < 7) {
+    goal = `再簽 ${7 - after} 天拿 7 天獎勵（+${GAME_MONTH7.gold} 金幣）`;
+  } else if (!signedToday && ms.count < 7) {
+    goal = `今天簽完就拿到 7 天獎勵（+${GAME_MONTH7.gold} 金幣）！`;
+  } else if (after < ms.days) {
+    goal = `全勤還差 ${ms.days - after} 天（+${GAME_MONTH_ALL.gold} 金幣）`;
+  } else if (!signedToday && ms.count < ms.days) {
+    goal = `今天簽完就是全勤（+${GAME_MONTH_ALL.gold} 金幣）！`;
+  } else {
+    goal = "本月全勤達成 🏆";
+  }
+
+  return `<div class="game-pop-month">📆 ${ms.m} 月已簽 ${ms.count} 天・${goal}</div>`;
+
+}
+
+
+/* =========================================================
+   4. 樣式（遊戲功能的樣式都放這裡，不用改 index.html）
+========================================================= */
+
+(function gameInjectStyle() {
+
+  if (document.getElementById("game-style")) return;
+
+  const style = document.createElement("style");
+  style.id = "game-style";
+  style.textContent = `
+    .game-checkin .ck-dots {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+
+    .game-checkin .ck-dot {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      min-height: 52px;
+      border-radius: 10px;
+      background: #10131a;
+      border: 1px solid #2c3342;
+      color: #8a93a8;
+      font-size: 12px;
+    }
+
+    .game-checkin .ck-dot .ck-icon {
+      min-height: 16px;
+      font-size: 14px;
+      line-height: 16px;
+    }
+
+    .game-checkin .ck-dot.bonus:not(.done) .ck-icon {
+      opacity: .45;
+    }
+
+    .game-checkin .ck-dot.done {
+      background: #1f2547;
+      border-color: #5865f2;
+      color: #fff;
+    }
+
+    .game-checkin .ck-dot.crit {
+      background: #3a2f12;
+      border-color: #f5b942;
+      color: #ffd978;
+    }
+
+    .game-checkin .ck-dot.next {
+      border-style: dashed;
+      border-color: #5865f2;
+      color: #cfd6e4;
+    }
+
+    .game-checkin .ck-dot.pop {
+      animation: ck-pop .5s ease-out;
+    }
+
+    .game-checkin .ck-stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 14px;
+      text-align: center;
+    }
+
+    .game-checkin .ck-stats > div {
+      padding: 10px 4px;
+      border-radius: 10px;
+      background: #10131a;
+    }
+
+    .game-checkin .ck-stats b {
+      display: block;
+      font-size: 20px;
+    }
+
+    .game-checkin .ck-stats span {
+      font-size: 12px;
+      opacity: .6;
+    }
+
+    .game-checkin .ck-btn {
+      width: 100%;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .game-checkin .ck-btn.is-sure {
+      background: linear-gradient(90deg, #b8860b, #f5b942);
+      color: #1a1405;
+    }
+
+    .game-checkin .ck-btn:disabled {
+      opacity: .6;
+      cursor: default;
+    }
+
+    .game-checkin .ck-result {
+      padding: 14px;
+      margin-bottom: 14px;
+      border-radius: 12px;
+      text-align: center;
+      background: #10131a;
+      border: 1px solid #2c3342;
+    }
+
+    .game-checkin .ck-result.is-crit {
+      background: #3a2f12;
+      border-color: #f5b942;
+      color: #ffd978;
+      box-shadow: 0 0 18px rgba(245, 185, 66, .25);
+    }
+
+    .game-checkin .ck-result.reveal {
+      animation: ck-pop .5s ease-out;
+    }
+
+    .game-checkin .ck-result-title {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .game-checkin .ck-result-reward {
+      margin-top: 4px;
+      font-size: 14px;
+      opacity: .85;
+    }
+
+    .game-checkin .ck-broken {
+      margin-bottom: 12px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: #2a1d22;
+      color: #ffb3c0;
+      font-size: 13px;
+    }
+
+    .game-checkin .ck-error {
+      line-height: 1.6;
+      color: #ffb3c0;
+    }
+
+    .game-checkin .ck-rules {
+      margin-top: 14px;
+      padding-top: 10px;
+      border-top: 1px solid #2c3342;
+      font-size: 13px;
+    }
+
+    .game-checkin .ck-rules summary {
+      cursor: pointer;
+      opacity: .8;
+    }
+
+    .game-checkin .ck-rules ul {
+      margin: 8px 0 0;
+      padding-left: 20px;
+      line-height: 1.8;
+      opacity: .85;
+    }
+
+    .game-checkin .ck-version {
+      margin-top: 6px;
+      font-size: 11px;
+      opacity: .4;
+      text-align: right;
+    }
+
+    .game-pop-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 180;
+      background: rgba(0, 0, 0, .6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .game-pop-box {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      max-height: calc(100vh - 32px);
+      overflow-y: auto;
+      background: #181c26;
+      border: 1px solid #5865f2;
+      border-radius: 18px;
+      padding: 22px;
+      box-shadow: 0 15px 50px rgba(0, 0, 0, .5);
+      animation: ck-pop .3s ease-out;
+    }
+
+    .game-pop-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 14px;
+    }
+
+    .game-pop-close {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 32px;
+      height: 32px;
+      border: 0;
+      border-radius: 50%;
+      background: #252b38;
+      color: #fff;
+      font-size: 15px;
+    }
+
+    .game-pop-box .ck-stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 14px;
+      text-align: center;
+    }
+
+    .game-pop-box .ck-stats > div {
+      padding: 10px 4px;
+      border-radius: 10px;
+      background: #10131a;
+    }
+
+    .game-pop-box .ck-stats b {
+      display: block;
+      font-size: 20px;
+    }
+
+    .game-pop-box .ck-stats span {
+      font-size: 12px;
+      opacity: .6;
+    }
+
+    .game-pop-box .ck-result {
+      padding: 14px;
+      margin-bottom: 14px;
+      border-radius: 12px;
+      text-align: center;
+      background: #10131a;
+      border: 1px solid #2c3342;
+    }
+
+    .game-pop-box .ck-result.is-crit {
+      background: #3a2f12;
+      border-color: #f5b942;
+      color: #ffd978;
+    }
+
+    .game-pop-box .ck-result-title {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .game-pop-box .ck-result-reward {
+      margin-top: 4px;
+      font-size: 14px;
+      opacity: .85;
+    }
+
+    .game-pop-box .ck-broken {
+      margin-bottom: 12px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: #2a1d22;
+      color: #ffb3c0;
+      font-size: 13px;
+    }
+
+    .game-pop-box .ck-error {
+      line-height: 1.6;
+      color: #ffb3c0;
+    }
+
+    .game-pop-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .game-pop-actions .btn {
+      flex: 1;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .game-pop-btn.is-sure {
+      background: linear-gradient(90deg, #b8860b, #f5b942);
+      color: #1a1405;
+    }
+
+    .game-pop-btn:disabled {
+      opacity: .6;
+    }
+
+    .game-checkin .ck-month {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid #2c3342;
+    }
+
+    .game-checkin .ck-month-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 4px 10px;
+      margin-bottom: 10px;
+    }
+
+    .game-checkin .ck-goals {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .game-checkin .ck-goal {
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #10131a;
+      border: 1px solid #2c3342;
+      font-size: 13px;
+    }
+
+    .game-checkin .ck-goal.done {
+      border-color: #42d392;
+    }
+
+    .game-checkin .ck-goal-top {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 2px 8px;
+      font-weight: 700;
+    }
+
+    .game-checkin .ck-goal-reward {
+      font-weight: normal;
+      color: #ffd76a;
+      font-size: 12px;
+    }
+
+    .game-checkin .ck-bar {
+      height: 6px;
+      margin: 8px 0 4px;
+      border-radius: 999px;
+      background: #252b38;
+      overflow: hidden;
+    }
+
+    .game-checkin .ck-bar i {
+      display: block;
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #5865f2, #9b6cff);
+    }
+
+    .game-checkin .ck-goal.done .ck-bar i {
+      background: #42d392;
+    }
+
+    .game-checkin .ck-goal-state {
+      font-size: 12px;
+      opacity: .7;
+    }
+
+    .game-checkin .ck-cal {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 4px;
+    }
+
+    .game-checkin .ck-cal-head {
+      text-align: center;
+      font-size: 11px;
+      opacity: .55;
+      padding-bottom: 2px;
+    }
+
+    .game-checkin .ck-cal-day {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1px;
+      min-width: 0;
+      min-height: 42px;
+      padding: 2px;
+      border-radius: 8px;
+      border: 1px solid #2c3342;
+      background: #10131a;
+      color: #8a93a8;
+      font: inherit;
+      font-size: 12px;
+    }
+
+    .game-checkin .ck-cal-day b {
+      font-size: 11px;
+      min-height: 14px;
+      line-height: 14px;
+      font-weight: 600;
+    }
+
+    .game-checkin .ck-cal-day.done {
+      background: #1f2547;
+      border-color: #5865f2;
+      color: #fff;
+    }
+
+    .game-checkin .ck-cal-day.crit {
+      background: #3a2f12;
+      border-color: #f5b942;
+      color: #ffd978;
+    }
+
+    .game-checkin .ck-cal-day.makeup {
+      background: #1d2a24;
+      border-color: #42d392;
+      color: #7bed9f;
+    }
+
+    .game-checkin .ck-cal-day.missed {
+      border-style: dashed;
+      border-color: #ff6b81;
+      color: #ffb3c0;
+      cursor: pointer;
+    }
+
+    .game-checkin .ck-cal-day.missed:hover {
+      background: #2a1d22;
+    }
+
+    .game-checkin .ck-cal-day.missed:disabled {
+      opacity: .5;
+      cursor: default;
+    }
+
+    .game-checkin .ck-cal-day.is-today {
+      box-shadow: 0 0 0 2px #9b6cff;
+    }
+
+    .game-checkin .ck-cal-day.pending {
+      color: #cfd6e4;
+    }
+
+    .game-checkin .ck-cal-day.future {
+      opacity: .4;
+    }
+
+    .game-pop-month {
+      margin-bottom: 14px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(88, 101, 242, .12);
+      border: 1px solid rgba(88, 101, 242, .35);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 500px) {
+      .game-checkin .ck-goals {
+        grid-template-columns: 1fr;
+      }
+
+      .game-checkin .ck-cal-day {
+        min-height: 38px;
+      }
+
+      .game-checkin .ck-cal-day b {
+        font-size: 10px;
+      }
+    }
+
+    .game-mode-bar {
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .game-checkin-chip {
+      border: 1px solid #5865f2;
+      background: #1f2547;
+      color: #fff;
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .game-checkin-chip.is-done {
+      border-color: #3a4152;
+      background: #252b38;
+      color: #cfd6e4;
+      font-weight: normal;
+    }
+
+    #game-month-card .ck-month {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
+    }
+
+    .game-pop-box .ck-go-makeup {
+      display: block;
+      margin: -6px 0 14px;
+      font-size: 14px;
+      text-align: left;
+    }
+
+    @keyframes ck-pop {
+      0%   { transform: scale(.85); opacity: 0; }
+      60%  { transform: scale(1.06); opacity: 1; }
+      100% { transform: scale(1); }
+    }
+  `;
+
+  document.head.appendChild(style);
+
+})();
