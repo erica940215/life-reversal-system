@@ -9,7 +9,7 @@
 ========================================================= */
 
 /* 版本號：會顯示在簽到卡最下面，用來確認瀏覽器載入的是新版 */
-const GAME_JS_VERSION = "2026-10-16 v3";
+const GAME_JS_VERSION = "2026-10-16 v4";
 
 
 /* =========================================================
@@ -155,7 +155,10 @@ function gameOnModeChange() {
 
   card.hidden = !on;
 
-  if (!on) return;
+  if (!on) {
+    gameClosePopup();
+    return;
+  }
 
   const stale =
     !gameCheckinState.loaded ||
@@ -394,6 +397,8 @@ function renderGameCheckin() {
 
   card.innerHTML = head + `<div class="ck-dots">${dots}</div>` + body + rules;
 
+  gameRefreshPopup();
+
 }
 
 
@@ -465,6 +470,174 @@ async function gameCheckin() {
 
   /* 更新上方的等級 / 金幣和今日獎勵 */
   await afterRewardChange(data, null, null);
+
+}
+
+
+/* =========================================================
+   3-b. 🪟 簽到彈窗
+   每天第一次打開遊戲模式、而且今天還沒簽到，就自動跳出來。
+   同一天只自動跳一次（關掉後不會再跳），卡片上的按鈕隨時可以簽。
+   簽完後彈窗會顯示結果，可以關掉。
+========================================================= */
+
+function gameAutoKey() {
+  return "ck-popup:" + currentUser.id + ":" + getToday();
+}
+
+function gameAutoShownToday() {
+  try {
+    return localStorage.getItem(gameAutoKey()) === "1";
+  } catch (e) {
+    return false;   // 瀏覽器不給存（無痕模式等）就當作沒跳過
+  }
+}
+
+function gameMarkAutoShown() {
+  try {
+    localStorage.setItem(gameAutoKey(), "1");
+  } catch (e) {
+    /* 存不起來沒關係，最多當天再跳一次 */
+  }
+}
+
+function gameShouldAutoPopup() {
+
+  if (!gameIsOn() || !currentUser) return false;
+
+  if (!gameCheckinState.loaded || gameCheckinState.error) return false;
+
+  if (gameCheckinState.userId !== currentUser.id || gameCheckinState.date !== getToday()) return false;
+
+  if (gameCheckinSummary().todayRow) return false;
+
+  return !gameAutoShownToday();
+
+}
+
+
+/* 每次卡片重繪都會呼叫：彈窗開著就更新內容；沒開就看要不要自動跳 */
+function gameRefreshPopup() {
+
+  if (document.getElementById("game-ck-popup")) {
+    gameRenderPopup();
+    return;
+  }
+
+  if (gameShouldAutoPopup()) {
+    gameMarkAutoShown();
+    gameOpenPopup();
+  }
+
+}
+
+
+function gameOpenPopup() {
+
+  if (!document.getElementById("game-ck-popup")) {
+
+    const overlay = document.createElement("div");
+    overlay.id = "game-ck-popup";
+    overlay.className = "game-pop-overlay";
+    overlay.addEventListener("click", e => {
+      if (e.target === overlay) gameClosePopup();
+    });
+
+    document.body.appendChild(overlay);
+
+  }
+
+  gameRenderPopup();
+
+}
+
+
+function gameClosePopup() {
+
+  const overlay = document.getElementById("game-ck-popup");
+
+  if (overlay) overlay.remove();
+
+}
+
+
+function gameRenderPopup() {
+
+  const overlay = document.getElementById("game-ck-popup");
+
+  if (!overlay) return;
+
+  const busy = gameCheckinState.busy;
+  const head = `
+    <button class="game-pop-close" type="button" aria-label="關閉" onclick="gameClosePopup()">✕</button>
+    <div class="game-pop-title" id="game-pop-title">📅 今天的簽到</div>`;
+
+  if (gameCheckinState.error) {
+    overlay.innerHTML = `
+      <div class="game-pop-box" role="dialog" aria-modal="true" aria-labelledby="game-pop-title">
+        ${head}
+        <div class="ck-error">簽到功能還沒設定好，請先執行「遊戲_每日簽到.sql」。</div>
+      </div>`;
+    return;
+  }
+
+  if (!gameCheckinState.loaded) {
+    overlay.innerHTML = `
+      <div class="game-pop-box" role="dialog" aria-modal="true" aria-labelledby="game-pop-title">
+        ${head}
+        <div class="small-note">載入中...</div>
+      </div>`;
+    return;
+  }
+
+  const s = gameCheckinSummary();
+
+  let body;
+
+  if (s.todayRow) {
+
+    const r = s.todayRow;
+
+    body = `
+      <div class="ck-result ${r.crit ? "is-crit" : ""}">
+        <div class="ck-result-title">${r.crit ? "💥 爆擊！獎勵 ×2" : "✅ 今天簽到完成"}</div>
+        <div class="ck-result-reward">+${r.gold} 金幣・+${r.exp} EXP（連續 ${s.streak} 天）</div>
+      </div>
+      <div class="game-pop-actions">
+        <button class="btn btn-primary" type="button" onclick="gameClosePopup()">完成</button>
+      </div>`;
+
+  } else {
+
+    const chance = gameCheckinCritChance(s.nextStreak);
+    const gold = gameCheckinGold(s.nextStreak);
+
+    body = `
+      ${s.broken ? `<div class="ck-broken">昨天沒簽到，連續天數從第 1 天重新開始</div>` : ""}
+      <div class="ck-stats">
+        <div><b>${s.streak}</b><span>目前連續</span></div>
+        <div><b>${chance}%</b><span>今天爆擊機率</span></div>
+        <div><b>+${gold}</b><span>今天金幣</span></div>
+      </div>
+      <div class="game-pop-actions">
+        <button
+          class="btn btn-primary game-pop-btn ${chance === 100 ? "is-sure" : ""}"
+          type="button"
+          onclick="gameCheckin()"
+          ${busy ? "disabled" : ""}
+        >
+          ${busy ? "簽到中..." : (chance === 100 ? "💥 簽到（今天必定爆擊！）" : "📅 簽到")}
+        </button>
+        <button class="btn" type="button" onclick="gameClosePopup()">稍後再說</button>
+      </div>`;
+
+  }
+
+  overlay.innerHTML = `
+    <div class="game-pop-box" role="dialog" aria-modal="true" aria-labelledby="game-pop-title">
+      ${head}
+      ${body}
+    </div>`;
 
 }
 
@@ -643,6 +816,134 @@ async function gameCheckin() {
       font-size: 11px;
       opacity: .4;
       text-align: right;
+    }
+
+    .game-pop-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 180;
+      background: rgba(0, 0, 0, .6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .game-pop-box {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      max-height: calc(100vh - 32px);
+      overflow-y: auto;
+      background: #181c26;
+      border: 1px solid #5865f2;
+      border-radius: 18px;
+      padding: 22px;
+      box-shadow: 0 15px 50px rgba(0, 0, 0, .5);
+      animation: ck-pop .3s ease-out;
+    }
+
+    .game-pop-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 14px;
+    }
+
+    .game-pop-close {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 32px;
+      height: 32px;
+      border: 0;
+      border-radius: 50%;
+      background: #252b38;
+      color: #fff;
+      font-size: 15px;
+    }
+
+    .game-pop-box .ck-stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 14px;
+      text-align: center;
+    }
+
+    .game-pop-box .ck-stats > div {
+      padding: 10px 4px;
+      border-radius: 10px;
+      background: #10131a;
+    }
+
+    .game-pop-box .ck-stats b {
+      display: block;
+      font-size: 20px;
+    }
+
+    .game-pop-box .ck-stats span {
+      font-size: 12px;
+      opacity: .6;
+    }
+
+    .game-pop-box .ck-result {
+      padding: 14px;
+      margin-bottom: 14px;
+      border-radius: 12px;
+      text-align: center;
+      background: #10131a;
+      border: 1px solid #2c3342;
+    }
+
+    .game-pop-box .ck-result.is-crit {
+      background: #3a2f12;
+      border-color: #f5b942;
+      color: #ffd978;
+    }
+
+    .game-pop-box .ck-result-title {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .game-pop-box .ck-result-reward {
+      margin-top: 4px;
+      font-size: 14px;
+      opacity: .85;
+    }
+
+    .game-pop-box .ck-broken {
+      margin-bottom: 12px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: #2a1d22;
+      color: #ffb3c0;
+      font-size: 13px;
+    }
+
+    .game-pop-box .ck-error {
+      line-height: 1.6;
+      color: #ffb3c0;
+    }
+
+    .game-pop-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .game-pop-actions .btn {
+      flex: 1;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .game-pop-btn.is-sure {
+      background: linear-gradient(90deg, #b8860b, #f5b942);
+      color: #1a1405;
+    }
+
+    .game-pop-btn:disabled {
+      opacity: .6;
     }
 
     @keyframes ck-pop {
