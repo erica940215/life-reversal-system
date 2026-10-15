@@ -9,7 +9,7 @@
 ========================================================= */
 
 /* 版本號：會顯示在簽到卡最下面，用來確認瀏覽器載入的是新版 */
-const GAME_JS_VERSION = "2026-10-16 v5";
+const GAME_JS_VERSION = "2026-10-16 v6";
 
 
 /* =========================================================
@@ -147,13 +147,13 @@ if (GAME_HAS_CORE) {
 
 function gameOnModeChange() {
 
-  const card = gameEnsureCheckinCard();
-
-  if (!card) return;
-
   const on = gameIsOn() && !!currentUser;
 
-  card.hidden = !on;
+  const chip = gameEnsureChip();
+  const card = gameEnsureMonthCard();
+
+  if (chip) chip.hidden = !on;
+  if (card) card.hidden = !on;
 
   if (!on) {
     gameClosePopup();
@@ -176,6 +176,9 @@ function gameOnModeChange() {
 
 /* =========================================================
    3. 📅 每日簽到
+   - 主頁：只有遊戲模式按鈕旁邊一個小按鈕，點了打開簽到彈窗
+   - 彈窗：今天還沒簽，每次打開網頁都會自動跳出來
+   - 日曆頁：本月簽到月曆、每月獎勵、補簽、規則
 ========================================================= */
 
 let gameCheckinState = {
@@ -185,32 +188,59 @@ let gameCheckinState = {
   error: null,
   userId: null,
   date: null,
-  rows: [],          // 最近 8 天的簽到紀錄（新的在前）
+  rows: [],          // 這個月 ＋ 最近 8 天的簽到紀錄（新的在前）
   justDone: null     // 剛剛簽到的結果（用來播動畫）
 };
 
 
-function gameEnsureCheckinCard() {
+/* 主頁：遊戲模式按鈕旁邊的「📅 簽到」小按鈕 */
+function gameEnsureChip() {
 
-  let card = document.getElementById("game-checkin-card");
+  let chip = document.getElementById("game-checkin-chip");
+
+  if (chip) return chip;
+
+  const bar = document.querySelector(".game-mode-bar");
+
+  if (!bar) return null;
+
+  chip = document.createElement("button");
+  chip.id = "game-checkin-chip";
+  chip.type = "button";
+  chip.className = "game-checkin-chip";
+  chip.hidden = true;
+  chip.textContent = "📅 簽到";
+  chip.addEventListener("click", () => gameOpenPopup());
+
+  bar.prepend(chip);
+
+  return chip;
+
+}
+
+
+/* 日曆頁：本月簽到卡（放在日曆下面、Google 日曆上面） */
+function gameEnsureMonthCard() {
+
+  let card = document.getElementById("game-month-card");
 
   if (card) return card;
 
-  const page = document.querySelector('.page[data-page="today"]');
+  const page = document.querySelector('.page[data-page="calendar"]');
 
   if (!page) return null;
 
   card = document.createElement("section");
   card.className = "card game-checkin";
-  card.id = "game-checkin-card";
+  card.id = "game-month-card";
   card.hidden = true;
 
-  const bar = page.querySelector(".game-mode-bar");
+  const firstCard = page.querySelector("section.card");
 
-  if (bar) {
-    bar.after(card);
+  if (firstCard) {
+    firstCard.after(card);
   } else {
-    page.prepend(card);
+    page.appendChild(card);
   }
 
   return card;
@@ -295,17 +325,51 @@ function gameCheckinSummary() {
 
 function renderGameCheckin() {
 
-  const card = document.getElementById("game-checkin-card");
+  renderGameChip();
+  renderGameMonthCard();
+  gameRefreshPopup();
+
+}
+
+
+function renderGameChip() {
+
+  const chip = document.getElementById("game-checkin-chip");
+
+  if (!chip || chip.hidden) return;
+
+  if (!gameCheckinState.loaded || gameCheckinState.error) {
+    chip.textContent = "📅 簽到";
+    chip.classList.remove("is-done");
+    return;
+  }
+
+  const s = gameCheckinSummary();
+
+  chip.classList.toggle("is-done", !!s.todayRow);
+  chip.textContent = s.todayRow ? `✅ 已簽到・🔥 ${s.streak} 天` : "📅 簽到";
+
+}
+
+
+function renderGameMonthCard() {
+
+  const card = document.getElementById("game-month-card");
 
   if (!card || card.hidden) return;
 
+  const loaded = gameCheckinState.loaded && !gameCheckinState.error;
+  const signed = loaded && !!gameCheckinSummary().todayRow;
+
   const head = `
     <div class="card-head">
-      <h2>📅 每日簽到</h2>
-      <span class="small-note">每連續 7 天必定爆擊・斷簽歸零</span>
+      <h2>📆 簽到月曆</h2>
+      <button class="btn btn-small ${signed ? "" : "btn-primary"}" type="button" onclick="gameOpenPopup()">
+        ${signed ? "✅ 今天已簽到" : "📅 今天簽到"}
+      </button>
     </div>`;
 
-  const rules = gameCheckinRulesHtml();
+  const rules = gameCheckinRulesHtml(true);
 
   if (!gameCheckinState.loaded) {
     card.innerHTML = head + `<span class="small-note">載入中...</span>` + rules;
@@ -313,15 +377,29 @@ function renderGameCheckin() {
   }
 
   if (gameCheckinState.error) {
-    card.innerHTML = head + `
-      <div class="ck-error">
-        簽到功能還沒設定好：請先到 Supabase 的 SQL Editor 執行「更新_2點換日_補簽_反省.sql」，再重新整理。
-        <div class="small-note">${escapeHtml(gameCheckinState.error)}</div>
-      </div>` + rules;
+    card.innerHTML = head + gameSetupErrorHtml() + rules;
     return;
   }
 
-  const s = gameCheckinSummary();
+  card.innerHTML = head + gameMonthHtml() + rules;
+
+}
+
+
+function gameSetupErrorHtml() {
+
+  return `
+    <div class="ck-error">
+      簽到功能還沒設定好：請先到 Supabase 的 SQL Editor 執行「更新_2點換日_補簽_反省.sql」，再重新整理。
+      <div class="small-note">${escapeHtml(gameCheckinState.error || "")}</div>
+    </div>`;
+
+}
+
+
+/* 連續 7 天的格子（第 7 天必定爆擊） */
+function gameStreakDotsHtml(s) {
+
   const done = !!s.todayRow;
 
   /* 這一輪 7 格：目前停在第幾輪 */
@@ -343,7 +421,7 @@ function renderGameCheckin() {
       isCrit ? "crit" : "",
       isNext ? "next" : "",
       isBonus ? "bonus" : "",
-      isDone && s.todayRow && day === s.streak && gameCheckinState.justDone ? "pop" : ""
+      isDone && done && day === s.streak && gameCheckinState.justDone ? "pop" : ""
     ].filter(Boolean).join(" ");
 
     const icon = isCrit ? "💥" : (isDone ? "✓" : (isBonus ? "💥" : ""));
@@ -355,72 +433,27 @@ function renderGameCheckin() {
       </div>`;
   }
 
-  let body;
-
-  if (done) {
-
-    const r = s.todayRow;
-    const nextChance = gameCheckinCritChance(s.nextStreak);
-
-    body = `
-      <div class="ck-result ${r.crit ? "is-crit" : ""} ${gameCheckinState.justDone ? "reveal" : ""}">
-        <div class="ck-result-title">
-          ${r.crit ? "💥 爆擊！獎勵 ×2" : "✅ 今日已簽到"}
-        </div>
-        <div class="ck-result-reward">+${r.gold} 金幣・+${r.exp} EXP</div>
-      </div>
-      <div class="ck-stats">
-        <div><b>${s.streak}</b><span>連續天數</span></div>
-        <div><b>${nextChance}%</b><span>明天爆擊機率</span></div>
-        <div><b>+${gameCheckinGold(s.nextStreak)}</b><span>明天金幣</span></div>
-      </div>`;
-
-  } else {
-
-    const chance = gameCheckinCritChance(s.nextStreak);
-    const gold = gameCheckinGold(s.nextStreak);
-
-    body = `
-      ${s.broken ? `<div class="ck-broken">昨天沒簽到，連續天數從第 1 天重新開始</div>` : ""}
-      <div class="ck-stats">
-        <div><b>${s.streak}</b><span>目前連續</span></div>
-        <div><b>${chance}%</b><span>爆擊機率</span></div>
-        <div><b>+${gold}</b><span>金幣</span></div>
-      </div>
-      <button
-        class="btn btn-primary ck-btn ${chance === 100 ? "is-sure" : ""}"
-        type="button"
-        onclick="gameCheckin()"
-        ${gameCheckinState.busy ? "disabled" : ""}
-      >
-        ${gameCheckinState.busy
-          ? "簽到中..."
-          : (chance === 100 ? "💥 簽到（今天必定爆擊！）" : "📅 簽到")}
-      </button>`;
-
-  }
-
-  card.innerHTML = head + `<div class="ck-dots">${dots}</div>` + body + gameMonthHtml() + rules;
-
-  gameRefreshPopup();
+  return `<div class="ck-dots">${dots}</div>`;
 
 }
 
 
-/* 簽到規則：預設展開，可以點標題收起來 */
-function gameCheckinRulesHtml() {
+/* 簽到規則：日曆頁預設展開；彈窗裡收起來 */
+function gameCheckinRulesHtml(open) {
+
+  const startHour = typeof DAY_START_HOUR === "number" ? DAY_START_HOUR : 0;
 
   return `
-    <details class="ck-rules" open>
+    <details class="ck-rules" ${open ? "open" : ""}>
       <summary>📖 簽到規則</summary>
       <ul>
         <li>每天按一次「📅 簽到」，可以拿到 +${GAME_CHECKIN_EXP} EXP 和金幣。金幣從 10 開始，連續每多一天 +1，最多 20。</li>
         <li>爆擊時獎勵 ×2。爆擊機率第 1 天是 5%，之後每天 +2%，最高 35%。</li>
         <li>每連續第 7 天必定爆擊，那天的按鈕會變成金色。</li>
         <li>昨天沒簽就算斷簽，連續天數從第 1 天重新算。</li>
-        <li>一天從凌晨 ${typeof DAY_START_HOUR === "number" ? DAY_START_HOUR : 0} 點開始：凌晨 0 點到 ${typeof DAY_START_HOUR === "number" ? DAY_START_HOUR : 0} 點前簽到，算前一天。</li>
+        <li>一天從凌晨 ${startHour} 點開始：凌晨 0 點到 ${startHour} 點前簽到，算前一天。</li>
         <li>每月獎勵（當月累計，不用連續）：累計 7 天 +${GAME_MONTH7.gold} 金幣・+${GAME_MONTH7.exp} EXP；當月每天都簽（全勤）再 +${GAME_MONTH_ALL.gold} 金幣・+${GAME_MONTH_ALL.exp} EXP。每個月各領一次。</li>
-        <li>補簽：在本月月曆點沒簽的日子（只能補這個月、今天以前）。這個月第 1 次 ${GAME_MAKEUP_BASE} 金幣，之後每次多 ${GAME_MAKEUP_STEP}。補簽不拿當天的簽到獎勵，但會接回連續天數、算進每月累計。</li>
+        <li>補簽：在「📅 日曆」頁的簽到月曆點沒簽的日子（只能補這個月、今天以前）。這個月第 1 次 ${GAME_MAKEUP_BASE} 金幣，之後每次多 ${GAME_MAKEUP_STEP}。補簽不拿當天的簽到獎勵，但會接回連續天數、算進每月累計。</li>
         <li>爆擊和獎勵都由資料庫決定，從網頁端改不了，連按兩次也只算一次。</li>
       </ul>
       <div class="ck-version">game.js 版本：${GAME_JS_VERSION}</div>
@@ -661,30 +694,12 @@ async function gameMakeup(date) {
 
 /* =========================================================
    3-b. 🪟 簽到彈窗
-   每天第一次打開遊戲模式、而且今天還沒簽到，就自動跳出來。
-   同一天只自動跳一次（關掉後不會再跳），卡片上的按鈕隨時可以簽。
-   簽完後彈窗會顯示結果，可以關掉。
+   今天還沒簽到，每次打開網頁都會自動跳出來（按「稍後再說」就先關掉，
+   主頁的「📅 簽到」按鈕隨時能再打開）。簽完後顯示結果。
 ========================================================= */
 
-function gameAutoKey() {
-  return "ck-popup:" + currentUser.id + ":" + getToday();
-}
+let gamePopupAutoDate = null;   // 這次打開網頁，哪一天已經自動跳過了
 
-function gameAutoShownToday() {
-  try {
-    return localStorage.getItem(gameAutoKey()) === "1";
-  } catch (e) {
-    return false;   // 瀏覽器不給存（無痕模式等）就當作沒跳過
-  }
-}
-
-function gameMarkAutoShown() {
-  try {
-    localStorage.setItem(gameAutoKey(), "1");
-  } catch (e) {
-    /* 存不起來沒關係，最多當天再跳一次 */
-  }
-}
 
 function gameShouldAutoPopup() {
 
@@ -692,16 +707,18 @@ function gameShouldAutoPopup() {
 
   if (!gameCheckinState.loaded || gameCheckinState.error) return false;
 
-  if (gameCheckinState.userId !== currentUser.id || gameCheckinState.date !== getToday()) return false;
+  const today = getToday();
 
-  if (gameCheckinSummary().todayRow) return false;
+  if (gameCheckinState.userId !== currentUser.id || gameCheckinState.date !== today) return false;
 
-  return !gameAutoShownToday();
+  if (gamePopupAutoDate === today) return false;
+
+  return !gameCheckinSummary().todayRow;
 
 }
 
 
-/* 每次卡片重繪都會呼叫：彈窗開著就更新內容；沒開就看要不要自動跳 */
+/* 每次簽到資料重繪都會呼叫：彈窗開著就更新內容；沒開就看要不要自動跳 */
 function gameRefreshPopup() {
 
   if (document.getElementById("game-ck-popup")) {
@@ -710,7 +727,7 @@ function gameRefreshPopup() {
   }
 
   if (gameShouldAutoPopup()) {
-    gameMarkAutoShown();
+    gamePopupAutoDate = getToday();
     gameOpenPopup();
   }
 
@@ -718,6 +735,8 @@ function gameRefreshPopup() {
 
 
 function gameOpenPopup() {
+
+  if (!gameIsOn()) return;
 
   if (!document.getElementById("game-ck-popup")) {
 
@@ -746,6 +765,21 @@ function gameClosePopup() {
 }
 
 
+/* 彈窗的「去日曆補簽」：跳到日曆頁的簽到月曆 */
+function gameGoMakeup() {
+
+  gameClosePopup();
+
+  showPage("calendar");
+
+  setTimeout(() => {
+    const card = document.getElementById("game-month-card");
+    if (card) card.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 150);
+
+}
+
+
 function gameRenderPopup() {
 
   const overlay = document.getElementById("game-ck-popup");
@@ -753,41 +787,52 @@ function gameRenderPopup() {
   if (!overlay) return;
 
   const busy = gameCheckinState.busy;
-  const head = `
-    <button class="game-pop-close" type="button" aria-label="關閉" onclick="gameClosePopup()">✕</button>
-    <div class="game-pop-title" id="game-pop-title">📅 今天的簽到</div>`;
+
+  const wrap = inner => `
+    <div class="game-pop-box game-checkin" role="dialog" aria-modal="true" aria-labelledby="game-pop-title">
+      <button class="game-pop-close" type="button" aria-label="關閉" onclick="gameClosePopup()">✕</button>
+      <div class="game-pop-title" id="game-pop-title">📅 今天的簽到</div>
+      ${inner}
+    </div>`;
 
   if (gameCheckinState.error) {
-    overlay.innerHTML = `
-      <div class="game-pop-box" role="dialog" aria-modal="true" aria-labelledby="game-pop-title">
-        ${head}
-        <div class="ck-error">簽到功能還沒設定好，請先執行「更新_2點換日_補簽_反省.sql」。</div>
-      </div>`;
+    overlay.innerHTML = wrap(gameSetupErrorHtml());
     return;
   }
 
   if (!gameCheckinState.loaded) {
-    overlay.innerHTML = `
-      <div class="game-pop-box" role="dialog" aria-modal="true" aria-labelledby="game-pop-title">
-        ${head}
-        <div class="small-note">載入中...</div>
-      </div>`;
+    overlay.innerHTML = wrap(`<div class="small-note">載入中...</div>`);
     return;
   }
 
   const s = gameCheckinSummary();
+  const ms = gameMonthSummary();
+
+  const makeupLink = ms.missed.length > 0 ? `
+    <button class="link-btn ck-go-makeup" type="button" onclick="gameGoMakeup()">
+      📆 這個月有 ${ms.missed.length} 天沒簽 → 去日曆補簽
+    </button>` : "";
 
   let body;
 
   if (s.todayRow) {
 
     const r = s.todayRow;
+    const nextChance = gameCheckinCritChance(s.nextStreak);
 
     body = `
-      <div class="ck-result ${r.crit ? "is-crit" : ""}">
+      ${gameStreakDotsHtml(s)}
+      <div class="ck-result ${r.crit ? "is-crit" : ""} ${gameCheckinState.justDone ? "reveal" : ""}">
         <div class="ck-result-title">${r.crit ? "💥 爆擊！獎勵 ×2" : "✅ 今天簽到完成"}</div>
-        <div class="ck-result-reward">+${r.gold} 金幣・+${r.exp} EXP（連續 ${s.streak} 天）</div>
+        <div class="ck-result-reward">+${r.gold} 金幣・+${r.exp} EXP</div>
       </div>
+      <div class="ck-stats">
+        <div><b>${s.streak}</b><span>連續天數</span></div>
+        <div><b>${nextChance}%</b><span>明天爆擊機率</span></div>
+        <div><b>+${gameCheckinGold(s.nextStreak)}</b><span>明天金幣</span></div>
+      </div>
+      ${gamePopupMonthLine(true, ms)}
+      ${makeupLink}
       <div class="game-pop-actions">
         <button class="btn btn-primary" type="button" onclick="gameClosePopup()">完成</button>
       </div>`;
@@ -799,12 +844,14 @@ function gameRenderPopup() {
 
     body = `
       ${s.broken ? `<div class="ck-broken">昨天沒簽到，連續天數從第 1 天重新開始</div>` : ""}
+      ${gameStreakDotsHtml(s)}
       <div class="ck-stats">
         <div><b>${s.streak}</b><span>目前連續</span></div>
         <div><b>${chance}%</b><span>今天爆擊機率</span></div>
         <div><b>+${gold}</b><span>今天金幣</span></div>
       </div>
-      ${gamePopupMonthLine()}
+      ${gamePopupMonthLine(false, ms)}
+      ${makeupLink}
       <div class="game-pop-actions">
         <button
           class="btn btn-primary game-pop-btn ${chance === 100 ? "is-sure" : ""}"
@@ -819,38 +866,31 @@ function gameRenderPopup() {
 
   }
 
-  overlay.innerHTML = `
-    <div class="game-pop-box" role="dialog" aria-modal="true" aria-labelledby="game-pop-title">
-      ${head}
-      ${body}
-    </div>`;
+  overlay.innerHTML = wrap(body + gameCheckinRulesHtml(false));
 
 }
 
 
 /* 彈窗裡的一行本月進度 */
-function gamePopupMonthLine() {
+function gamePopupMonthLine(signedToday, ms) {
 
-  const ms = gameMonthSummary();
-  const after = ms.count + 1;   // 今天簽完之後
+  const after = signedToday ? ms.count : ms.count + 1;   // 今天簽完之後的天數
 
-  let goalText;
+  let goal;
 
-  if (ms.count < 7) {
-    goalText = after >= 7
-      ? `今天簽完就拿到 7 天獎勵（+${GAME_MONTH7.gold} 金幣）！`
-      : `再簽 ${7 - after} 天拿 7 天獎勵`;
+  if (after < 7) {
+    goal = `再簽 ${7 - after} 天拿 7 天獎勵（+${GAME_MONTH7.gold} 金幣）`;
+  } else if (!signedToday && ms.count < 7) {
+    goal = `今天簽完就拿到 7 天獎勵（+${GAME_MONTH7.gold} 金幣）！`;
+  } else if (after < ms.days) {
+    goal = `全勤還差 ${ms.days - after} 天（+${GAME_MONTH_ALL.gold} 金幣）`;
+  } else if (!signedToday && ms.count < ms.days) {
+    goal = `今天簽完就是全勤（+${GAME_MONTH_ALL.gold} 金幣）！`;
   } else {
-    goalText = after >= ms.days
-      ? `今天簽完就是全勤（+${GAME_MONTH_ALL.gold} 金幣）！`
-      : `全勤還差 ${ms.days - after} 天`;
+    goal = "本月全勤達成 🏆";
   }
 
-  return `
-    <div class="game-pop-month">
-      📆 ${ms.m} 月已簽 ${ms.count} 天・${goalText}
-      ${ms.missed.length > 0 ? `<div class="small-note">這個月有 ${ms.missed.length} 天沒簽，可以在簽到卡的月曆補簽</div>` : ""}
-    </div>`;
+  return `<div class="game-pop-month">📆 ${ms.m} 月已簽 ${ms.count} 天・${goal}</div>`;
 
 }
 
@@ -1336,6 +1376,42 @@ function gamePopupMonthLine() {
       .game-checkin .ck-cal-day b {
         font-size: 10px;
       }
+    }
+
+    .game-mode-bar {
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .game-checkin-chip {
+      border: 1px solid #5865f2;
+      background: #1f2547;
+      color: #fff;
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .game-checkin-chip.is-done {
+      border-color: #3a4152;
+      background: #252b38;
+      color: #cfd6e4;
+      font-weight: normal;
+    }
+
+    #game-month-card .ck-month {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
+    }
+
+    .game-pop-box .ck-go-makeup {
+      display: block;
+      margin: -6px 0 14px;
+      font-size: 14px;
+      text-align: left;
     }
 
     @keyframes ck-pop {
