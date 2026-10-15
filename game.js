@@ -3,9 +3,13 @@
    只在主頁「遊戲模式：開」的時候出現，關閉時畫面和原本一樣。
    之後的遊戲功能（抽獎、圖鑑、主線王…）都放在這個檔案。
 
-   需要 script.js 先載入（會用到 db、currentUser、gameMode、
-   getToday、shiftDate、showToast、escapeHtml、afterRewardChange）。
+   需要 script.js 先載入（會用到 db、currentUser、getToday、
+   shiftDate、showToast、escapeHtml、afterRewardChange）。
+   script.js 有沒有遊戲模式那一段都可以用（沒有的話這裡自己處理開關）。
 ========================================================= */
+
+/* 版本號：會顯示在簽到卡最下面，用來確認瀏覽器載入的是新版 */
+const GAME_JS_VERSION = "2026-10-16 v3";
 
 
 /* =========================================================
@@ -28,11 +32,28 @@ function gameCheckinGold(streak) {
 
 /* =========================================================
    2. 接上遊戲模式開關
-   script.js 的 loadGameMode / toggleGameMode 最後都會呼叫
-   renderGameModeToggle()，在它後面接著更新遊戲區塊
+   新版 script.js：它的 loadGameMode / toggleGameMode 最後都會呼叫
+   renderGameModeToggle()，在它後面接著更新遊戲區塊。
+   舊版 script.js（沒有遊戲模式）：開關改由這裡處理。
 ========================================================= */
 
-if (typeof renderGameModeToggle === "function") {
+const GAME_HAS_CORE = typeof renderGameModeToggle === "function";
+
+let gameFallbackOn = false;   // 只有 script.js 是舊版時才會用到
+
+
+function gameIsOn() {
+
+  if (GAME_HAS_CORE) {
+    return typeof gameMode !== "undefined" && gameMode === true;
+  }
+
+  return gameFallbackOn;
+
+}
+
+
+if (GAME_HAS_CORE) {
 
   const gameBaseRenderToggle = renderGameModeToggle;
 
@@ -40,6 +61,86 @@ if (typeof renderGameModeToggle === "function") {
     gameBaseRenderToggle();
     gameOnModeChange();
   };
+
+} else {
+
+  window.renderGameModeToggle = function () {
+
+    document.body.classList.toggle("game-mode-on", gameFallbackOn);
+
+    const btn = document.getElementById("game-mode-toggle");
+
+    if (btn) {
+      btn.textContent = gameFallbackOn ? "🎲 遊戲模式：開" : "🎲 遊戲模式：關";
+      btn.classList.toggle("is-on", gameFallbackOn);
+      btn.setAttribute("aria-pressed", String(gameFallbackOn));
+    }
+
+    gameOnModeChange();
+
+  };
+
+
+  window.loadGameMode = async function () {
+
+    if (!currentUser) return;
+
+    const { data, error } = await db
+      .from("user_settings")
+      .select("game_mode")
+      .eq("user_id", currentUser.id)
+      .maybeSingle();
+
+    if (error) {
+      console.warn("遊戲模式載入失敗：", error);
+      gameFallbackOn = false;
+    } else {
+      gameFallbackOn = data?.game_mode === true;
+    }
+
+    renderGameModeToggle();
+
+  };
+
+
+  window.toggleGameMode = async function () {
+
+    if (!currentUser) return;
+
+    const next = !gameFallbackOn;
+
+    gameFallbackOn = next;
+    renderGameModeToggle();
+
+    const { error } = await db
+      .from("user_settings")
+      .upsert(
+        { user_id: currentUser.id, game_mode: next, updated_at: new Date().toISOString() },
+        { onConflict: "user_id" }
+      );
+
+    if (error) {
+      console.error("遊戲模式儲存失敗：", error);
+      alert("遊戲模式儲存失敗：" + error.message);
+      gameFallbackOn = !next;
+      renderGameModeToggle();
+    }
+
+  };
+
+
+  /* 舊版 script.js 載入今日資料時不會讀遊戲模式，這裡接在後面補讀 */
+  if (typeof loadTodayModules === "function") {
+
+    const gameBaseLoadToday = loadTodayModules;
+
+    loadTodayModules = async function (...args) {
+      const result = await gameBaseLoadToday.apply(this, args);
+      await loadGameMode();
+      return result;
+    };
+
+  }
 
 }
 
@@ -50,7 +151,7 @@ function gameOnModeChange() {
 
   if (!card) return;
 
-  const on = typeof gameMode !== "undefined" && gameMode && !!currentUser;
+  const on = gameIsOn() && !!currentUser;
 
   card.hidden = !on;
 
@@ -196,8 +297,10 @@ function renderGameCheckin() {
       <span class="small-note">每連續 7 天必定爆擊・斷簽歸零</span>
     </div>`;
 
+  const rules = gameCheckinRulesHtml();
+
   if (!gameCheckinState.loaded) {
-    card.innerHTML = head + `<span class="small-note">載入中...</span>`;
+    card.innerHTML = head + `<span class="small-note">載入中...</span>` + rules;
     return;
   }
 
@@ -206,7 +309,7 @@ function renderGameCheckin() {
       <div class="ck-error">
         簽到功能還沒設定好：請先到 Supabase 的 SQL Editor 執行「遊戲_每日簽到.sql」，再重新整理。
         <div class="small-note">${escapeHtml(gameCheckinState.error)}</div>
-      </div>`;
+      </div>` + rules;
     return;
   }
 
@@ -289,7 +392,26 @@ function renderGameCheckin() {
 
   }
 
-  card.innerHTML = head + `<div class="ck-dots">${dots}</div>` + body;
+  card.innerHTML = head + `<div class="ck-dots">${dots}</div>` + body + rules;
+
+}
+
+
+/* 簽到規則：預設展開，可以點標題收起來 */
+function gameCheckinRulesHtml() {
+
+  return `
+    <details class="ck-rules" open>
+      <summary>📖 簽到規則</summary>
+      <ul>
+        <li>每天按一次「📅 簽到」，可以拿到 +${GAME_CHECKIN_EXP} EXP 和金幣。金幣從 10 開始，連續每多一天 +1，最多 20。</li>
+        <li>爆擊時獎勵 ×2。爆擊機率第 1 天是 5%，之後每天 +2%，最高 35%。</li>
+        <li>每連續第 7 天必定爆擊，那天的按鈕會變成金色。</li>
+        <li>昨天沒簽就算斷簽，連續天數從第 1 天重新算。</li>
+        <li>爆擊和獎勵都由資料庫決定，從網頁端改不了，連按兩次也只算一次。</li>
+      </ul>
+      <div class="ck-version">game.js 版本：${GAME_JS_VERSION}</div>
+    </details>`;
 
 }
 
@@ -495,6 +617,32 @@ async function gameCheckin() {
     .game-checkin .ck-error {
       line-height: 1.6;
       color: #ffb3c0;
+    }
+
+    .game-checkin .ck-rules {
+      margin-top: 14px;
+      padding-top: 10px;
+      border-top: 1px solid #2c3342;
+      font-size: 13px;
+    }
+
+    .game-checkin .ck-rules summary {
+      cursor: pointer;
+      opacity: .8;
+    }
+
+    .game-checkin .ck-rules ul {
+      margin: 8px 0 0;
+      padding-left: 20px;
+      line-height: 1.8;
+      opacity: .85;
+    }
+
+    .game-checkin .ck-version {
+      margin-top: 6px;
+      font-size: 11px;
+      opacity: .4;
+      text-align: right;
     }
 
     @keyframes ck-pop {
