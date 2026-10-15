@@ -289,7 +289,18 @@ function renderGameCheckin() {
 
   }
 
-  card.innerHTML = head + `<div class="ck-dots">${dots}</div>` + body;
+  card.innerHTML = head + `<div class="ck-dots">${dots}</div>` + body + `
+    <details class="ck-rules">
+      <summary>📖 簽到規則</summary>
+      <ul>
+        <li>每天簽到一次：基礎 +5 EXP，金幣 10 起跳，連續每多一天 +1，最多 20。</li>
+        <li>爆擊機率：第 1 天 5%，之後每天 +2%，最高 35%。</li>
+        <li>每連續第 7 天必定爆擊（金色按鈕）。</li>
+        <li>爆擊時獎勵 ×2。</li>
+        <li>昨天沒簽就算斷簽，連續天數從第 1 天重新算。</li>
+        <li>爆擊與獎勵由伺服器決定，網頁端無法修改；連按兩次也只會算一次。</li>
+      </ul>
+    </details>`;
 
 }
 
@@ -495,6 +506,25 @@ async function gameCheckin() {
     .game-checkin .ck-error {
       line-height: 1.6;
       color: #ffb3c0;
+    }
+
+    .game-checkin .ck-rules {
+      margin-top: 14px;
+      padding-top: 10px;
+      border-top: 1px solid #2c3342;
+      font-size: 13px;
+    }
+
+    .game-checkin .ck-rules summary {
+      cursor: pointer;
+      opacity: .8;
+    }
+
+    .game-checkin .ck-rules ul {
+      margin: 8px 0 0;
+      padding-left: 20px;
+      line-height: 1.8;
+      opacity: .85;
     }
 
     @keyframes ck-pop {
