@@ -651,17 +651,30 @@ function showAuthMessage(message, isError = false) {
    11. 取得今天日期
 ========================================================= */
 
-function getToday() {
+/*
+  一天從凌晨 2 點開始：凌晨 0:00–1:59 還算前一天
+  （和資料庫的 app_today() 一致，改這裡要兩邊一起改）
+*/
+const DAY_START_HOUR = 2;
 
-  /*
-    固定用台灣時間，和資料庫的 generate_daily_tasks 一致
-    （sv-SE 格式剛好是 YYYY-MM-DD）
-  */
 
-  return new Date().toLocaleDateString(
+/* 任意時間 → 「哪一天」（台灣時間、凌晨 2 點換日），YYYY-MM-DD */
+function appDateOf(dateLike) {
+
+  const time = new Date(dateLike).getTime() - DAY_START_HOUR * 3600 * 1000;
+
+  /* sv-SE 格式剛好是 YYYY-MM-DD */
+  return new Date(time).toLocaleDateString(
     "sv-SE",
     { timeZone: "Asia/Taipei" }
   );
+
+}
+
+
+function getToday() {
+
+  return appDateOf(Date.now());
 
 }
 
@@ -1144,7 +1157,597 @@ async function loadTasks() {
 
   updateSummary();
 
+  await loadYesterdayTasks();
+
 }
+
+
+/* =========================================================
+   13-b. ⏪ 補完成昨天的任務（全額獎勵）
+   昨天沒完成的任務列在今日任務下面，可以補勾；
+   補勾的會留在這裡（可以取消），到了隔天就不再顯示。
+   （沒完成的單次任務本來就會自動順延到今天，所以這裡主要是重複任務）
+========================================================= */
+
+let yesterdayTasks = [];
+
+
+async function loadYesterdayTasks() {
+
+  if (!currentUser) return;
+
+  const yesterday = shiftDate(getToday(), -1);
+
+  const { data, error } = await db
+    .from("tasks")
+    .select("*")
+    .eq("user_id", currentUser.id)
+    .eq("task_date", yesterday)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.warn("載入昨天的任務失敗：", error);
+    yesterdayTasks = [];
+    renderYesterdayTasks();
+    return;
+  }
+
+  /* 沒完成的 ＋ 今天才補勾的（補勾後還能取消） */
+  yesterdayTasks = (data || []).filter(task =>
+    !task.skipped &&
+    (!task.completed || (task.completed_at && appDateOf(task.completed_at) > task.task_date))
+  );
+
+  renderYesterdayTasks();
+
+}
+
+
+function ensureYesterdayBox() {
+
+  let box = document.getElementById("yesterday-tasks");
+
+  if (box) return box;
+
+  const list = document.getElementById("task-list");
+
+  if (!list) return null;
+
+  box = document.createElement("div");
+  box.id = "yesterday-tasks";
+  box.className = "yesterday-box";
+  box.hidden = true;
+
+  list.after(box);
+
+  return box;
+
+}
+
+
+function renderYesterdayTasks() {
+
+  const box = ensureYesterdayBox();
+
+  if (!box) return;
+
+  if (yesterdayTasks.length === 0) {
+    box.hidden = true;
+    box.innerHTML = "";
+    return;
+  }
+
+  const yesterday = shiftDate(getToday(), -1);
+  const left = yesterdayTasks.filter(task => !task.completed).length;
+
+  const rows = yesterdayTasks.map(task => {
+
+    const reward = getActualReward(task);
+
+    return `
+      <label class="yesterday-row ${task.completed ? "done" : ""}">
+        <input
+          type="checkbox"
+          ${task.completed ? "checked" : ""}
+          onchange="toggleTask(${Number(task.id)}, this.checked, this)"
+        >
+        <span class="yesterday-title">${escapeHtml(task.title)}</span>
+        <span class="yesterday-reward">+${reward.exp} EXP / +${reward.gold} 金幣</span>
+      </label>`;
+
+  }).join("");
+
+  box.hidden = false;
+  box.innerHTML = `
+    <div class="yesterday-head">
+      <span>⏪ 昨天的任務（${shortDateWithWeekday(yesterday)}）</span>
+      <span class="small-note">
+        ${left > 0 ? `還有 ${left} 個沒完成，補勾一樣拿全額獎勵` : "都補完了 👍"}
+      </span>
+    </div>
+    ${rows}`;
+
+}
+
+
+/* =========================================================
+   13-c. 🪞 每日反省 ＋ 改善（在「🌙 每日收尾」卡片裡）
+   每天一筆，可以修改；下面是歷史紀錄，點「編輯」可以改以前的
+========================================================= */
+
+const REFLECT_PAGE_SIZE = 30;
+
+let reflections = [];             // 歷史（新的在前）
+let reflectLimit = REFLECT_PAGE_SIZE;
+let reflectHasMore = false;
+let reflectLoadError = null;
+let reflectEditDate = null;       // 正在寫哪一天（null = 今天）
+let reflectDraft = null;          // 還沒儲存的內容 { date, reflection, improvement }
+let reflectSaving = false;
+let reflectHistoryOpen = false;
+
+
+function ensureReflectBox() {
+
+  let box = document.getElementById("reflect-box");
+
+  if (box) return box;
+
+  const message = document.getElementById("daily-wrapup-message");
+
+  if (!message) return null;
+
+  box = document.createElement("div");
+  box.id = "reflect-box";
+  box.className = "reflect-box";
+
+  message.before(box);
+
+  return box;
+
+}
+
+
+async function loadReflections() {
+
+  if (!currentUser) return;
+
+  const { data, error } = await db
+    .from("daily_reflections")
+    .select("reflect_date, reflection, improvement, updated_at")
+    .eq("user_id", currentUser.id)
+    .order("reflect_date", { ascending: false })
+    .limit(reflectLimit + 1);
+
+  if (error) {
+    console.warn("每日反省載入失敗：", error);
+    reflectLoadError = error.message;
+    reflections = [];
+    reflectHasMore = false;
+  } else {
+    reflectLoadError = null;
+    reflectHasMore = (data || []).length > reflectLimit;
+    reflections = (data || []).slice(0, reflectLimit);
+  }
+
+  renderReflections();
+
+}
+
+
+async function loadMoreReflections() {
+
+  reflectLimit += REFLECT_PAGE_SIZE;
+  reflectHistoryOpen = true;
+
+  await loadReflections();
+
+}
+
+
+function reflectCurrentDate() {
+
+  return reflectEditDate || getToday();
+
+}
+
+
+function renderReflections() {
+
+  const box = ensureReflectBox();
+
+  if (!box) return;
+
+  if (reflectLoadError) {
+    box.innerHTML = `
+      <div class="reflect-error">
+        🪞 每日反省還沒設定好：請先到 Supabase 的 SQL Editor 執行「更新_2點換日_補簽_反省.sql」，再重新整理。
+        <div class="small-note">${escapeHtml(reflectLoadError)}</div>
+      </div>`;
+    return;
+  }
+
+  const today = getToday();
+  const date = reflectCurrentDate();
+  const isToday = date === today;
+  const saved = reflections.find(r => r.reflect_date === date) || null;
+
+  const draft = reflectDraft && reflectDraft.date === date ? reflectDraft : null;
+  const reflectionText = draft ? draft.reflection : (saved ? saved.reflection : "");
+  const improvementText = draft ? draft.improvement : (saved ? saved.improvement : "");
+
+  /* 寫今天的時候，提醒昨天說要改善什麼 */
+  const yesterdayEntry = isToday
+    ? reflections.find(r => r.reflect_date === shiftDate(today, -1) && r.improvement)
+    : null;
+
+  const status = saved
+    ? `已儲存（${taipeiStamp(saved.updated_at).slice(5)}）`
+    : "還沒寫";
+
+  const history = reflections.map(r => `
+    <div class="reflect-item ${r.reflect_date === date ? "is-editing" : ""}">
+      <div class="reflect-item-head">
+        <b>${shortDateWithWeekday(r.reflect_date)}${r.reflect_date === today ? "・今天" : ""}</b>
+        <button class="link-btn" type="button" onclick="reflectEdit('${r.reflect_date}')">✏️ 編輯</button>
+      </div>
+      ${r.reflection ? `
+        <div class="reflect-line">
+          <span class="reflect-tag">反省</span>
+          <span class="txt">${escapeHtml(r.reflection)}</span>
+        </div>` : ""}
+      ${r.improvement ? `
+        <div class="reflect-line">
+          <span class="reflect-tag improve">改善</span>
+          <span class="txt">${escapeHtml(r.improvement)}</span>
+        </div>` : ""}
+    </div>`).join("");
+
+  box.innerHTML = `
+    <div class="reflect-head">
+      <h3>🪞 每日反省</h3>
+      <span class="small-note">${shortDateWithWeekday(date)}${isToday ? "・今天" : ""}</span>
+      ${isToday ? "" : `<button class="link-btn" type="button" onclick="reflectEdit(null)">回到今天</button>`}
+    </div>
+
+    ${yesterdayEntry ? `
+      <div class="reflect-reminder">📌 昨天說要改善：${escapeHtml(yesterdayEntry.improvement)}</div>` : ""}
+
+    <label for="reflect-text">反省：今天哪裡做得好、哪裡做得不好？</label>
+    <textarea id="reflect-text" maxlength="2000" rows="3"
+      placeholder="例如：下午滑手機拖了一小時，任務沒做完"
+      oninput="onReflectInput()">${escapeHtml(reflectionText)}</textarea>
+
+    <label for="improve-text">改善：明天要怎麼做？</label>
+    <textarea id="improve-text" maxlength="2000" rows="3"
+      placeholder="例如：手機放客廳，先做最難的任務"
+      oninput="onReflectInput()">${escapeHtml(improvementText)}</textarea>
+
+    <div class="reflect-actions">
+      <button class="btn btn-primary btn-small" type="button" onclick="saveReflection()" ${reflectSaving ? "disabled" : ""}>
+        ${reflectSaving ? "儲存中..." : "💾 儲存"}
+      </button>
+      <span class="small-note" id="reflect-msg">${draft ? "有還沒儲存的修改" : status}</span>
+    </div>
+
+    <details class="reflect-history" ${reflectHistoryOpen ? "open" : ""}
+      ontoggle="reflectHistoryOpen = this.open">
+      <summary>📜 歷史紀錄（${reflections.length}${reflectHasMore ? "+" : ""} 天）</summary>
+      ${history || `<div class="small-note" style="margin-top:8px;">還沒有紀錄，寫下第一筆吧</div>`}
+      ${reflectHasMore ? `
+        <button class="btn btn-small reflect-more" type="button" onclick="loadMoreReflections()">顯示更多</button>` : ""}
+    </details>`;
+
+}
+
+
+/* 打字時記住草稿；並固定在這一天（寫到一半跨過凌晨 2 點也不會跳走） */
+function onReflectInput() {
+
+  const date = reflectCurrentDate();
+
+  reflectEditDate = date;
+
+  reflectDraft = {
+    date,
+    reflection: document.getElementById("reflect-text").value,
+    improvement: document.getElementById("improve-text").value
+  };
+
+  const message = document.getElementById("reflect-msg");
+
+  if (message) {
+    message.textContent = "有還沒儲存的修改";
+    message.classList.remove("is-error");
+  }
+
+}
+
+
+function reflectEdit(date) {
+
+  if (reflectDraft && !confirm("有還沒儲存的修改，確定要換到別天嗎？")) return;
+
+  reflectDraft = null;
+  reflectEditDate = date && date !== getToday() ? date : null;
+
+  renderReflections();
+
+  const input = document.getElementById("reflect-text");
+
+  if (input) {
+    input.focus();
+    input.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+}
+
+
+async function saveReflection() {
+
+  if (!currentUser || reflectSaving) return;
+
+  const date = reflectCurrentDate();
+  const reflection = document.getElementById("reflect-text").value.trim();
+  const improvement = document.getElementById("improve-text").value.trim();
+  const message = document.getElementById("reflect-msg");
+
+  if (!reflection && !improvement) {
+    if (message) message.textContent = "先寫點東西再儲存";
+    return;
+  }
+
+  reflectSaving = true;
+  reflectDraft = { date, reflection, improvement };
+  renderReflections();
+
+  const { error } = await db
+    .from("daily_reflections")
+    .upsert(
+      {
+        user_id: currentUser.id,
+        reflect_date: date,
+        reflection,
+        improvement,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: "user_id,reflect_date" }
+    );
+
+  reflectSaving = false;
+
+  if (error) {
+    console.error("每日反省儲存失敗：", error);
+    renderReflections();
+    const failed = document.getElementById("reflect-msg");
+    if (failed) {
+      failed.textContent = "儲存失敗：" + error.message;
+      failed.classList.add("is-error");
+    }
+    return;
+  }
+
+  reflectDraft = null;
+  reflectEditDate = null;
+
+  showToast("🪞 已儲存" + (date === getToday() ? "今天的反省" : ` ${shortDateWithWeekday(date)} 的反省`));
+
+  await loadReflections();
+
+}
+
+
+/* =========================================================
+   13-d. 補昨日任務、每日反省的樣式（不用改 index.html）
+========================================================= */
+
+(function injectExtraStyles() {
+
+  if (document.getElementById("extra-style")) return;
+
+  const style = document.createElement("style");
+  style.id = "extra-style";
+  style.textContent = `
+    .yesterday-box {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border: 1px dashed #343b4b;
+      border-radius: 12px;
+    }
+
+    .yesterday-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 4px 10px;
+      flex-wrap: wrap;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    .yesterday-head .small-note {
+      font-weight: normal;
+    }
+
+    .yesterday-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      margin-top: 8px;
+      background: #10131a;
+      border: 1px solid #272d3a;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+
+    .yesterday-row input {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+    }
+
+    .yesterday-title {
+      flex: 1;
+      min-width: 0;
+      word-break: break-word;
+    }
+
+    .yesterday-row.done .yesterday-title {
+      opacity: .5;
+      text-decoration: line-through;
+    }
+
+    .yesterday-reward {
+      flex-shrink: 0;
+      font-size: 12px;
+      color: #ffd76a;
+    }
+
+    .reflect-box {
+      margin-top: 18px;
+      padding-top: 16px;
+      border-top: 1px solid #272d3a;
+    }
+
+    .reflect-head {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .reflect-head h3 {
+      margin: 0;
+      font-size: 17px;
+    }
+
+    .reflect-box label {
+      display: block;
+      margin: 12px 0 6px;
+      font-size: 13px;
+      opacity: .75;
+    }
+
+    .reflect-box textarea {
+      width: 100%;
+      min-height: 76px;
+      resize: vertical;
+      padding: 10px 12px;
+      border: 1px solid #343b4b;
+      border-radius: 10px;
+      background: #10131a;
+      color: #fff;
+      font: inherit;
+      font-size: 15px;
+      line-height: 1.6;
+      outline: none;
+    }
+
+    .reflect-box textarea:focus {
+      border-color: #6c7cff;
+    }
+
+    .reflect-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    #reflect-msg.is-error {
+      color: #ff6b81;
+      opacity: 1;
+    }
+
+    .reflect-reminder {
+      margin-top: 10px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: rgba(88, 101, 242, .12);
+      border: 1px solid rgba(88, 101, 242, .35);
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .reflect-history {
+      margin-top: 16px;
+    }
+
+    .reflect-history summary {
+      cursor: pointer;
+      color: #8f9bff;
+      font-size: 14px;
+    }
+
+    .reflect-item {
+      margin-top: 10px;
+      padding: 10px 12px;
+      background: #10131a;
+      border: 1px solid #272d3a;
+      border-radius: 10px;
+    }
+
+    .reflect-item.is-editing {
+      border-color: #5865f2;
+    }
+
+    .reflect-item-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+      font-size: 14px;
+    }
+
+    .reflect-line {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-top: 4px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .reflect-line .txt {
+      flex: 1;
+      min-width: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .reflect-tag {
+      flex-shrink: 0;
+      margin-top: 2px;
+      padding: 0 7px;
+      border-radius: 999px;
+      background: #202532;
+      color: #c9d1e3;
+      font-size: 12px;
+      line-height: 20px;
+    }
+
+    .reflect-tag.improve {
+      color: #7bed9f;
+    }
+
+    .reflect-more {
+      margin-top: 10px;
+    }
+
+    .reflect-error {
+      line-height: 1.6;
+      color: #ffb3c0;
+    }
+  `;
+
+  document.head.appendChild(style);
+
+})();
 
 
 /* 是不是「由重複任務產生」的任務 */
@@ -3904,13 +4507,11 @@ console.log(
    0. 共用小工具
 ========================================================= */
 
-/* 任意時間 → 台灣日期 YYYY-MM-DD */
+/* 任意時間 → 算在哪一天（凌晨 2 點換日），YYYY-MM-DD
+   例如凌晨 1 點開始的專注，算前一天的 */
 function toTaipeiDate(dateLike) {
 
-  return new Date(dateLike).toLocaleDateString(
-    "sv-SE",
-    { timeZone: "Asia/Taipei" }
-  );
+  return appDateOf(dateLike);
 
 }
 
@@ -4105,6 +4706,7 @@ async function loadTodayModules() {
 
   for (const loader of [
     loadGameMode,
+    loadReflections,
     loadCountdowns,
     loadMainline,
     loadMorning,
@@ -4165,6 +4767,15 @@ function resetTodayModules() {
   fortuneDraws = [];
   fortuneLoadError = null;
   habitChartSelection = "all";
+
+  yesterdayTasks = [];
+  reflections = [];
+  reflectLimit = REFLECT_PAGE_SIZE;
+  reflectHasMore = false;
+  reflectLoadError = null;
+  reflectEditDate = null;
+  reflectDraft = null;
+  reflectHistoryOpen = false;
 
   document.title = ORIGINAL_TITLE;
 
@@ -9552,10 +10163,19 @@ let sleepLoadError = null;
 let sleepSaving = false;
 
 
+/* 作息用「真正的日曆日期」，不套用凌晨 2 點換日：
+   作息本來就有自己的規則（凌晨 0–6 點睡算前一晚），兩個疊在一起會多扣一天 */
+function sleepToday() {
+
+  return taipeiNow().date;
+
+}
+
+
 /* 現在按「我要睡了」算哪一晚：凌晨 0–6 點 = 昨晚 */
 function bedNightForNow() {
 
-  return taipeiNow().time < "06:00" ? shiftDate(getToday(), -1) : getToday();
+  return taipeiNow().time < "06:00" ? shiftDate(sleepToday(), -1) : sleepToday();
 
 }
 
@@ -9563,7 +10183,7 @@ function bedNightForNow() {
 /* 今天起床 = 昨晚那一筆 */
 function wakeNightForNow() {
 
-  return shiftDate(getToday(), -1);
+  return shiftDate(sleepToday(), -1);
 
 }
 
@@ -9638,7 +10258,7 @@ async function loadSleep() {
 
   if (!currentUser) return;
 
-  const since = shiftDate(getToday(), -(SLEEP_TABLE_NIGHTS + 1));
+  const since = shiftDate(sleepToday(), -(SLEEP_TABLE_NIGHTS + 1));
 
   const [settingsResult, logsResult] = await Promise.all([
 
@@ -9745,7 +10365,7 @@ function renderSleep() {
   }
 
 
-  const today = getToday();
+  const today = sleepToday();
 
   const lastNight = findSleepLog(wakeNightForNow());
 
@@ -10103,7 +10723,7 @@ function openSleepEditor(night) {
     return;
   }
 
-  const today = getToday();
+  const today = sleepToday();
 
   const fixed = Boolean(night);
 
@@ -10170,7 +10790,7 @@ function fillSleepEditor() {
 
   document.getElementById("se-wake").value = log && log.wake_at ? isoToTaipeiTime(log.wake_at) : "";
 
-  if (!log && night && night < shiftDate(getToday(), -(SLEEP_TABLE_NIGHTS + 1))) {
+  if (!log && night && night < shiftDate(sleepToday(), -(SLEEP_TABLE_NIGHTS + 1))) {
 
     /* 太久以前的（不在最近幾晚）→ 去資料庫讀 */
     loadOneSleepNight(night);
@@ -10202,7 +10822,7 @@ async function loadOneSleepNight(night) {
 
 async function saveSleepEditor() {
 
-  const today = getToday();
+  const today = sleepToday();
 
   const night = document.getElementById("se-night").value;
 
@@ -10360,7 +10980,7 @@ async function saveSleepSettings() {
 
   let delta = 0;
 
-  for (const night of [shiftDate(getToday(), -1), getToday()]) {
+  for (const night of [shiftDate(sleepToday(), -1), sleepToday()]) {
 
     const result = await syncSleepReward(night);
 
