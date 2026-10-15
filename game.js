@@ -9,7 +9,7 @@
 ========================================================= */
 
 /* 版本號：會顯示在簽到卡最下面，用來確認瀏覽器載入的是新版 */
-const GAME_JS_VERSION = "2026-10-16 v6";
+const GAME_JS_VERSION = "2026-10-16 v7";
 
 
 /* =========================================================
@@ -189,6 +189,9 @@ let gameCheckinState = {
   userId: null,
   date: null,
   rows: [],          // 這個月 ＋ 最近 8 天的簽到紀錄（新的在前）
+  realCount: 0,      // 真正簽到（不含補簽）的次數，最多算到 8（判斷新手保護期用）
+  items: {},         // 背包 { item_key: 數量 }
+  todayItems: [],    // 今天簽到拿到的券
   justDone: null     // 剛剛簽到的結果（用來播動畫）
 };
 
@@ -261,12 +264,35 @@ async function loadGameCheckin() {
   const weekAgo = shiftDate(today, -7);
   const from = monthStart < weekAgo ? monthStart : weekAgo;
 
-  const { data, error } = await db
-    .from("checkins")
-    .select("checkin_date, streak, crit, crit_chance, exp, gold, is_makeup, cost")
-    .eq("user_id", currentUser.id)
-    .gte("checkin_date", from)
-    .order("checkin_date", { ascending: false });
+  const uid = currentUser.id;
+
+  const [checkinsResult, realResult, itemsResult, todayResult] = await Promise.all([
+
+    db.from("checkins")
+      .select("checkin_date, streak, crit, crit_chance, exp, gold, is_makeup, cost")
+      .eq("user_id", uid)
+      .gte("checkin_date", from)
+      .order("checkin_date", { ascending: false }),
+
+    /* 新手保護期只看前 7 次，所以最多抓 8 筆就夠判斷 */
+    db.from("checkins")
+      .select("checkin_date")
+      .eq("user_id", uid)
+      .eq("is_makeup", false)
+      .limit(8),
+
+    db.from("player_items")
+      .select("item_key, qty")
+      .eq("user_id", uid),
+
+    db.from("item_events")
+      .select("item_key, delta")
+      .eq("user_id", uid)
+      .eq("source_key", "checkin:" + today)
+
+  ]);
+
+  const error = checkinsResult.error || realResult.error || itemsResult.error || todayResult.error;
 
   gameCheckinState.loading = false;
   gameCheckinState.loaded = true;
@@ -279,7 +305,11 @@ async function loadGameCheckin() {
     gameCheckinState.rows = [];
   } else {
     gameCheckinState.error = null;
-    gameCheckinState.rows = data || [];
+    gameCheckinState.rows = checkinsResult.data || [];
+    gameCheckinState.realCount = (realResult.data || []).length;
+    gameCheckinState.items = {};
+    for (const row of itemsResult.data || []) gameCheckinState.items[row.item_key] = row.qty;
+    gameCheckinState.todayItems = (todayResult.data || []).map(row => ({ key: row.item_key, qty: row.delta }));
   }
 
   renderGameCheckin();
@@ -381,7 +411,7 @@ function renderGameMonthCard() {
     return;
   }
 
-  card.innerHTML = head + gameMonthHtml() + rules;
+  card.innerHTML = head + gameNextTicketsHtml(gameCheckinSummary()) + gameBackpackHtml() + gameMonthHtml() + rules;
 
 }
 
@@ -453,7 +483,9 @@ function gameCheckinRulesHtml(open) {
         <li>昨天沒簽就算斷簽，連續天數從第 1 天重新算。</li>
         <li>一天從凌晨 ${startHour} 點開始：凌晨 0 點到 ${startHour} 點前簽到，算前一天。</li>
         <li>每月獎勵（當月累計，不用連續）：累計 7 天 +${GAME_MONTH7.gold} 金幣・+${GAME_MONTH7.exp} EXP；當月每天都簽（全勤）再 +${GAME_MONTH_ALL.gold} 金幣・+${GAME_MONTH_ALL.exp} EXP。每個月各領一次。</li>
-        <li>補簽：在「📅 日曆」頁的簽到月曆點沒簽的日子（只能補這個月、今天以前）。這個月第 1 次 ${GAME_MAKEUP_BASE} 金幣，之後每次多 ${GAME_MAKEUP_STEP}。補簽不拿當天的簽到獎勵，但會接回連續天數、算進每月累計。</li>
+        <li>簽到發券（召喚券和星願瓶一起發）：新手保護期（前 7 次簽到）第 2、4、6 次各 1 張普通，第 7 次 1 張特殊／稀有；之後連續每滿 3 天 1 張普通、每滿 7 天 1 張特殊／稀有。</li>
+        <li>每月累計 7 天另外給限定召喚券、限定星願瓶各 1 張；全勤再各 2 張。</li>
+        <li>補簽：在「📅 日曆」頁的簽到月曆點沒簽的日子（只能補這個月、今天以前）。這個月第 1 次 ${GAME_MAKEUP_BASE} 金幣，之後每次多 ${GAME_MAKEUP_STEP}。補簽不拿當天的簽到獎勵和簽到券，但會接回連續天數、算進每月累計。</li>
         <li>爆擊和獎勵都由資料庫決定，從網頁端改不了，連按兩次也只算一次。</li>
       </ul>
       <div class="ck-version">game.js 版本：${GAME_JS_VERSION}</div>
@@ -499,6 +531,14 @@ async function gameCheckin() {
 
   gameCheckinState.justDone = data.already ? null : row;
 
+  if (!data.already) {
+    gameCheckinState.realCount += 1;
+    gameCheckinState.todayItems = data.items || [];
+    for (const item of data.items || []) {
+      gameCheckinState.items[item.key] = (gameCheckinState.items[item.key] || 0) + item.qty;
+    }
+  }
+
   renderGameCheckin();
 
   gameCheckinState.justDone = null;
@@ -508,7 +548,8 @@ async function gameCheckin() {
       (data.crit
         ? `💥 爆擊！簽到獎勵 ×2：+${data.gold} 金幣 / +${data.exp} EXP`
         : `📅 簽到成功（連續 ${data.streak} 天）：+${data.gold} 金幣 / +${data.exp} EXP`) +
-      gameMonthBonusText(data)
+      gameMonthBonusText(data) +
+      ((data.items || []).length ? `　🎁 ${gameItemsText(data.items)}` : "")
     );
   }
 
@@ -679,7 +720,10 @@ async function gameMakeup(date) {
     return;
   }
 
-  showToast(`💰 補簽 ${mm}/${dd} 成功（−${data.cost} 金幣）` + gameMonthBonusText(data));
+  showToast(
+    `💰 補簽 ${mm}/${dd} 成功（−${data.cost} 金幣）` + gameMonthBonusText(data) +
+    ((data.items || []).length ? `　🎁 ${gameItemsText(data.items)}` : "")
+  );
 
   /* 補簽會改到後面幾天的連續天數，重新讀一次 */
   gameCheckinState.loaded = false;
@@ -688,6 +732,113 @@ async function gameMakeup(date) {
   /* 金幣變了 → 更新上方的金幣和今日獎勵 */
   await loadPlayer();
   await loadTodayRewards();
+
+}
+
+
+/* =========================================================
+   3-c. 🎒 背包與簽到發券
+   物品代號和資料庫一致；發券規則和 checkin_ticket_rewards 一致（改要兩邊一起改）
+========================================================= */
+
+const GAME_ITEMS = {
+  ticket_normal:  { name: "普通召喚券", short: "普通" },
+  ticket_special: { name: "特殊召喚券", short: "特殊" },
+  ticket_limited: { name: "限定召喚券", short: "限定" },
+  wish_normal:    { name: "普通星願瓶", short: "普通" },
+  wish_rare:      { name: "稀有星願瓶", short: "稀有" },
+  wish_limited:   { name: "限定星願瓶", short: "限定" }
+};
+
+
+function gameItemsText(list) {
+
+  return (list || [])
+    .map(item => `${(GAME_ITEMS[item.key] || { name: item.key }).name} ×${item.qty}`)
+    .join("、");
+
+}
+
+
+/* 第 index 次真正簽到、連續 streak 天時，會拿到哪種券 */
+function gameTicketRule(index, streak) {
+
+  if (index <= 7) {
+    return { normal: [2, 4, 6].includes(index), special: index === 7 };
+  }
+
+  return { normal: streak % 3 === 0, special: streak % 7 === 0 };
+
+}
+
+
+/* 下一張普通券、特殊／稀有券還要簽幾天（假設之後每天都簽） */
+function gameNextTickets(s) {
+
+  const signed = !!s.todayRow;
+  const baseIndex = gameCheckinState.realCount + 1;
+  const baseStreak = signed ? s.streak + 1 : s.nextStreak;
+
+  let normal = null;
+  let special = null;
+
+  for (let k = 0; k < 30 && (normal === null || special === null); k++) {
+    const rule = gameTicketRule(baseIndex + k, baseStreak + k);
+    if (normal === null && rule.normal) normal = k + 1;
+    if (special === null && rule.special) special = k + 1;
+  }
+
+  return { signed, normal, special };
+
+}
+
+
+function gameNextTicketText(days, signed) {
+
+  if (days === null) return "—";
+  if (days === 1) return signed ? "明天簽到就拿" : "今天簽到就拿";
+
+  return `再簽 ${days} 天`;
+
+}
+
+
+function gameNextTicketsHtml(s) {
+
+  const next = gameNextTickets(s);
+  const nth = next.signed ? gameCheckinState.realCount : gameCheckinState.realCount + 1;
+
+  const newbie = nth <= 7
+    ? `<div class="ck-newbie">🔰 新手保護期：第 ${nth} / 7 次簽到</div>`
+    : "";
+
+  return `
+    ${newbie}
+    <div class="ck-next">
+      <span>🎁 普通券：<b>${gameNextTicketText(next.normal, next.signed)}</b></span>
+      <span>✨ 特殊／稀有券：<b>${gameNextTicketText(next.special, next.signed)}</b></span>
+    </div>`;
+
+}
+
+
+function gameBackpackHtml() {
+
+  const qty = key => gameCheckinState.items[key] || 0;
+
+  const row = (label, keys) => `
+    <div class="ck-bag-row">
+      <span class="ck-bag-label">${label}</span>
+      ${keys.map(key => `<span class="ck-bag-item ${qty(key) > 0 ? "has" : ""}">${GAME_ITEMS[key].short} <b>${qty(key)}</b></span>`).join("")}
+    </div>`;
+
+  return `
+    <div class="ck-bag">
+      <div class="ck-bag-title">🎒 背包</div>
+      ${row("🎫 召喚券", ["ticket_normal", "ticket_special", "ticket_limited"])}
+      ${row("🌠 星願瓶", ["wish_normal", "wish_rare", "wish_limited"])}
+      <div class="small-note">抽獎池開放後就能拿來抽</div>
+    </div>`;
 
 }
 
@@ -825,6 +976,8 @@ function gameRenderPopup() {
       <div class="ck-result ${r.crit ? "is-crit" : ""} ${gameCheckinState.justDone ? "reveal" : ""}">
         <div class="ck-result-title">${r.crit ? "💥 爆擊！獎勵 ×2" : "✅ 今天簽到完成"}</div>
         <div class="ck-result-reward">+${r.gold} 金幣・+${r.exp} EXP</div>
+        ${gameCheckinState.todayItems.length
+          ? `<div class="ck-result-items">🎁 ${gameItemsText(gameCheckinState.todayItems)}</div>` : ""}
       </div>
       <div class="ck-stats">
         <div><b>${s.streak}</b><span>連續天數</span></div>
@@ -832,6 +985,8 @@ function gameRenderPopup() {
         <div><b>+${gameCheckinGold(s.nextStreak)}</b><span>明天金幣</span></div>
       </div>
       ${gamePopupMonthLine(true, ms)}
+      ${gameNextTicketsHtml(s)}
+      ${gameBackpackHtml()}
       ${makeupLink}
       <div class="game-pop-actions">
         <button class="btn btn-primary" type="button" onclick="gameClosePopup()">完成</button>
@@ -851,6 +1006,8 @@ function gameRenderPopup() {
         <div><b>+${gold}</b><span>今天金幣</span></div>
       </div>
       ${gamePopupMonthLine(false, ms)}
+      ${gameNextTicketsHtml(s)}
+      ${gameBackpackHtml()}
       ${makeupLink}
       <div class="game-pop-actions">
         <button
@@ -1376,6 +1533,71 @@ function gamePopupMonthLine(signedToday, ms) {
       .game-checkin .ck-cal-day b {
         font-size: 10px;
       }
+    }
+
+    .game-checkin .ck-newbie {
+      margin-bottom: 6px;
+      font-size: 13px;
+      color: #7bed9f;
+    }
+
+    .game-checkin .ck-next {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 14px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      color: #c9d1e3;
+    }
+
+    .game-checkin .ck-next b {
+      color: #ffd76a;
+    }
+
+    .game-checkin .ck-bag {
+      margin-bottom: 14px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #10131a;
+      border: 1px solid #2c3342;
+    }
+
+    .game-checkin .ck-bag-title {
+      font-weight: 700;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    .game-checkin .ck-bag-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px 10px;
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+
+    .game-checkin .ck-bag-label {
+      min-width: 76px;
+      opacity: .8;
+    }
+
+    .game-checkin .ck-bag-item {
+      padding: 1px 8px;
+      border-radius: 999px;
+      background: #1a1f2b;
+      color: #8a93a8;
+    }
+
+    .game-checkin .ck-bag-item.has {
+      background: #2a2410;
+      color: #ffd978;
+    }
+
+    .game-checkin .ck-result-items {
+      margin-top: 6px;
+      font-size: 14px;
+      color: #ffd978;
     }
 
     .game-mode-bar {
