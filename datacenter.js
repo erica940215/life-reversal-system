@@ -278,10 +278,12 @@ async function dcRefresh(force = false) {
 
 /* ---------- ⏱️ 時間進度與今日完成度 ---------- */
 
-/* 今天已經過了多少（台灣時間 00:00 → 24:00） */
+/* 今天已經過了多少（台灣時間，一天從凌晨 2 點開始：02:00 → 隔天 02:00） */
 function dcDayFraction() {
 
-  const taipeiMs = Date.now() + 8 * 60 * 60 * 1000;
+  const startHour = typeof DAY_START_HOUR === "number" ? DAY_START_HOUR : 0;
+
+  const taipeiMs = Date.now() + (8 - startHour) * 60 * 60 * 1000;
 
   return (taipeiMs % 86400000) / 86400000;
 
