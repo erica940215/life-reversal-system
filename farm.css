@@ -74,22 +74,29 @@ body:not(.game-mode-on) .farm-tab { display: none !important; }
 }
 .fm-view.dragging { cursor: grabbing; }
 .fm-waves {
-  position: absolute; inset: -40px;
+  position: absolute; left: -150px; top: -120px; right: 0; bottom: 0;
   background-image:
     radial-gradient(ellipse 22px 5px at 30px 30px, rgba(230, 248, 255, .35) 45%, transparent 55%),
     radial-gradient(ellipse 16px 4px at 110px 90px, rgba(230, 248, 255, .28) 45%, transparent 55%);
   background-size: 150px 120px;
+  will-change: transform;
   animation: fmWaves 18s linear infinite;
   pointer-events: none;
 }
-@keyframes fmWaves { to { background-position: 150px 120px; } }
+@keyframes fmWaves { to { transform: translate3d(150px, 120px, 0); } }
 
 .fm-map {
   position: absolute; left: 0; top: 0;
   display: block;
   transform-origin: 0 0;
   overflow: visible;
+  will-change: transform;
+  backface-visibility: hidden;
 }
+/* 拖曳時先停掉地圖上的小動畫，滑起來比較順 */
+.fm-view.dragging .fm-map *, .fm-view.dragging .fm-waves { animation-play-state: paused !important; }
+.fm-map .fm-hit { outline: none; }
+.fm-map .fm-hit:focus-visible { fill-opacity: .25; }
 .fm-map .tap { cursor: pointer; }
 .fm-map .tap:focus { outline: none; }
 .fm-map .tap:focus-visible { filter: drop-shadow(0 0 3px #fff3a0) drop-shadow(0 0 4px #ffd84a); }

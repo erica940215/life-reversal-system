@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-16 v1";
+const FARM_JS_VERSION = "2026-10-16 v2";
 
 (function () {
 
@@ -1777,8 +1777,8 @@ const FARM_JS_VERSION = "2026-10-16 v1";
     return bubble(x, y, inner);
   }
 
-  function thirstyBubble(x, y) {
-    return `<g transform="translate(${x} ${y})" pointer-events="none"><g class="bob"><circle r="11" fill="#fffdf6" stroke="#9fd3ee" stroke-width="1.6"/>
+  function thirstyBubble(x, y, anim = true) {
+    return `<g transform="translate(${x} ${y})" pointer-events="none"><g class="${anim ? "bob" : ""}"><circle r="11" fill="#fffdf6" stroke="#9fd3ee" stroke-width="1.6"/>
       <g transform="scale(.6)"><path d="M0 -12 C6 -4 10 1 10 5 A10 10 0 0 1 -10 5 C-10 1 -6 -4 0 -12Z" fill="url(#fmDrop)" stroke="#2b86cc" stroke-width="1.4"/></g></g></g>`;
   }
 
@@ -1878,7 +1878,10 @@ const FARM_JS_VERSION = "2026-10-16 v1";
     const sel = UI.pop && UI.pop.zone === zone && UI.pop.key === key;
     const wet = !!(p && p.t1 && st !== "ripe");
 
-    let s = `<g class="tap" data-act="plot" data-zone="${zone}" data-key="${key}" role="button" tabindex="0" aria-label="${esc(plotLabel(zone, key))}">`;
+    /* 點擊範圍只有田格本身（放在最上層），前面長高的作物不會擋到後面的田 */
+    HITS.push({ y, svg: `<polygon class="tap fm-hit" data-act="plot" data-zone="${zone}" data-key="${key}" role="button" tabindex="0" aria-label="${esc(plotLabel(zone, key))}" points="${tilePoly(x, y + 2, tw + 1, th + 1)}" fill="#fff" fill-opacity="0" pointer-events="all"/>` });
+
+    let s = `<g pointer-events="none">`;
     s += soilTile(x, y, wet, sel, tw, th, tt);
 
     if (p && p.s) {
@@ -1888,10 +1891,10 @@ const FARM_JS_VERSION = "2026-10-16 v1";
       if (st === "ripe") stage = 3;
       else if (p.t1) stage = (now() - p.t0) / (p.t1 - p.t0) >= 0.5 ? 2 : 1;
       if (st === "ripe") s += `<ellipse cx="${x}" cy="${y + 2}" rx="${tw * 0.75}" ry="${th * 0.6}" fill="#fff4a8" opacity=".55"/>`;
-      s += `<g class="${st === "ripe" ? "ripe" : "sway"}" style="animation-delay:-${f1((hash(key) % 30) / 10)}s">${cropArt(p.c, stage, x, y + th * 0.45, tw * 1.64)}</g>`;
+      s += cropArt(p.c, stage, x, y + th * 0.45, tw * 1.64);
       if (p.f && st !== "ripe") s += sparkle(x - tw * 0.6, y - 4, 5) + sparkle(x + tw * 0.55, y + 4, 4);
-      if (st === "ripe") s += `<g class="twinkle" pointer-events="none">${sparkle(x - tw * 0.55, y - 34, 6)}${sparkle(x + tw * 0.6, y - 48, 5)}</g>`;
-      else if (st === "thirsty") s += thirstyBubble(x + tw * 0.7, y - 18);
+      if (st === "ripe") s += sparkle(x - tw * 0.55, y - 34, 6) + sparkle(x + tw * 0.6, y - 48, 5);
+      else if (st === "thirsty") s += thirstyBubble(x + tw * 0.7, y - 18, false);
     }
 
     return s + "</g>";
@@ -1914,7 +1917,7 @@ const FARM_JS_VERSION = "2026-10-16 v1";
     return `<g transform="translate(${x} ${y + 4})"><ellipse rx="16" ry="6" fill="#000" opacity=".15"/>
       <rect x="-3" y="-30" width="6" height="30" rx="2" fill="#9aa6b2"/>
       <circle cy="-32" r="8" fill="#c7d2dc" stroke="#7f8a96" stroke-width="1.5"/>
-      <g class="spin" style="transform-origin:0px -32px"><path d="M-14 -32 h28 M0 -46 v28" stroke="#7fd6f2" stroke-width="2.5" stroke-linecap="round" opacity=".8"/></g></g>`;
+      <g><path d="M-14 -32 h28 M0 -46 v28" stroke="#7fd6f2" stroke-width="2.5" stroke-linecap="round" opacity=".8"/></g></g>`;
   }
 
   function fieldSvg(items) {
@@ -1985,7 +1988,7 @@ const FARM_JS_VERSION = "2026-10-16 v1";
     const cost = D.zones[zone].cost;
     let s = `<g class="tap" data-act="zone" data-zone="${zone}" role="button" tabindex="0" aria-label="開墾${zone}，${num(cost)} 星露">`;
     s += pad(x, y, rx, ry);
-    s += `<g class="twinkle">${sparkle(x - rx * 0.6, y - ry * 0.6, 8)}${sparkle(x + rx * 0.5, y - ry, 7)}</g>`;
+    s += sparkle(x - rx * 0.6, y - ry * 0.6, 8) + sparkle(x + rx * 0.5, y - ry, 7);
     s += sign(x, y + ry * 0.2, `開墾${zone}・${num(cost)}`, { bright: true });
     return s + "</g>";
   }
@@ -2010,7 +2013,7 @@ const FARM_JS_VERSION = "2026-10-16 v1";
       const done = S.kitchen.jobs.some(j => t >= j.t1);
       const busy = S.kitchen.jobs.length > 0;
       let s = `<g class="tap" data-act="kitchen" role="button" tabindex="0" aria-label="${tier[2]}${done ? "，有料理做好了" : ""}">${building(tier[1], x, y, tier[1] === "restaurant" ? w * 0.9 : w)}`;
-      if (busy && !done) s += `<g fill="#fff" opacity=".85" pointer-events="none"><circle class="steam" cx="${x + 40}" cy="${y - 200}" r="7"/><circle class="steam" style="animation-delay:-.8s" cx="${x + 46}" cy="${y - 212}" r="8"/><circle class="steam" style="animation-delay:-1.6s" cx="${x + 36}" cy="${y - 224}" r="6"/></g>`;
+      if (busy && !done) s += `<g fill="#fff" opacity=".8" pointer-events="none"><circle cx="${x + 40}" cy="${y - 200}" r="7"/><circle cx="${x + 46}" cy="${y - 214}" r="8"/><circle cx="${x + 38}" cy="${y - 228}" r="6"/></g>`;
       if (done) s += mark(x - 20, y - 205);
       else if (kitchenNext() && S.lv >= kitchenNext()[0]) s += mark(x - 20, y - 205, "⬆");
       s += nameplate(x, y + 16, tier[2]);
@@ -2135,7 +2138,7 @@ const FARM_JS_VERSION = "2026-10-16 v1";
       <polygon points="0,-50 72,-86 0,-128" fill="#9a6538" stroke="#8a5a33" stroke-width="1.5"/>
       <rect x="-44" y="-62" width="22" height="22" rx="3" fill="#bfe6f7" stroke="#fff" stroke-width="2" transform="skewY(26)"/>
       <path d="M20 -12 L20 -46 L44 -58 L44 -24Z" fill="#a8703f" stroke="#7a4f2a" stroke-width="1.5"/>
-      <g transform="translate(30 -110)"><g class="spin"><circle r="16" fill="#c7d2dc" stroke="#7f8a96" stroke-width="2"/><circle r="6" fill="#7f8a96"/>
+      <g transform="translate(30 -110)"><g><circle r="16" fill="#c7d2dc" stroke="#7f8a96" stroke-width="2"/><circle r="6" fill="#7f8a96"/>
       ${[0, 45, 90, 135, 180, 225, 270, 315].map(a => `<rect x="-4" y="-21" width="8" height="8" rx="2" fill="#c7d2dc" stroke="#7f8a96" stroke-width="1.5" transform="rotate(${a})"/>`).join("")}</g></g></g>`;
   }
 
@@ -2162,13 +2165,14 @@ const FARM_JS_VERSION = "2026-10-16 v1";
       const ly = y - 32 + (i >= 4 ? 30 : 0) + (i % 4) * 6;
       const l = S.logs.slots[i];
       const st = logState(l);
-      let s = `<g class="tap" data-act="log" data-key="${i}" role="button" tabindex="0" aria-label="${l ? `${D.crops[l.c].name}菇木，${st === "ripe" ? "可以採" : `還要 ${dur(l.next - now())}`}` : "空的菇木位置，點一下放菇木"}">`;
+      HITS.push({ y: ly, svg: `<ellipse class="tap fm-hit" data-act="log" data-key="${i}" role="button" tabindex="0" aria-label="${l ? `${D.crops[l.c].name}菇木，${st === "ripe" ? "可以採" : `還要 ${dur(l.next - now())}`}` : "空的菇木位置，點一下放菇木"}" cx="${lx}" cy="${ly - 8}" rx="24" ry="18" fill="#fff" fill-opacity="0" pointer-events="all"/>` });
+      let s = `<g pointer-events="none">`;
       s += `<ellipse cx="${lx}" cy="${ly}" rx="24" ry="9" fill="#7a5a3a" opacity=".35"/>`;
       if (!l) {
         s += `<ellipse cx="${lx}" cy="${ly - 2}" rx="20" ry="7" fill="none" stroke="#fff" stroke-width="2" stroke-dasharray="5 4"/><text x="${lx}" y="${ly + 4}" text-anchor="middle" font-size="16" fill="#fff">＋</text>`;
       } else {
-        s += `<g class="${st === "ripe" ? "ripe" : ""}">${cropArt(l.c, st === "ripe" ? 3 : 1, lx, ly + 4, 40)}</g>`;
-        if (st === "ripe") s += `<g class="twinkle" pointer-events="none">${sparkle(lx + 18, ly - 40, 6)}</g>`;
+        s += cropArt(l.c, st === "ripe" ? 3 : 1, lx, ly + 4, 40);
+        if (st === "ripe") s += sparkle(lx + 18, ly - 40, 6);
       }
       items.push({ y: ly, svg: s + "</g>" });
     }
@@ -2186,15 +2190,16 @@ const FARM_JS_VERSION = "2026-10-16 v1";
       const ty = y - 110 + (r + c) * th * 1.25 + 10;
       const tr = S.orchard.trees[i];
       const st = treeState(tr);
-      let s = `<g class="tap" data-act="tree" data-key="${i}" role="button" tabindex="0" aria-label="${tr ? `${D.crops[tr.c].name}樹，${st === "ripe" ? "結果了" : st === "growing" ? "樹苗長大中" : "等結果"}` : "空的樹位，點一下種樹"}">`;
+      HITS.push({ y: ty, svg: `<ellipse class="tap fm-hit" data-act="tree" data-key="${i}" role="button" tabindex="0" aria-label="${tr ? `${D.crops[tr.c].name}樹，${st === "ripe" ? "結果了" : st === "growing" ? "樹苗長大中" : "等結果"}` : "空的樹位，點一下種樹"}" cx="${tx}" cy="${ty - 14}" rx="${tw * 0.85}" ry="${th * 1.6}" fill="#fff" fill-opacity="0" pointer-events="all"/>` });
+      let s = `<g pointer-events="none">`;
       s += `<ellipse cx="${tx}" cy="${ty}" rx="${tw * 0.8}" ry="${th * 0.8}" fill="#8fbf5a" stroke="#fff" stroke-width="1.5" ${tr ? "" : 'stroke-dasharray="5 4"'}/>`;
       if (!tr) {
         s += `<text x="${tx}" y="${ty + 5}" text-anchor="middle" font-size="16" fill="#fff">＋</text>`;
       } else {
         const stage = st === "growing" ? 1 : st === "ripe" ? 3 : 2;
         const scale = st === "growing" ? 46 : 64;
-        s += `<g class="${st === "ripe" ? "ripe" : "sway"}">${cropArt(tr.c, stage, tx, ty + 4, scale)}</g>`;
-        if (st === "ripe") s += `<g class="twinkle" pointer-events="none">${sparkle(tx + 22, ty - 60, 6)}</g>`;
+        s += cropArt(tr.c, stage, tx, ty + 4, scale);
+        if (st === "ripe") s += sparkle(tx + 22, ty - 60, 6);
       }
       items.push({ y: ty, svg: s + "</g>" });
     }
@@ -2236,21 +2241,24 @@ const FARM_JS_VERSION = "2026-10-16 v1";
       const by = y - 40 + (i >= 3 ? 34 : 0);
       const b = S.tea.bushes[i];
       const st = teaState(b);
-      let s = `<g class="tap" data-act="teabush" data-key="${i}" role="button" tabindex="0" aria-label="${b ? `茶樹，${st === "ripe" ? "可以採茶" : st === "growing" ? "茶苗長大中" : "等新芽"}` : "空的茶樹位置"}">`;
+      HITS.push({ y: by, svg: `<ellipse class="tap fm-hit" data-act="teabush" data-key="${i}" role="button" tabindex="0" aria-label="${b ? `茶樹，${st === "ripe" ? "可以採茶" : st === "growing" ? "茶苗長大中" : "等新芽"}` : "空的茶樹位置"}" cx="${bx}" cy="${by - 10}" rx="26" ry="18" fill="#fff" fill-opacity="0" pointer-events="all"/>` });
+      let s = `<g pointer-events="none">`;
       s += `<ellipse cx="${bx}" cy="${by}" rx="26" ry="10" fill="#7a5a3a" opacity=".3"/>`;
       if (!b) {
         s += `<text x="${bx}" y="${by + 5}" text-anchor="middle" font-size="16" fill="#fff">＋</text>`;
       } else {
         const k = st === "growing" ? 0.6 : 1;
-        s += `<g class="sway"><ellipse cx="${bx}" cy="${by - 14 * k}" rx="${24 * k}" ry="${16 * k}" fill="#4f9f3a"/><ellipse cx="${bx - 6}" cy="${by - 20 * k}" rx="${16 * k}" ry="${11 * k}" fill="#6cc152"/>`;
+ s += `<g><ellipse cx="${bx}" cy="${by - 14 * k}" rx="${24 * k}" ry="${16 * k}" fill="#4f9f3a"/><ellipse cx="${bx - 6}" cy="${by - 20 * k}" rx="${16 * k}" ry="${11 * k}" fill="#6cc152"/>`;
         if (st === "ripe") s += `<circle cx="${bx - 8}" cy="${by - 26}" r="4" fill="#c8f59a"/><circle cx="${bx + 8}" cy="${by - 22}" r="4" fill="#c8f59a"/><circle cx="${bx}" cy="${by - 30}" r="4" fill="#c8f59a"/>`;
         s += `</g>`;
-        if (st === "ripe") s += `<g class="twinkle" pointer-events="none">${sparkle(bx + 20, by - 38, 6)}</g>`;
+        if (st === "ripe") s += sparkle(bx + 20, by - 38, 6);
       }
       items.push({ y: by, svg: s + "</g>" });
     }
     items.push({ y: y + 10, svg: nameplate(x, y + 26, "茶園") });
   }
+
+  let HITS = [];
 
   function renderScene() {
 
@@ -2258,11 +2266,13 @@ const FARM_JS_VERSION = "2026-10-16 v1";
     if (!dyn) return;
 
     const items = [];
+    HITS = [];
     fieldSvg(items);
     zoneSvg(items);
     items.sort((a, b) => a.y - b.y);
+    HITS.sort((a, b) => a.y - b.y);
 
-    dyn.innerHTML = items.map(it => it.svg).join("");
+    dyn.innerHTML = items.map(it => it.svg).join("") + `<g class="fm-hits">${HITS.map(it => it.svg).join("")}</g>`;
     UI.nextEventAt = nextEvent();
 
     if (!UI.centered) layoutMap(true);
@@ -2341,11 +2351,12 @@ const FARM_JS_VERSION = "2026-10-16 v1";
   }
 
   function applyPan() {
-    UI.map.style.transform = `translate(${Math.round(UI.tx)}px, ${Math.round(UI.ty)}px)`;
+    UI.map.style.transform = `translate3d(${Math.round(UI.tx)}px, ${Math.round(UI.ty)}px, 0)`;
   }
 
   let drag = null;
   let suppressClick = false;
+  let panFrame = 0;
 
   function setupPan() {
 
@@ -2370,7 +2381,7 @@ const FARM_JS_VERSION = "2026-10-16 v1";
       UI.tx = drag.tx + dx;
       UI.ty = drag.ty + dy;
       clampPan();
-      applyPan();
+      if (!panFrame) panFrame = requestAnimationFrame(() => { panFrame = 0; applyPan(); });
     });
 
     const end = e => {
@@ -2385,7 +2396,9 @@ const FARM_JS_VERSION = "2026-10-16 v1";
 
     view.addEventListener("pointerup", end);
     view.addEventListener("pointercancel", end);
-    view.addEventListener("lostpointercapture", end);
+    /* 手指按下時瀏覽器會先把觸控綁在被按到的小元件上，搬到 view 時那個元件會發出
+       lostpointercapture 並冒泡上來；只有 view 自己失去綁定才算結束，不然滑一下就停 */
+    view.addEventListener("lostpointercapture", e => { if (e.target === view) end(e); });
 
     view.addEventListener("wheel", e => {
       e.preventDefault();
