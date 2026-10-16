@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-16 v4";
+const FARM_JS_VERSION = "2026-10-17 v5";
 
 (function () {
 
@@ -38,13 +38,14 @@ const FARM_JS_VERSION = "2026-10-16 v4";
   const FIELD_MAX = 8;
 
   /* 建築圖的原始大小（算比例用） */
-  const BLD = {
+  const BLD = Object.assign({
     hut: [520, 483], kitchen: [520, 447], restaurant: [516, 520], bistro: [520, 400],
     waterwheel: [520, 435], barn: [520, 409], ranchgate: [520, 386], market: [520, 413], pier: [520, 337]
-  };
+  }, D.bld || {});
 
-  const RARITY_NAME = { c: "普通", r: "稀有", l: "傳說", x: "限定" };
-  const TIER_CLASS = { 家常: "r-c", 拿手: "r-r", 招牌: "r-l", 傳說: "r-x" };
+  /* 五個品階：凡（綠）普（藍）珍（紫）華（金）仙（紅） */
+  const TIERS = ["c", "r", "l", "x", "s"];
+  const RARITY_NAME = { c: "凡品", r: "普品", l: "珍品", x: "華品", s: "仙品" };
 
 
   /* =========================================================
@@ -163,11 +164,12 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     return `<span class="fm-emo ${cls}">${D.animals[sp]?.emoji || "🐾"}</span>`;
   }
 
+  /* 顏色看品階：料理看用到的食材裡最高的品階 */
   function rarityClass(key) {
-    if (D.dishes[key]) return TIER_CLASS[D.dishes[key].tier] || "r-d";
+    const it = D.items[key];
+    if (it && it.tier) return "r-" + it.tier;
     const c = D.crops[key];
     if (c) return "r-" + c.rarity;
-    if (key && key.startsWith("seed_")) return "r-r";
     return "r-c";
   }
 
@@ -180,9 +182,16 @@ const FARM_JS_VERSION = "2026-10-16 v4";
 
   const lvNeed = lv => (D.levels[lv - 1] && D.levels[lv - 1].need) || 0;
 
+  /* 星願池拿到的收藏（夥伴、工具、造型、稱號、家具數量…）：以資料庫為準，存檔裡留一份備用 */
+  function own(key) {
+    const o = (net.ws && net.ws.owned) || (S && S.ownedCache) || {};
+    return Number(o[key] || 0);
+  }
+
   function waterCap(lv = S.lv) {
     const row = capRow(D.caps.water, lv);
-    return { buckets: row[1], per: row[2], max: row[1] * row[2] };
+    const buckets = row[1] + (own("p_starspirit") ? 2 : 0);
+    return { buckets, per: row[2], max: buckets * row[2] };
   }
 
   function fieldMaxSize(lv = S.lv) {
@@ -194,7 +203,9 @@ const FARM_JS_VERSION = "2026-10-16 v4";
   }
 
   function storageCap(lv = S.lv) {
-    return capRow(D.caps.storage, lv)[1];
+    const base = capRow(D.caps.storage, lv)[1];
+    if (base > 9999) return base;
+    return base + (own("tool_bigbasket") ? 50 : 0) + (own("s_harvestbarn") ? 200 : 0);
   }
 
   function sprinklerCap(lv = S.lv) {
@@ -240,8 +251,25 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     return !!(S[key] && S[key].open);
   }
 
+  function dayNum(dateText) {
+    return Math.floor(Date.parse(dateText + "T00:00:00Z") / 86400000);
+  }
+
+  /* 下雨：大約每週一次；用了雨雲的那天；有小白龍每 3 天一次 */
   function isRainDay(dateText = todayKey()) {
+    if (S && S.rainDay === dateText) return true;
+    if (own("p_dragon") && dayNum(dateText) % 3 === 0) return true;
     return hash(dateText + ":rain") % 7 === 0;
+  }
+
+  /* 月亮幾天大（0 新月、約 14.8 滿月） */
+  function moonAge(dateText = todayKey()) {
+    const days = (Date.parse(dateText + "T12:00:00Z") - Date.parse("2000-01-06T18:14:00Z")) / 86400000;
+    return ((days % 29.530589) + 29.530589) % 29.530589;
+  }
+
+  function isFullMoon(dateText = todayKey()) {
+    return Math.abs(moonAge(dateText) - 14.77) < 1.0;
   }
 
   function machineMinutes(rec) {
@@ -275,6 +303,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       workshop: { open: false },
       kitchen: { tier: 0, jobs: [] },
       mach: {},
+      pond: { plots: {} },
       ranch: {
         next: 3,
         animals: [
@@ -284,14 +313,26 @@ const FARM_JS_VERSION = "2026-10-16 v4";
         breed: {},
         inc: []
       },
-      known: { crops: {}, dishes: {}, recipes: {}, animals: { chicken: 1 } },
+      known: { crops: {}, dishes: {}, recipes: {}, animals: { chicken: 1 }, items: {} },
       goals: null,
       orders: null,
       day: null,
       wcred: {},
       seenLv: 1,
       title: null,
-      stats: { harvest: 0, cook: 0, plant: 0 }
+      stats: { harvest: 0, cook: 0, plant: 0 },
+      /* 星願池 */
+      deco: { slots: [] },          // 島上每個擺放位置放了哪個家具
+      skins: {},                    // 每一組造型現在用哪一個
+      titleKey: null,               // 現在掛的稱號
+      pages: 0,                     // 食譜殘頁
+      boost: { x2: 0 },             // 豐收券：下幾次收成 ×2
+      rainDay: null,                // 用雨雲的那天
+      wpart: 0,                     // 銅澆水壺：上一滴水還能再澆一格
+      daily: { day: null, done: {} },
+      glassDay: null,               // 時光沙漏今天用過了沒
+      wishApplied: [],              // 已經放進島上的抽獎紀錄（避免重複）
+      ownedCache: {}
     };
 
   }
@@ -310,7 +351,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       if (obj && obj[key] && obj[key] > limit) { obj[key] = limit; changed = true; }
     };
 
-    for (const zone of ["field", "herb", "green"]) {
+    for (const zone of ["field", "herb", "green", "pond"]) {
       for (const p of Object.values(S[zone].plots || {})) {
         if (p && p.c && p.t1 && p.t0 && D.crops[p.c]) cap(p, "t1", p.t0 + D.crops[p.c].hours * HOUR);
       }
@@ -350,7 +391,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       if (st[key] === undefined) st[key] = base[key];
     }
 
-    for (const key of ["field", "herb", "green", "orchard", "logs", "tea", "bamboo", "workshop", "kitchen", "ranch", "known", "stats"]) {
+    for (const key of ["field", "herb", "green", "pond", "orchard", "logs", "tea", "bamboo", "workshop", "kitchen", "ranch", "known", "stats", "deco", "boost", "daily"]) {
       if (!st[key] || typeof st[key] !== "object") st[key] = base[key];
       for (const sub of Object.keys(base[key])) {
         if (st[key][sub] === undefined) st[key][sub] = base[key][sub];
@@ -361,6 +402,9 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     if (!Array.isArray(st.kitchen.jobs)) st.kitchen.jobs = [];
     if (!Array.isArray(st.ranch.animals)) st.ranch.animals = [];
     if (!Array.isArray(st.ranch.inc)) st.ranch.inc = [];
+    if (!Array.isArray(st.deco.slots)) st.deco.slots = [];
+    if (!Array.isArray(st.wishApplied)) st.wishApplied = [];
+    if (!st.skins || typeof st.skins !== "object") st.skins = {};
 
     st.lv = Math.min(50, Math.max(1, st.lv | 0));
 
@@ -373,7 +417,8 @@ const FARM_JS_VERSION = "2026-10-16 v4";
      4. 倉庫
   ========================================================= */
 
-  const NOT_STORED = key => key === "fert" || key.startsWith("seed_");
+  /* 肥料、種子、水桶這類道具不佔倉庫 */
+  const NOT_STORED = key => key === "fert" || key.startsWith("seed_") || D.items[key]?.kind === "use";
 
   function invUsed() {
     let n = 0;
@@ -395,7 +440,10 @@ const FARM_JS_VERSION = "2026-10-16 v4";
   function addItem(key, qty) {
     if (qty <= 0) return 0;
     const room = NOT_STORED(key) ? qty : Math.min(qty, invSpace());
-    if (room > 0) S.inv[key] = have(key) + room;
+    if (room > 0) {
+      S.inv[key] = have(key) + room;
+      S.known.items[key] = 1;
+    }
     return room;
   }
 
@@ -536,8 +584,12 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     S.goals = makeGoals(day);
     S.orders = kitchenTier()[1] === "restaurant" || kitchenTier()[1] === "bistro" ? makeOrders(day) : null;
 
-    /* Lv45：水車每天自己送 1 桶 */
+    /* Lv45：水車每天自己送 1 桶；星靈再送 1 桶 */
     if (!firstEver && S.lv >= D.caps.dailyBucket) {
+      const cap = waterCap();
+      S.water = Math.min(cap.max, S.water + cap.per);
+    }
+    if (!firstEver && own("p_starspirit")) {
       const cap = waterCap();
       S.water = Math.min(cap.max, S.water + cap.per);
     }
@@ -566,6 +618,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     if (zone === "field") return { store: S.field.plots, keys: fieldKeys(), cropZone: "菜田", water: true, name: "菜田" };
     if (zone === "herb") return { store: S.herb.plots, keys: [...Array(D.caps.herbPlots).keys()].map(String), cropZone: "香草園", water: true, name: "香草園" };
     if (zone === "green") return { store: S.green.plots, keys: [...Array(D.caps.greenPlots).keys()].map(String), cropZone: "溫室", water: false, name: "溫室" };
+    if (zone === "pond") return { store: S.pond.plots, keys: ["0", "1", "2"], cropZone: "蓮池", water: false, name: "蓮池" };
     return null;
   }
 
@@ -603,15 +656,51 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       .map(([k]) => k);
   }
 
+  /* 星願池作物：第一次抽到就永久解鎖，之後可以用星露買種子 */
+  function cropUnlocked(k) {
+    const c = D.crops[k];
+    if (!c) return false;
+    if (c.lv > 0) return S.lv >= c.lv;
+    return !!(own("c_" + k) || own("tree_" + k));
+  }
+
   function cropAvailable(k) {
     const c = D.crops[k];
-    if (c.lv === 0) return have("seed_" + k) > 0;
+    if (c.lv === 0) return have("seed_" + k) > 0 || cropUnlocked(k);
     return S.lv >= c.lv;
   }
 
   function seedCost(k) {
     const c = D.crops[k];
-    return c.lv === 0 ? 0 : (c.seed || 0);
+    if (c.lv === 0) {
+      if (have("seed_" + k) > 0) return 0;
+      return cropUnlocked(k) ? (c.seed || 0) : Infinity;
+    }
+    return c.seed || 0;
+  }
+
+  /* 水：銅澆水壺讓 1 滴澆 2 格 */
+  function hasWater() {
+    return S.water > 0 || (own("tool_copperwater") && S.wpart > 0);
+  }
+
+  function useWater() {
+    if (own("tool_copperwater") && S.wpart > 0) {
+      S.wpart = 0;
+      return true;
+    }
+    if (S.water <= 0) return false;
+    S.water -= 1;
+    if (own("tool_copperwater")) S.wpart = 1;
+    return true;
+  }
+
+  /* 收成數量：小狐狸 10% 多 1 個、豐收券 ×2 */
+  function harvestQty(base) {
+    let qty = base, fox = false, x2 = false;
+    if (own("p_fox") && Math.random() < 0.1) { qty += 1; fox = true; }
+    if (S.boost.x2 > 0) { S.boost.x2 -= 1; qty *= 2; x2 = true; }
+    return { qty, fox, x2 };
   }
 
   /* 種一格：回傳 "ok" / "thirsty"（種下但沒水） / 錯誤訊息 */
@@ -624,20 +713,20 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     if (!cropAvailable(crop)) return "還沒解鎖";
     if (z.store[key]) return "這格已經有東西了";
 
-    if (c.lv === 0) {
-      if (!takeItem("seed_" + crop, 1)) return "種子不夠";
-    } else if (S.dew < seedCost(crop)) {
-      return "星露不夠";
+    if (c.lv === 0 && have("seed_" + crop) > 0) {
+      takeItem("seed_" + crop, 1);
     } else {
-      addDew(-seedCost(crop));
+      const cost = seedCost(crop);
+      if (!isFinite(cost)) return "種子不夠";
+      if (S.dew < cost) return "星露不夠";
+      addDew(-cost);
     }
 
     const p = { c: crop, t0: now(), t1: null, f: false };
 
     if (!needsWater(zone, key)) {
       p.t1 = now() + c.hours * HOUR;
-    } else if (S.water > 0) {
-      S.water -= 1;
+    } else if (useWater()) {
       p.t1 = now() + c.hours * HOUR;
     }
 
@@ -653,10 +742,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     const z = plotZone(zone);
     const p = z.store[key];
     if (!p || p.s || p.t1) return false;
-    if (needsWater(zone, key)) {
-      if (S.water <= 0) return false;
-      S.water -= 1;
-    }
+    if (needsWater(zone, key) && !useWater()) return false;
     p.t1 = now() + D.crops[p.c].hours * HOUR;
     return true;
   }
@@ -682,10 +768,11 @@ const FARM_JS_VERSION = "2026-10-16 v4";
 
     if (invSpace() < c.qty) return null;
 
-    addItem(p.c, c.qty);
-    addExp(c.exp * c.qty);
+    const h = harvestQty(c.qty);
+    addItem(p.c, h.qty);
+    addExp(c.exp * h.qty);
 
-    S.known.crops[p.c] = (S.known.crops[p.c] || 0) + c.qty;
+    S.known.crops[p.c] = (S.known.crops[p.c] || 0) + h.qty;
     S.stats.harvest = (S.stats.harvest || 0) + 1;
     goalAdd("harvest");
 
@@ -697,7 +784,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
 
     delete z.store[key];
 
-    return { crop: p.c, qty: c.qty, exp: c.exp * c.qty, seedBack };
+    return { crop: p.c, qty: h.qty, exp: c.exp * h.qty, seedBack, fox: h.fox, x2: h.x2 };
 
   }
 
@@ -718,7 +805,8 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     const c = D.crops[crop];
     if (!c || c.zone !== "果園" || !cropAvailable(crop)) return "不能種";
     if (S.orchard.trees[slot]) return "這裡已經有樹了";
-    if (!spend(c.seed)) return "星露不夠";
+    if (c.lv === 0 && have("seed_" + crop) > 0) takeItem("seed_" + crop, 1);
+    else if (!spend(seedCost(crop))) return "星露不夠";
     const t0 = now();
     S.orchard.trees[slot] = { c: crop, t0, grown: t0 + TREE_GROW, next: t0 + TREE_GROW + c.hours * HOUR };
     goalAdd("plant");
@@ -730,12 +818,13 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     if (treeState(t) !== "ripe") return null;
     const c = D.crops[t.c];
     if (invSpace() < c.qty) return null;
-    addItem(t.c, c.qty);
-    addExp(c.exp * c.qty);
-    S.known.crops[t.c] = (S.known.crops[t.c] || 0) + c.qty;
+    const h = harvestQty(c.qty);
+    addItem(t.c, h.qty);
+    addExp(c.exp * h.qty);
+    S.known.crops[t.c] = (S.known.crops[t.c] || 0) + h.qty;
     goalAdd("harvest");
     t.next = now() + c.hours * HOUR;
-    return { crop: t.c, qty: c.qty, exp: c.exp * c.qty };
+    return { crop: t.c, qty: h.qty, exp: c.exp * h.qty };
   }
 
   function logState(l) {
@@ -758,15 +847,16 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     if (logState(l) !== "ripe") return null;
     const c = D.crops[l.c];
     if (invSpace() < c.qty) return null;
-    addItem(l.c, c.qty);
-    addExp(c.exp * c.qty);
-    S.known.crops[l.c] = (S.known.crops[l.c] || 0) + c.qty;
+    const h = harvestQty(c.qty);
+    addItem(l.c, h.qty);
+    addExp(c.exp * h.qty);
+    S.known.crops[l.c] = (S.known.crops[l.c] || 0) + h.qty;
     goalAdd("harvest");
     l.left -= 1;
     const crop = l.c;
     if (l.left <= 0) delete S.logs.slots[slot];
     else l.next = now() + c.hours * HOUR;
-    return { crop, qty: c.qty, exp: c.exp * c.qty, used: l.left <= 0 };
+    return { crop, qty: h.qty, exp: c.exp * h.qty, used: l.left <= 0 };
   }
 
   function bambooReady() {
@@ -816,12 +906,13 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     if (teaState(b) !== "ripe") return null;
     const c = D.crops.tea;
     if (invSpace() < c.qty) return null;
-    addItem("tea", c.qty);
-    addExp(c.exp * c.qty);
-    S.known.crops.tea = (S.known.crops.tea || 0) + c.qty;
+    const h = harvestQty(c.qty);
+    addItem("tea", h.qty);
+    addExp(c.exp * h.qty);
+    S.known.crops.tea = (S.known.crops.tea || 0) + h.qty;
     goalAdd("harvest");
     b.next = now() + c.hours * HOUR;
-    return { crop: "tea", qty: c.qty, exp: c.exp * c.qty };
+    return { crop: "tea", qty: h.qty, exp: c.exp * h.qty };
   }
 
 
@@ -829,11 +920,20 @@ const FARM_JS_VERSION = "2026-10-16 v4";
      9. 料理
   ========================================================= */
 
+  /* 星願池料理：拿到食材就學會、秘傳食譜用殘頁換、每月限定看食譜卡 */
   function dishKnown(k) {
     const d = D.dishes[k];
     if (!d) return false;
-    if (d.gacha) return !!S.known.recipes[k];
-    return S.lv >= d.lv;
+    if (!d.gacha) return S.lv >= d.lv;
+    if (S.known.recipes[k]) return true;
+    if (d.learn) return !!(S.known.items[d.learn] || S.known.crops[d.learn] || have(d.learn) > 0);
+    if (d.card) return !!own(d.card);
+    return false;
+  }
+
+  /* 魔法鍋：料理時間 -30% */
+  function dishMinutes(d) {
+    return own("tool_magicpot") ? Math.max(1, Math.round(d.minutes * 0.7)) : d.minutes;
   }
 
   function stoveCount() {
@@ -849,7 +949,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     if (!dishKnown(k)) return "還沒學會這道菜";
     if (freeStoves() <= 0) return "爐子都在用";
     if (!takeAll(d.need)) return "食材不夠";
-    S.kitchen.jobs.push({ d: k, t1: now() + d.minutes * MIN });
+    S.kitchen.jobs.push({ d: k, t1: now() + dishMinutes(d) * MIN });
     return "ok";
   }
 
@@ -864,7 +964,13 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     S.stats.cook = (S.stats.cook || 0) + 1;
     goalAdd("cook");
     S.kitchen.jobs.splice(i, 1);
-    return { dish: job.d, exp: d.exp };
+    /* 鳳凰雛鳥：10% 完美料理，多賺一份錢 */
+    let perfect = false;
+    if (own("p_phoenix") && Math.random() < 0.1) {
+      perfect = true;
+      addDew(d.sell);
+    }
+    return { dish: job.d, exp: d.exp, perfect };
   }
 
   function serveOrder(i) {
@@ -938,6 +1044,11 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     return S.ranch.animals.filter(a => a.sp === sp);
   }
 
+  /* 柴犬：產出時間 -10% */
+  function everyH(info) {
+    return info.every * (own("p_shiba") ? 0.9 : 1);
+  }
+
   function animalState(a) {
     const info = D.animals[a.sp];
     if (!a.adult) {
@@ -954,7 +1065,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     const n = info.feed;
     if (n > 0 && !takeItem("feed", n)) return false;
     a.fed = true;
-    a.t1 = now() + (a.adult ? info.every : info.grow) * HOUR;
+    a.t1 = now() + (a.adult ? everyH(info) : info.grow) * HOUR;
     goalAdd("feed");
     return true;
   }
@@ -962,18 +1073,21 @@ const FARM_JS_VERSION = "2026-10-16 v4";
   function collectAnimal(a) {
     if (animalState(a) !== "ready") return null;
     const info = D.animals[a.sp];
-    if (invSpace() < 1) return null;
-    addItem(info.product, 1);
-    addExp(info.exp);
-    S.known.crops[info.product] = (S.known.crops[info.product] || 0) + 1;
+    let item = info.product, qty = 1;
+    if (a.sp === "goldhen" && Math.random() < 0.1) item = "goldegg";      // 金雞偶爾生金蛋
+    if (a.sp === "moonrabbit" && isFullMoon()) qty = 2;                   // 月兔：滿月那天 ×2
+    if (invSpace() < qty) return null;
+    addItem(item, qty);
+    addExp(info.exp * qty);
+    S.known.crops[item] = (S.known.crops[item] || 0) + qty;
     goalAdd("animal");
     if (info.feed > 0) {
       a.fed = false;
       a.t1 = null;
     } else {
-      a.t1 = now() + info.every * HOUR;
+      a.t1 = now() + everyH(info) * HOUR;
     }
-    return { item: info.product, exp: info.exp };
+    return { item, exp: info.exp * qty, qty };
   }
 
   function slaughter(a) {
@@ -1002,11 +1116,23 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     const a = { id: S.ranch.next++, sp, adult, fed: false, t1: null };
     if (adult && info.feed === 0) {
       a.fed = true;
-      a.t1 = now() + info.every * HOUR;
+      a.t1 = now() + everyH(info) * HOUR;
     }
     S.ranch.animals.push(a);
     S.known.animals[sp] = (S.known.animals[sp] || 0) + 1;
     return a;
+  }
+
+  /* 抽到的動物：住處滿了就換成星露 */
+  function giveAnimal(sp) {
+    const info = D.animals[sp];
+    if (animalsOf(sp).length >= animalCap(sp)) {
+      const comp = 150 * (TIERS.indexOf(info.tier) + 1);
+      addDew(comp);
+      return `${info.house}滿了，換成 ${comp} 星露`;
+    }
+    addAnimal(sp, true);
+    return "";
   }
 
   /* 孵蛋器 */
@@ -1034,7 +1160,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
         a.t1 = null;
         if (D.animals[a.sp].feed === 0) {
           a.fed = true;
-          a.t1 = t + D.animals[a.sp].every * HOUR;
+          a.t1 = t + everyH(D.animals[a.sp]) * HOUR;
         }
         changed = true;
       }
@@ -1118,92 +1244,623 @@ const FARM_JS_VERSION = "2026-10-16 v4";
 
 
   /* =========================================================
-     13. 星願瓶
-     資料庫扣一個瓶子、回傳 0–1 的亂數，這裡決定抽到什麼。
+     13. 星願池（抽獎）
+     抽到什麼、幸運值、保底、星屑、收藏都在資料庫算（farm_wish_*），
+     這裡把抽到的東西放進島上：種子、動物、家具、星露…
   ========================================================= */
 
+  const W = D.wish;
   const WISH_NAMES = { wish_normal: "普通星願瓶", wish_rare: "稀有星願瓶", wish_limited: "限定星願瓶" };
-  const WISH_JARS = { wish_normal: "🫙", wish_rare: "🔮", wish_limited: "🌙" };
+  const WISH_IMG = { wish_normal: "item/wish_normal.webp", wish_rare: "item/wish_rare.webp", wish_limited: "item/wish_limited.webp" };
+  const POOL_NAME = { free: "每日免費抽", wish_normal: "普通池", wish_rare: "稀有池", wish_limited: "每月限定池", shop: "星願商店" };
 
-  const WISH_POOLS = {
-    wish_normal: [
-      [0.35, { dew: [60, 150] }],
-      [0.55, { item: "fert", qty: 3 }],
-      [0.70, { item: "feed", qty: 10 }],
-      [0.85, { crop5: true }],
-      [0.93, { item: "seed_goldrice", qty: 3 }],
-      [0.97, { item: "seed_rainbowcorn", qty: 3 }],
-      [0.99, { recipe: "goldonigiri", fallback: 300 }],
-      [1.00, { item: "seed_starherb", qty: 1 }]
-    ],
-    wish_rare: [
-      [0.25, { dew: [300, 600] }],
-      [0.40, { item: "fert", qty: 8 }],
-      [0.55, { item: "seed_goldrice", qty: 5 }],
-      [0.68, { item: "seed_rainbowcorn", qty: 5 }],
-      [0.78, { recipe: "goldonigiri", fallback: 400 }],
-      [0.86, { recipe: "rainbowsoup", fallback: 500 }],
-      [0.93, { item: "seed_starherb", qty: 2 }],
-      [0.97, { recipe: "starpudding", fallback: 700 }],
-      [1.00, { item: "seed_moonlotus", qty: 1 }]
-    ],
-    wish_limited: [
-      [0.25, { item: "seed_moonlotus", qty: 3 }],
-      [0.40, { recipe: "moonlotustea", fallback: 1000 }],
-      [0.55, { item: "seed_starherb", qty: 3 }],
-      [0.80, { dew: [800, 800] }],
-      [1.00, { item: "fert", qty: 15 }]
-    ]
-  };
+  function rewardInfo(key) {
+    return W.rewards[key] || { tier: "c", kind: "none", name: key, emoji: "🎁" };
+  }
 
-  function wishReward(kind, roll) {
+  function rewardArt(key, cls = "") {
+    const special = { wish_normal: WISH_IMG.wish_normal, wish_rare: WISH_IMG.wish_rare, wish_limited: WISH_IMG.wish_limited, makeupcard: "item/makeupcard.webp", page: "item/recipepage.webp" };
+    const r = rewardInfo(key);
+    const img = special[key] || r.img;
+    if (img) return `<img class="${cls}" src="${IMG}${img}" alt="" loading="lazy" draggable="false">`;
+    return `<span class="fm-emo ${cls}">${r.emoji || "🎁"}</span>`;
+  }
 
-    const pool = WISH_POOLS[kind];
-    let prev = 0;
+  function isUnique(key) {
+    return W.unique.some(p => key.startsWith(p));
+  }
 
-    for (const [edge, reward] of pool) {
+  /* 普通池（每日免費抽、普通瓶）：幸運值每 1 點，珍 +1%、華 +0.5%、仙 +0.1% */
+  function normalOdds(luck) {
+    const k = Math.max(1, Math.min(30, luck || 1)) - 1;
+    const s_ = 0.1 + 0.1 * k, x = 0.9 + 0.5 * k, l = 5 + k, r = 24;
+    return { c: 100 - s_ - x - l - r, r, l, x, s: s_ };
+  }
 
-      if (roll < edge || edge === 1) {
+  /* 稀有池：沒中大獎每瓶 華 +1.5%、仙 +0.5%；第 20 瓶一定中 */
+  function rareOdds(n) {
+    if (n >= 20) return { r: 0, l: 0, x: 75, s: 25 };
+    return { r: 50 - 2 * (n - 1), l: 35, x: 12 + 1.5 * (n - 1), s: 3 + 0.5 * (n - 1) };
+  }
 
-        const t = (roll - prev) / Math.max(0.0001, edge - prev);
+  /* 限定池：沒中主角每瓶 仙 +5%；第 10 瓶一定中 */
+  function limitedOdds(n) {
+    if (n >= 10) return { l: 0, x: 0, s: 100 };
+    return { l: 50 - 5 * (n - 1), x: 35, s: 15 + 5 * (n - 1) };
+  }
 
-        if (reward.dew) {
-          const n = Math.round(reward.dew[0] + (reward.dew[1] - reward.dew[0]) * t);
-          addDew(n);
-          return { text: `${num(n)} 星露`, icon: "🌟" };
-        }
+  function pct(v) {
+    return (Math.round(v * 10) / 10) + "%";
+  }
 
-        if (reward.crop5) {
-          const list = Object.keys(D.crops).filter(k => D.crops[k].lv > 0 && D.crops[k].lv <= S.lv && D.crops[k].zone === "菜田");
-          const k = list[Math.floor(t * list.length) % list.length];
-          const got = addItem(k, 5);
-          if (got <= 0) { addDew(60); return { text: "倉庫滿了，換成 60 星露", icon: "🌟" }; }
-          return { text: `${itemName(k)} ×${got}`, item: k };
-        }
+  function stardust() {
+    return (net.ws && net.ws.items && net.ws.items.stardust) || 0;
+  }
 
-        if (reward.recipe) {
-          if (S.known.recipes[reward.recipe]) {
-            addDew(reward.fallback);
-            return { text: `已經會「${D.dishes[reward.recipe].name}」了，換成 ${num(reward.fallback)} 星露`, icon: "🌟" };
-          }
-          S.known.recipes[reward.recipe] = 1;
-          return { text: `新食譜：${D.dishes[reward.recipe].name}`, dish: reward.recipe, rare: true };
-        }
+  function makeupCards() {
+    return (net.ws && net.ws.items && net.ws.items.makeup_card) || 0;
+  }
 
-        const got = addItem(reward.item, reward.qty);
-        if (got <= 0) { addDew(60); return { text: "倉庫滿了，換成 60 星露", icon: "🌟" }; }
-        return { text: `${itemName(reward.item)} ×${got}`, item: reward.item, rare: reward.item.startsWith("seed_") };
+  function freeLeft() {
+    const st = net.ws;
+    return st ? Math.max(0, st.free_total - st.free_used) : 0;
+  }
 
-      }
+  /* 把抽到的東西放進島上（星屑、星願瓶、補簽卡、幸運值、收藏，資料庫已經處理好了） */
+  function applyReward(res) {
 
-      prev = edge;
+    const r = rewardInfo(res.key);
+    const out = { key: res.key, tier: res.tier || r.tier, name: r.name, dup: !!res.dup, dust: res.dust || 0, note: "" };
 
+    if (res.dup) {
+      out.note = `已經有了，換成 ${res.dust} 星屑`;
+      return out;
     }
 
-    return { text: "什麼都沒有", icon: "❔" };
+    switch (r.kind) {
+      case "dew": {
+        const n = res.amount || (r.n ? r.n[0] : 0);
+        addDew(n);
+        out.name = `星露 ${num(n)}`;
+        break;
+      }
+      case "item": {
+        const got = addItem(r.item, r.qty);
+        if (got < r.qty) {
+          addDew((r.qty - got) * 5);
+          out.note = "倉庫滿了，放不下的換成星露";
+        }
+        break;
+      }
+      case "crop5": {
+        const list = Object.keys(D.crops).filter(k => D.crops[k].lv > 0 && D.crops[k].lv <= S.lv && D.crops[k].zone === "菜田");
+        const k = list[Math.floor(Math.random() * list.length)];
+        const got = addItem(k, 5);
+        out.name = `${itemName(k)} ×5`;
+        out.key = k;
+        if (got < 5) {
+          addDew((5 - got) * 5);
+          out.note = "倉庫滿了，放不下的換成星露";
+        }
+        break;
+      }
+      case "page":
+        S.pages = (S.pages || 0) + r.qty;
+        out.note = `殘頁 ${S.pages} 張，3 張換一道秘傳食譜`;
+        break;
+      case "deco":
+        out.note = autoPlace(r.deco) ? "已經擺上島了" : "在「收藏」可以擺上島";
+        break;
+      case "crop":
+        addItem("seed_" + r.crop, 5);
+        out.note = "種子 ×5，之後種子也能用星露買";
+        break;
+      case "tree":
+        addItem("seed_" + r.crop, 1);
+        out.note = "樹苗 ×1，種在果園；之後也能用星露買";
+        break;
+      case "animal":
+        out.note = giveAnimal(r.sp) || `住進${D.animals[r.sp].house}`;
+        break;
+      case "skin": {
+        const sk = D.skins[r.skin];
+        if (sk && !S.skins[sk.group] && sk.group !== "night") S.skins[sk.group] = r.skin;
+        out.note = sk ? (sk.desc || `換掉${sk.what}`) : "";
+        rebuildStatic();
+        break;
+      }
+      case "title":
+        if (!S.titleKey) S.titleKey = r.title;
+        out.note = "在「收藏」可以換稱號";
+        break;
+      case "pet":
+        out.note = D.pets[r.pet].desc;
+        break;
+      case "tool":
+        out.note = D.tools[r.tool].desc;
+        break;
+      case "recipe":
+        out.note = "學會新食譜了";
+        break;
+      case "luck":
+        out.note = "普通池的幸運值加上去了";
+        break;
+      case "bottle":
+      case "makeup":
+      case "dust":
+        out.note = "放進背包了";
+        break;
+      default:
+        break;
+    }
+
+    return out;
 
   }
 
+  /* 抽到的結果先記在這台裝置，存檔成功才清掉；網頁中途關掉，下次打開會補放 */
+  const pendingKey = () => "fm_wish_pending_" + (uid() || "guest");
+
+  function applyResults(results) {
+    if (!Array.isArray(S.wishApplied)) S.wishApplied = [];
+    const shown = [];
+    for (const res of results) {
+      if (res.id && S.wishApplied.includes(res.id)) continue;
+      shown.push(applyReward(res));
+      if (res.id) S.wishApplied.push(res.id);
+    }
+    if (S.wishApplied.length > 300) S.wishApplied = S.wishApplied.slice(-300);
+    return shown;
+  }
+
+  function stashPending(results) {
+    try {
+      const old = JSON.parse(storeGet(pendingKey()) || "[]");
+      storeSet(pendingKey(), JSON.stringify(old.concat(results).slice(-100)));
+    } catch (e) { /* 沒關係 */ }
+  }
+
+  function replayPending() {
+    let list = [];
+    try { list = JSON.parse(storeGet(pendingKey()) || "[]"); } catch (e) { list = []; }
+    if (!list.length) return 0;
+    const shown = applyResults(list);
+    if (shown.length) saveSoon(true);
+    return shown.length;
+  }
+
+  function setWishStatus(st) {
+    if (!st) return;
+    net.ws = st;
+    const items = st.items || {};
+    net.wish = { wish_normal: items.wish_normal || 0, wish_rare: items.wish_rare || 0, wish_limited: items.wish_limited || 0 };
+    if (S) {
+      const before = JSON.stringify(S.ownedCache || {});
+      S.ownedCache = st.owned || {};
+      if (before !== JSON.stringify(S.ownedCache)) {
+        syncDecoSlots();
+        rebuildStatic();
+        saveSoon();
+      }
+    }
+    if (typeof gameCheckinState !== "undefined" && gameCheckinState.items) {
+      for (const k of Object.keys(WISH_NAMES)) gameCheckinState.items[k] = net.wish[k];
+    }
+  }
+
+  async function loadWishStatus() {
+    if (net.mode !== "server") return;
+    try {
+      const { data, error } = await db.rpc("farm_wish_status");
+      if (error) throw error;
+      net.wishReady = true;
+      setWishStatus(data);
+      if (data.milestones && data.milestones.length) {
+        toast("🎉 連續簽到獎勵：" + data.milestones.map(k => k === "makeupcard" ? "補簽卡" : rewardInfo(k).name).join("、"));
+      }
+    } catch (error) {
+      if (isMissingTable(error) || /farm_wish/.test(String(error.message || ""))) net.wishReady = false;
+      else console.warn("星願池狀態載入失敗：", error);
+      await loadWishCounts();
+    }
+  }
+
+  let wishBusy = false;
+
+  function wishNotReady() {
+    if (net.mode !== "server") { toast("資料庫設定好之後才能抽"); return true; }
+    if (!net.wishReady) { toast("星願池還沒設定好：要先在 Supabase 執行星願池的 SQL"); return true; }
+    return false;
+  }
+
+  /* 抽獎 */
+  async function doDraw(pool, count = 1) {
+
+    if (wishBusy || wishNotReady()) return;
+
+    if (pool === "free") {
+      if (!net.ws.checked) return toast("先簽到才能免費抽");
+      if (freeLeft() < count) return toast("今天的免費抽用完了，明天再來");
+    } else if ((net.wish[pool] || 0) < count) {
+      return toast("星願瓶不夠");
+    }
+
+    wishBusy = true;
+    renderSheet();
+
+    /* 先把進度存好，抽到的東西才不會跟舊存檔打架 */
+    if (net.dirty) await saveNow();
+
+    try {
+      const { data, error } = await db.rpc("farm_wish_draw", { p_pool: pool, p_count: count });
+      if (error) throw error;
+      const results = data.results || [];
+      stashPending(results);
+      setWishStatus(data.status);
+      const shown = applyResults(results);
+      saveSoon(true);
+      wishBusy = false;
+      renderAll();
+      openModal("wishresult", { pool, list: shown });
+    } catch (error) {
+      console.error("抽獎失敗：", error);
+      toast("抽獎失敗：" + (error.message || error));
+    }
+
+    wishBusy = false;
+    renderSheet();
+
+  }
+
+  /* 星屑商店：wish_normal / wish_rare / wish_limited / makeupcard / page / pick:<獎項> / yarn:<家具> */
+  async function doBuy(item) {
+
+    if (wishBusy || wishNotReady()) return;
+
+    let yarn = null;
+    if (item.startsWith("yarn:")) {
+      yarn = D.deco[item.slice(7)].yarn;
+      if (have(yarn) < 10) return toast(`${itemName(yarn)}不夠：要 10 個`);
+    }
+
+    wishBusy = true;
+    if (net.dirty) await saveNow();
+
+    try {
+      const { data, error } = await db.rpc("farm_wish_buy", { p_item: item });
+      if (error) throw error;
+      if (yarn) takeItem(yarn, 10);
+      let shown;
+      if (item === "page") {
+        S.pages = (S.pages || 0) + 1;
+        shown = [{ key: "page", tier: "c", name: "食譜殘頁 ×1", note: `殘頁 ${S.pages} 張` }];
+      } else if (item.startsWith("pick:") || item.startsWith("yarn:")) {
+        const res = [{ id: data.id, key: data.key, tier: data.tier }];
+        stashPending(res);
+        setWishStatus(data.status);
+        shown = applyResults(res);
+      } else {
+        shown = [{ key: item, tier: "c", name: item === "makeupcard" ? "補簽卡" : WISH_NAMES[item], note: "放進背包了" }];
+      }
+      setWishStatus(data.status);
+      saveSoon(true);
+      wishBusy = false;
+      renderAll();
+      openModal("wishresult", { pool: "shop", list: shown });
+    } catch (error) {
+      toast(String(error.message || error));
+    }
+
+    wishBusy = false;
+    renderSheet();
+
+  }
+
+  /* 星空瞭望台：每天看一次流星 */
+  async function doObserve() {
+    if (wishNotReady()) return;
+    if (net.ws.observed) return toast("今天已經看過流星了，明天再來");
+    try {
+      const { data, error } = await db.rpc("farm_wish_observe");
+      if (error) throw error;
+      setWishStatus(data);
+      toast(`🌠 看到流星了！普通池幸運值 +1（現在 ${data.luck}）`);
+      renderAll();
+    } catch (error) {
+      toast(String(error.message || error));
+    }
+  }
+
+  /* 補簽卡：列出這個月沒簽到的日子 */
+  async function loadMissedDays() {
+    const today = todayKey();
+    const start = today.slice(0, 8) + "01";
+    UI.missed = null;
+    try {
+      const { data, error } = await db.from("checkins").select("checkin_date")
+        .eq("user_id", uid()).gte("checkin_date", start).lt("checkin_date", today);
+      if (error) throw error;
+      const done = new Set((data || []).map(r => r.checkin_date));
+      const days = [];
+      for (let d = start; d < today; d = shiftDay(d, 1)) if (!done.has(d)) days.push(d);
+      UI.missed = days;
+    } catch (error) {
+      console.warn("讀取簽到紀錄失敗：", error);
+      UI.missed = [];
+    }
+    if (UI.sheet && UI.sheet.name === "wish") renderSheet();
+  }
+
+  async function doMakeup(date) {
+    if (wishNotReady()) return;
+    try {
+      const { data, error } = await db.rpc("farm_wish_makeup", { p_date: date });
+      if (error) throw error;
+      setWishStatus(data.status);
+      UI.missed = (UI.missed || []).filter(d => d !== date);
+      toast(`🎫 補簽好了：${date.slice(5).replace("-", "/")}，現在連續 ${data.status.streak} 天`);
+      if (typeof loadGameCheckin === "function") loadGameCheckin();
+      renderAll();
+    } catch (error) {
+      toast(String(error.message || error));
+    }
+  }
+
+  /* 在星露島直接簽到（用網站原本的簽到） */
+  async function doCheckin() {
+    if (typeof gameCheckin !== "function") return toast("到「今日」頁簽到");
+    await gameCheckin();
+    await loadWishStatus();
+    renderAll();
+  }
+
+  /* 秘傳食譜：3 張殘頁換一道 */
+  function learnSecret(k) {
+    const d = D.dishes[k];
+    if (!d || !d.secret) return;
+    if (S.known.recipes[k]) return toast("已經會了");
+    if ((S.pages || 0) < 3) return toast("食譜殘頁不夠：要 3 張");
+    S.pages -= 3;
+    S.known.recipes[k] = 1;
+    toast(`📜 學會秘傳食譜：${d.name}`);
+    after(true);
+  }
+
+
+  /* ---------- 家具：擺在島上預留的位置 ---------- */
+
+  const DECO_SLOTS = [
+    [400, 610], [545, 615], [880, 605], [130, 680], [210, 1030], [560, 1080],
+    [620, 1210], [130, 1140], [520, 1300], [880, 1310], [1350, 1150], [1400, 880]
+  ];
+
+  function decoOwned(k) {
+    return own("f_" + k);
+  }
+
+  function decoPlaced(k) {
+    return S.deco.slots.filter(x => x === k).length;
+  }
+
+  function autoPlace(k) {
+    if (!D.deco[k] || decoPlaced(k) >= decoOwned(k)) return false;
+    const i = DECO_SLOTS.findIndex((_, j) => !S.deco.slots[j]);
+    if (i < 0) return false;
+    S.deco.slots[i] = k;
+    return true;
+  }
+
+  /* 收藏數量變少（例如換了帳號資料）時，多擺的收起來 */
+  function syncDecoSlots() {
+    if (!net.ws || !S) return;
+    for (let i = S.deco.slots.length - 1; i >= 0; i--) {
+      const k = S.deco.slots[i];
+      if (k && (!D.deco[k] || decoPlaced(k) > decoOwned(k))) S.deco.slots[i] = null;
+    }
+  }
+
+
+  /* ---------- 造型 ---------- */
+
+  function skinOn(k) {
+    const sk = D.skins[k];
+    return !!(sk && own("s_" + k) && S && S.skins[sk.group] === k);
+  }
+
+  function rebuildStatic() {
+    const el = UI.root && UI.root.querySelector("#fm-static");
+    if (el && S) el.innerHTML = staticIsland();
+    if (UI.root && S) {
+      const night = UI.root.querySelector("#fm-night");
+      if (night) night.hidden = !skinOn("nightmode");
+    }
+  }
+
+
+  /* ---------- 每天一次的小禮物（夥伴、鳥屋、熱可可攤、舞獅、錦鯉） ---------- */
+
+  function dailyReset() {
+    const day = todayKey();
+    if (S.daily.day !== day) {
+      S.daily.day = day;
+      S.daily.done = {};
+    }
+  }
+
+  function dailyReady(id) {
+    dailyReset();
+    return !S.daily.done[id];
+  }
+
+  function dailyDone(id) {
+    dailyReset();
+    S.daily.done[id] = 1;
+  }
+
+  /* 三花貓：每天第一次上島，菜田熟了的自動收一輪 */
+  function calicoHelp() {
+    if (!S || !own("p_calico") || !dailyReady("calico")) return;
+    dailyDone("calico");
+    const z = plotZone("field");
+    let n = 0;
+    for (const key of z.keys) {
+      if (plotState(z.store[key]) === "ripe" && harvestOne("field", key)) n++;
+    }
+    if (n) toast(`🐈 三花貓幫你收了 ${n} 格菜`);
+    saveSoon();
+  }
+
+  const PET_LINES = {
+    calico: "喵～今天也來曬太陽",
+    shiba: "汪！牧場我顧著",
+    fox: "嘿嘿，多撿到一個",
+    owl: "咕咕，今天多抽一次吧",
+    phoenix: "啾！今天的料理會很完美",
+    dragon: "要下雨了嗎？我來",
+    starspirit: "閃閃～水車裝滿了"
+  };
+
+  /* 夥伴每天送一個凡品小禮物 */
+  function petGift(k) {
+    const p = D.pets[k];
+    if (!p) return;
+    if (!dailyReady("pet_" + k)) return toast(`${p.emoji} ${p.name}：${PET_LINES[k] || "今天也很開心"}`);
+    dailyDone("pet_" + k);
+    const gifts = [["dew", 30], ["fert", 1], ["feed", 3], ["bucket", 1]];
+    const [g, n] = gifts[Math.floor(Math.random() * gifts.length)];
+    let txt;
+    if (g === "dew") { addDew(n); txt = `星露 ${n}`; }
+    else {
+      const got = addItem(g, n);
+      if (got < n) { addDew(20); txt = "星露 20"; }
+      else txt = `${itemName(g)} ×${n}`;
+    }
+    toast(`${p.emoji} ${p.name}：${PET_LINES[k] || "送你一個小禮物"}（${txt}）`);
+    after();
+  }
+
+  /* 家具的每日效果有沒有準備好 */
+  function decoReady(k) {
+    const eff = D.deco[k] && D.deco[k].eff;
+    if (eff === "bird" || eff === "cocoa" || eff === "lion") return dailyReady("deco_" + k);
+    if (eff === "observe") return !!(net.ws && !net.ws.observed);
+    return false;
+  }
+
+  function decoTap(k) {
+    const d = D.deco[k];
+    if (!d) return;
+    const eff = d.eff;
+    if (eff === "balloon") {
+      UI.zoom = ZOOMS[0];
+      closePop();
+      layoutMap(true);
+      return toast("🎈 從熱氣球上看整座島");
+    }
+    if (eff === "observe") return doObserve();
+    if ((eff === "bird" || eff === "cocoa" || eff === "lion") && dailyReady("deco_" + k)) {
+      dailyDone("deco_" + k);
+      if (eff === "bird") {
+        const seeds = Object.keys(D.crops).filter(c => D.crops[c].lv === 0 && D.crops[c].zone !== "果園" && cropUnlocked(c));
+        if (seeds.length) {
+          const c = seeds[Math.floor(Math.random() * seeds.length)];
+          addItem("seed_" + c, 1);
+          toast(`🐦 小鳥帶來了 ${D.crops[c].name}種子`);
+        } else {
+          addDew(30);
+          toast("🐦 小鳥帶來了 30 星露");
+        }
+      } else if (eff === "cocoa") {
+        if (addItem("hotcocoa", 1)) toast("☕ 熱可可攤送你一杯熱可可");
+        else { addDew(40); toast("☕ 倉庫滿了，熱可可換成 40 星露"); }
+      } else {
+        const n = 88 + Math.floor(Math.random() * 801);
+        addDew(n);
+        toast(`🦁 舞獅表演！紅包 ${n} 星露`);
+      }
+      return after();
+    }
+    toast(`${d.name}${d.desc ? "：" + d.desc : ""}`);
+  }
+
+
+  /* ---------- 道具 ---------- */
+
+  /* 某一區還在長的東西：回傳 [物件, 欄位] */
+  const ZONE_LABEL = { field: "菜田", herb: "香草園", green: "溫室", pond: "蓮池", orchard: "果園", logs: "菇棚", tea: "茶園" };
+
+  function zoneTimers(zone) {
+    const t = now();
+    const list = [];
+    if (["field", "herb", "green", "pond"].includes(zone)) {
+      if (zone !== "field" && zone !== "pond" && !zoneOpen(ZONE_LABEL[zone])) return list;
+      const z = plotZone(zone);
+      for (const key of z.keys) {
+        const p = z.store[key];
+        if (p && p.t1 && p.t1 > t) list.push([p, "t1"]);
+      }
+    } else if (zone === "orchard") {
+      for (const tr of Object.values(S.orchard.trees)) {
+        if (tr.grown > t) list.push([tr, "grown"], [tr, "next"]);
+        else if (tr.next > t) list.push([tr, "next"]);
+      }
+    } else if (zone === "logs") {
+      for (const l of Object.values(S.logs.slots)) if (l.next > t) list.push([l, "next"]);
+    } else if (zone === "tea") {
+      for (const b of Object.values(S.tea.bushes)) {
+        if (b.grown > t) list.push([b, "grown"], [b, "next"]);
+        else if (b.next > t) list.push([b, "next"]);
+      }
+    }
+    return list;
+  }
+
+  function speedZone(zone, ms) {
+    const t = now();
+    const list = zoneTimers(zone);
+    for (const [obj, key] of list) obj[key] = Math.max(t, obj[key] - ms);
+    return list.length;
+  }
+
+  function waterAllThirsty() {
+    let n = 0;
+    for (const zone of ["field", "herb"]) {
+      const z = plotZone(zone);
+      for (const key of z.keys) {
+        const p = z.store[key];
+        if (p && !p.s && !p.t1) { p.t1 = now() + D.crops[p.c].hours * HOUR; n++; }
+      }
+    }
+    return n;
+  }
+
+  function useItem(key) {
+    if (have(key) <= 0) return;
+    if (key === "bucket") {
+      const cap = waterCap();
+      if (S.water >= cap.max) return toast("水車已經滿了");
+      takeItem(key, 1);
+      S.water = Math.min(cap.max, S.water + cap.per);
+      toast(`🪣 水車 +1 桶（${S.water}/${cap.max}）`);
+      return after();
+    }
+    if (key === "raincloud") {
+      if (isRainDay()) return toast("今天已經在下雨了");
+      takeItem(key, 1);
+      S.rainDay = todayKey();
+      const n = waterAllThirsty();
+      toast(`🌧️ 下雨了！今天種什麼都不用水${n ? `，口渴的 ${n} 格也澆好了` : ""}`);
+      renderRain();
+      return after(true);
+    }
+    if (key === "harvestticket") {
+      takeItem(key, 1);
+      S.boost.x2 = (S.boost.x2 || 0) + 1;
+      toast(`🎫 接下來 ${S.boost.x2} 次收成數量 ×2`);
+      return after();
+    }
+    if (key === "speedglass") return openModal("pickzone", { use: "speedglass" });
+  }
 
   /* =========================================================
      14. 存檔：Supabase（farm_saves），還沒設定就先存在瀏覽器
@@ -1366,13 +2023,16 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       S = fixState(data.state);
       clampTimers();
       net.rev = data.rev;
+      if (replayPending()) net.dirty = true;
       toast("別的裝置或分頁存過更新的進度，已經換成那一份");
+      rebuildStatic();
       renderAll();
     }
   }
 
   /* 升級時資料庫要發星願瓶（看存檔裡的等級） */
   async function afterSave() {
+    if (!net.dirty && !net.error && net.mode === "server") storeSet(pendingKey(), null);
     if (!pendingLevelClaim || net.mode !== "server" || net.dirty) return;
     pendingLevelClaim = false;
     try {
@@ -1395,18 +2055,17 @@ const FARM_JS_VERSION = "2026-10-16 v4";
 
 
   /* =========================================================
-     15. 習慣打卡 → 水車裝水
-     同一個習慣同一天只算一次（取消再打卡不會重複裝水）
+     15. 習慣打卡、完成任務 → 水車裝水
+     同一個習慣（或任務）同一天只算一次（取消再打卡不會重複裝水）
   ========================================================= */
 
-  async function creditHabitWater(showToast_ = true) {
+  async function creditWater(showToast_ = true) {
 
     if (!S || !uid()) return { buckets: 0, wasted: 0 };
 
     const day = todayKey();
     const yesterday = shiftDay(day, -1);
-
-    let rows = [];
+    const credits = [];
 
     try {
       const { data, error } = await db
@@ -1416,21 +2075,37 @@ const FARM_JS_VERSION = "2026-10-16 v4";
         .gte("log_date", yesterday)
         .limit(500);
       if (error) throw error;
-      rows = data || [];
+      for (const row of data || []) {
+        if (!row.is_makeup) credits.push([row.log_date, row.habit_id]);
+      }
     } catch (error) {
       console.warn("讀取習慣打卡失敗：", error);
-      return { buckets: 0, wasted: 0 };
+    }
+
+    try {
+      /* 今天（凌晨 2 點之後）完成的任務 */
+      const start = new Date(day + "T02:00:00");
+      const { data, error } = await db
+        .from("tasks")
+        .select("id, completed_at")
+        .eq("user_id", uid())
+        .eq("completed", true)
+        .gte("completed_at", start.toISOString())
+        .limit(300);
+      if (error) throw error;
+      for (const row of data || []) credits.push([day, "t" + row.id]);
+    } catch (error) {
+      console.warn("讀取任務失敗：", error);
     }
 
     const cap = waterCap();
     let buckets = 0;
     let wasted = 0;
 
-    for (const row of rows) {
-      if (row.is_makeup) continue;
-      const list = S.wcred[row.log_date] || (S.wcred[row.log_date] = []);
-      if (list.includes(row.habit_id)) continue;
-      list.push(row.habit_id);
+    for (const [date, id] of credits) {
+      const list = S.wcred[date] || (S.wcred[date] = []);
+      if (list.includes(id)) continue;
+      list.push(id);
       if (S.water + cap.per <= cap.max) {
         S.water += cap.per;
         buckets++;
@@ -1446,7 +2121,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       saveSoon();
       renderAll();
       if (showToast_) {
-        if (buckets) toast(`💧 完成習慣，水車裝了 ${buckets} 桶水`);
+        if (buckets) toast(`💧 完成習慣和任務，水車裝了 ${buckets} 桶水`);
         else toast("💧 水車已經滿了，這次的水裝不下");
       }
     }
@@ -1539,6 +2214,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
           <g id="fm-static">${staticIsland()}</g>
           <g id="fm-dyn"></g>
         </svg>
+        <div class="fm-night" id="fm-night" ${skinOn("nightmode") ? "" : "hidden"}></div>
       </div>
       <div class="fm-rain" id="fm-rain" hidden></div>
       <div class="fm-hud" id="fm-hud"></div>
@@ -1560,6 +2236,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
 
     UI.root = root;
     UI.view = root.querySelector("#fm-view");
+    root.classList.add("fm-has-root");
     UI.map = root.querySelector("#fm-map");
     UI.centered = false;
 
@@ -1603,16 +2280,19 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       <button type="button" class="fm-cap" data-act="market" aria-label="星露 ${S.dew}">
         <span class="fm-cap-ic">${ICON.dew}</span>${num(S.dew)}<span class="fm-plus">+</span>
       </button>
-      <button type="button" class="fm-cap" data-act="wish" aria-label="星願瓶 ${wishTotal()} 個">
-        <span class="fm-cap-ic">🌠</span>${wishTotal()}
+      <button type="button" class="fm-cap" data-act="wish" aria-label="星願池：星願瓶 ${wishTotal()} 個${freeLeft() ? "，今天的免費抽還沒用" : ""}">
+        <span class="fm-cap-ic"><img src="${IMG}item/wish_normal.webp" alt=""></span>${wishTotal()}${freeLeft() && net.ws && net.ws.checked ? `<i class="fm-dot fm-dot-l"></i>` : ""}
       </button>`;
 
     const need = lvNeed(S.lv);
     const pct = S.lv >= 50 ? 100 : Math.floor((S.exp / need) * 100);
-    const name = S.title ? `星露島・${S.title}` : "星露島";
+    const ti = S.titleKey && own("t_" + S.titleKey) ? D.titles[S.titleKey] : null;
+    const titleName = ti ? ti.name : S.title;
+    const name = titleName ? `星露島・${titleName}` : "星露島";
+    const frame = ti && ti.color ? `style="--frame:${ti.color}"` : "";
 
     UI.root.querySelector("#fm-prof").innerHTML = `
-      <div class="fm-ava"><img src="${IMG}crop/onion_3.webp" alt=""></div>
+      <div class="fm-ava ${ti && ti.color ? "framed" : ""} ${S.titleKey === "immortal" && ti ? "meteor" : ""}" ${frame}><img src="${IMG}crop/onion_3.webp" alt=""></div>
       <div class="fm-prof-r">
         <div class="fm-lvrow">
           <div class="fm-lv ol">${S.lv}</div>
@@ -1689,7 +2369,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
 
   function countRipe() {
     let n = 0;
-    for (const zone of ["field", "herb", "green"]) {
+    for (const zone of ["field", "herb", "green", "pond"]) {
       const z = plotZone(zone);
       for (const key of z.keys) if (plotState(z.store[key]) === "ripe") n++;
     }
@@ -1788,6 +2468,22 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     s += `<path d="${grass}" fill="url(#fmGrass)"/>`;
     s += `<ellipse cx="750" cy="860" rx="520" ry="380" fill="url(#fmGrassLight)"/>`;
 
+    /* 地面造型：楓葉、雪景 */
+    if (S && skinOn("mapleground")) {
+      s += `<path d="${grass}" fill="#f0a24e" opacity=".26"/>`;
+      for (let i = 0; i < 70; i++) {
+        const x = 120 + (hash("mx" + i) % 1260), y = 330 + (hash("my" + i) % 1000);
+        const c = ["#e2552f", "#f08a2a", "#d8402c", "#f4b23c"][i % 4];
+        s += `<path transform="translate(${x} ${y}) rotate(${hash("mr" + i) % 360}) scale(.9)" d="M0 -9 L3 -3 L9 -4 L5 1 L7 7 L0 4 L-7 7 L-5 1 L-9 -4 L-3 -3Z" fill="${c}" opacity=".85"/>`;
+      }
+    } else if (S && skinOn("snowground")) {
+      s += `<path d="${grass}" fill="#ffffff" opacity=".62"/>`;
+      for (let i = 0; i < 90; i++) {
+        const x = 100 + (hash("sx" + i) % 1300), y = 320 + (hash("sy" + i) % 1020);
+        s += `<circle cx="${x}" cy="${y}" r="${2 + (i % 3)}" fill="#fff" opacity=".9"/>`;
+      }
+    }
+
     /* 小路：北岸步道、橋、菜田往牧場／果園／碼頭 */
     const road = (d, w = 22) => `<path d="${d}" stroke="#e7cf9c" stroke-width="${w}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/>`;
     s += road("M210 378 C450 392 1050 392 1300 372", 26);
@@ -1814,11 +2510,25 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       s += `<path d="M${x} ${y} v-34 M${x + 6} ${y} v-26 M${x - 6} ${y} v-22" stroke="#5f9a3a" stroke-width="2.4" stroke-linecap="round"/><ellipse cx="${x}" cy="${y - 36}" rx="3" ry="8" fill="#8a5a37"/>`;
     }
 
-    /* 木橋 */
+    /* 招財錦鯉：湖裡游的錦鯉 */
+    if (S && skinOn("luckykoi")) {
+      for (const [x, y, k, r] of [[520, 470, "koi_rw", -20], [860, 492, "koi_gold", 15], [1040, 462, "koi_rw", 160], [700, 445, "koi_gold", 200]]) {
+        s += `<image href="${IMG}item/${k}.webp" x="${x - 22}" y="${y - 22}" width="44" height="44" transform="rotate(${r} ${x} ${y})" opacity=".95"/>`;
+      }
+    }
+
+    /* 木橋（月光橋造型會換掉） */
     const by0 = ly - ry - 18, by1 = ly + ry + 22;
-    s += `<rect x="${BRIDGE_X - 24}" y="${by0}" width="48" height="${by1 - by0}" rx="4" fill="#b98352"/>`;
-    for (let y = by0 + 6; y < by1; y += 12) s += `<rect x="${BRIDGE_X - 24}" y="${y}" width="48" height="7" rx="2" fill="#d9a46b"/>`;
-    s += `<path d="M${BRIDGE_X - 26} ${by0} V${by1} M${BRIDGE_X + 26} ${by0} V${by1}" stroke="#8a5a37" stroke-width="5" stroke-linecap="round"/>`;
+    if (S && skinOn("moonbridge")) {
+      s += building("moonbridge", BRIDGE_X, by1 + 6, 210);
+    } else {
+      s += `<rect x="${BRIDGE_X - 24}" y="${by0}" width="48" height="${by1 - by0}" rx="4" fill="#b98352"/>`;
+      for (let y = by0 + 6; y < by1; y += 12) s += `<rect x="${BRIDGE_X - 24}" y="${y}" width="48" height="7" rx="2" fill="#d9a46b"/>`;
+      s += `<path d="M${BRIDGE_X - 26} ${by0} V${by1} M${BRIDGE_X + 26} ${by0} V${by1}" stroke="#8a5a37" stroke-width="5" stroke-linecap="round"/>`;
+    }
+
+    /* 彩虹瀑布：湖的東邊 */
+    if (S && skinOn("rainbowfall")) s += building("rainbowfall", 1268, 545, 150);
 
     /* 草叢、小花、石頭 */
     const tufts = [[160, 700], [420, 640], [1080, 640], [1390, 760], [130, 1060], [380, 1200], [600, 1270], [920, 1290], [1300, 1180], [470, 1050], [1000, 640], [230, 1180]];
@@ -1832,7 +2542,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     s += `<ellipse cx="1360" cy="1302" rx="16" ry="5" fill="#000" opacity=".12"/><ellipse cx="1355" cy="1294" rx="15" ry="10" fill="url(#fmRock)"/><ellipse cx="1372" cy="1299" rx="10" ry="7" fill="url(#fmRock)"/>`;
     s += `<ellipse cx="420" cy="1320" rx="14" ry="5" fill="#000" opacity=".12"/><ellipse cx="416" cy="1313" rx="13" ry="9" fill="url(#fmRock)"/>`;
 
-    s += palm(130, 900, 1.05) + palm(170, 1240, 1) + palm(1420, 1060, 1) + palm(1440, 420, .9) + palm(70, 420, .9) + palm(420, 1100, .85);
+    s += palm(130, 900, 1.05) + palm(170, 1240, 1) + palm(1420, 1060, 1) + palm(1440, 420, .9) + palm(70, 420, .9);
 
     return s;
 
@@ -1888,7 +2598,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
 
   /* 建築圖：底部中心放在 (x, y)，寬 w */
   function building(key, x, y, w) {
-    const [iw, ih] = BLD[key];
+    const [iw, ih] = BLD[key] || [100, 100];
     const h = w * ih / iw;
     return `<ellipse cx="${x}" cy="${y - 6}" rx="${w * 0.42}" ry="${w * 0.1}" fill="#3f6b25" opacity=".18"/>
       <image href="${IMG}bld/${key}.webp" x="${f1(x - w / 2)}" y="${f1(y - h)}" width="${f1(w)}" height="${f1(h)}"/>`;
@@ -1913,6 +2623,16 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       const left = x - a.cx * w;
       const top = y - h * (1 - a.bot);
       return `<image href="${src}" x="${f1(left)}" y="${f1(top)}" width="${f1(w)}" height="${f1(h)}"/>`;
+    }
+
+    /* 蓮池沒有圖：荷葉＋花苞，成熟時放 emoji */
+    if (c.zone === "蓮池") {
+      const r0 = moundW / 2;
+      let s0 = `<ellipse cx="${x}" cy="${y - 4}" rx="${f1(r0 * 0.8)}" ry="${f1(r0 * 0.34)}" fill="#5fb04a" stroke="#3f8a2c" stroke-width="1.2"/>`;
+      s0 += `<path d="M${x} ${y - 4} L${f1(x + r0 * 0.5)} ${f1(y - 10)}" stroke="#3f8a2c" stroke-width="1.2"/>`;
+      if (stage === 3) s0 += `<text x="${x}" y="${y - 12}" text-anchor="middle" font-size="${f1(moundW * 0.55)}">🪷</text>`;
+      else s0 += `<ellipse cx="${x}" cy="${f1(y - 10 - stage * 4)}" rx="${f1(r0 * 0.16)}" ry="${f1(r0 * 0.26)}" fill="#cfe6ff" stroke="#8fb7e8" stroke-width="1"/>`;
+      return s0;
     }
 
     /* 沒有圖：土堆＋小芽，成熟時頂上放 emoji */
@@ -1946,11 +2666,13 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     let s = `<polygon points="${L} ${B} ${B[0]},${B[1] + tt} ${L[0]},${L[1] + tt}" fill="${wet ? "#5e3c26" : "#8d5b36"}"/>`;
     s += `<polygon points="${B} ${R} ${R[0]},${R[1] + tt} ${B[0]},${B[1] + tt}" fill="${wet ? "#4c301e" : "#74482a"}"/>`;
     s += `<polygon points="${T} ${R} ${B} ${L}" fill="url(#${wet ? "fmSoilWet" : "fmSoil"})" stroke="${sel ? "#ffe066" : (wet ? "#5a3a24" : "#9c693f")}" stroke-width="${sel ? 4 : 1.2}" stroke-linejoin="round"/>`;
+    const glow = STARFIELD_ON;
     for (const t of [0.25, 0.5, 0.75]) {
       const a = [L[0] + (B[0] - L[0]) * t, L[1] + (B[1] - L[1]) * t];
       const b = [T[0] + (R[0] - T[0]) * t, T[1] + (R[1] - T[1]) * t];
-      s += `<line x1="${f1(a[0])}" y1="${f1(a[1])}" x2="${f1(b[0])}" y2="${f1(b[1])}" stroke="${wet ? "#4f3220" : "#8f5d36"}" stroke-width="2.6" stroke-linecap="round" opacity=".8"/>`;
+      s += `<line x1="${f1(a[0])}" y1="${f1(a[1])}" x2="${f1(b[0])}" y2="${f1(b[1])}" stroke="${glow ? "#ffe27a" : (wet ? "#4f3220" : "#8f5d36")}" stroke-width="${glow ? 2.2 : 2.6}" stroke-linecap="round" opacity="${glow ? 0.85 : 0.8}"/>`;
     }
+    if (glow) s += `<polygon points="${T} ${R} ${B} ${L}" fill="#fff3a6" opacity=".12"/>`;
     return s;
   }
 
@@ -1966,7 +2688,11 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     HITS.push({ y, svg: `<polygon class="tap fm-hit" data-act="plot" data-zone="${zone}" data-key="${key}" role="button" tabindex="0" aria-label="${esc(plotLabel(zone, key))}" points="${tilePoly(x, y + 2, tw + 1, th + 1)}" fill="#fff" fill-opacity="0" pointer-events="all"/>` });
 
     let s = `<g pointer-events="none">`;
-    s += soilTile(x, y, wet, sel, tw, th, tt);
+    if (zone === "pond") {
+      s += `<ellipse cx="${x}" cy="${y + 3}" rx="${tw + 5}" ry="${th + 5}" fill="#a39a8a"/><ellipse cx="${x}" cy="${y}" rx="${tw}" ry="${th}" fill="url(#fmLake)" stroke="${sel ? "#ffe066" : "#eaf7ff"}" stroke-width="${sel ? 3.5 : 1.6}"/>`;
+    } else {
+      s += soilTile(x, y, wet, sel, tw, th, tt);
+    }
 
     if (p && p.s) {
       s += sprinklerArt(x, y);
@@ -2057,8 +2783,12 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     herb: [1255, 1015],
     logs: [1000, 1160],
     tea: [1190, 1255],
-    pier: [750, 1460, 200]
+    pier: [750, 1460, 200],
+    well: [360, 1185, 172]
   };
+
+  /* 月光蓮的蓮池（湖的東南邊） */
+  const POND = [[1040, 592], [1110, 608], [1180, 624]];
 
   function lockedZone(zone, x, y, rx, ry) {
     const lv = zoneLv(zone);
@@ -2086,7 +2816,8 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     {
       const [x, y, w] = POS.barn;
       const full = invSpace() <= 0;
-      let s = `<g class="tap" data-act="storage" role="button" tabindex="0" aria-label="倉庫 ${invUsed()} / ${storageCap()}">${building("barn", x, y, w)}${nameplate(x, y + 16, `倉庫 ${invUsed()}/${storageCap() > 9999 ? "∞" : storageCap()}`)}`;
+      const barnKey = skinOn("harvestbarn") ? "harvestbarn" : skinOn("candybarn") ? "candybarn" : "barn";
+      let s = `<g class="tap" data-act="storage" role="button" tabindex="0" aria-label="倉庫 ${invUsed()} / ${storageCap()}">${building(barnKey, x, y, barnKey === "barn" ? w : w * 0.95)}${nameplate(x, y + 16, `倉庫 ${invUsed()}/${storageCap() > 9999 ? "∞" : storageCap()}`)}`;
       if (full) s += mark(x, y - 150, "滿");
       items.push({ y, svg: s + "</g>" });
     }
@@ -2097,7 +2828,8 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       const tier = kitchenTier();
       const done = S.kitchen.jobs.some(j => t >= j.t1);
       const busy = S.kitchen.jobs.length > 0;
-      let s = `<g class="tap" data-act="kitchen" role="button" tabindex="0" aria-label="${tier[2]}${done ? "，有料理做好了" : ""}">${building(tier[1], x, y, tier[1] === "restaurant" ? w * 0.9 : w)}`;
+      const kKey = skinOn("gingerhouse") ? "gingerhouse" : tier[1];
+      let s = `<g class="tap" data-act="kitchen" role="button" tabindex="0" aria-label="${tier[2]}${done ? "，有料理做好了" : ""}">${building(kKey, x, y, kKey === "restaurant" ? w * 0.9 : kKey === "gingerhouse" ? w * 0.85 : w)}`;
       if (busy && !done) s += `<g fill="#fff" opacity=".8" pointer-events="none"><circle cx="${x + 40}" cy="${y - 200}" r="7"/><circle cx="${x + 46}" cy="${y - 214}" r="8"/><circle cx="${x + 38}" cy="${y - 228}" r="6"/></g>`;
       if (done) s += mark(x - 20, y - 205);
       else if (kitchenNext() && S.lv >= kitchenNext()[0]) s += mark(x - 20, y - 205, "⬆");
@@ -2119,7 +2851,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       const [x, y, w] = POS.gate;
       const ready = S.ranch.animals.some(a => animalState(a) === "ready") || machineReadyCount("feedmill") > 0;
       const hungry = S.ranch.animals.some(a => animalState(a) === "hungry");
-      let s = `<g class="tap" data-act="ranch" role="button" tabindex="0" aria-label="牧場${ready ? "，有東西可以收" : ""}${hungry ? "，動物餓了" : ""}">${building("ranchgate", x, y, w)}`;
+      let s = `<g class="tap" data-act="ranch" role="button" tabindex="0" aria-label="牧場${ready ? "，有東西可以收" : ""}${hungry ? "，動物餓了" : ""}">${building(skinOn("couplets") ? "couplets" : "ranchgate", x, y, skinOn("couplets") ? w * 0.85 : w)}`;
       if (ready) s += mark(x, y - 140);
       else if (hungry) s += mark(x, y - 140, "🍽");
       s += nameplate(x, y + 16, "牧場");
@@ -2141,6 +2873,27 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       const [x, y, w] = POS.pier;
       const open = zoneUnlocked("碼頭");
       items.push({ y, svg: `<g class="tap" data-act="pier" role="button" tabindex="0" aria-label="碼頭">${building("pier", x, y, w)}${nameplate(x, y - 20, open ? "碼頭・釣魚準備中" : `碼頭 Lv${zoneLv("碼頭")}`)}</g>` });
+    }
+
+    /* 許願池 */
+    {
+      const [x, y, w] = POS.well;
+      const st = net.ws;
+      const free = !!(st && st.checked && freeLeft() > 0);
+      let s = `<g class="tap" data-act="wish" role="button" tabindex="0" aria-label="星願池${free ? "，今天的免費抽還沒用" : ""}">${building("wishwell", x, y, w)}`;
+      if (free) s += mark(x, y - 175);
+      else if (st && !st.checked) s += mark(x, y - 175, "簽");
+      s += nameplate(x, y + 16, "星願池");
+      items.push({ y, svg: s + "</g>" });
+    }
+
+    pondSvg(items);
+    decoSvg(items);
+    petsSvg(items);
+
+    /* 招財錦鯉：每天在湖裡撈一次星露 */
+    if (skinOn("luckykoi") && dailyReady("koi")) {
+      items.push({ y: 500, svg: `<g class="tap" data-act="koi" role="button" tabindex="0" aria-label="招財錦鯉，可以撈星露">${mark(860, 470, "🐟")}<circle cx="860" cy="455" r="26" fill="#fff" fill-opacity="0"/></g>` });
     }
 
     /* 加工坊 */
@@ -2213,6 +2966,63 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       }
     }
 
+  }
+
+  function pondVisible() {
+    return own("c_moonlotus") > 0 || have("seed_moonlotus") > 0 || Object.keys(S.pond.plots).length > 0;
+  }
+
+  function pondSvg(items) {
+    if (!pondVisible()) return;
+    POND.forEach(([x, y], i) => items.push({ y, svg: plotSvg("pond", String(i), x, y, 30, 15, 4) }));
+    items.push({ y: POND[2][1] + 30, svg: nameplate(POND[1][0], POND[1][1] + 36, "蓮池") });
+  }
+
+  function decoArt(k, x, y, slot) {
+    const d = D.deco[k];
+    const w = d.w;
+    let img = d.img, ar = d.ar || 1;
+    if (d.eff === "pot") {
+      img = ["deco/flowerpot.webp", "item/flowerpot_y.webp", "item/flowerpot_b.webp"][slot % 3];
+      if (slot % 3) ar = 1;
+    }
+    if (img) {
+      const h = w * ar;
+      return { h, svg: `<image href="${IMG}${img}" x="${f1(x - w / 2)}" y="${f1(y - h)}" width="${w}" height="${f1(h)}"/>` };
+    }
+    return {
+      h: w * 0.7,
+      svg: `<ellipse cx="${x}" cy="${y - 2}" rx="${f1(w * 0.36)}" ry="${f1(w * 0.1)}" fill="#000" opacity=".12"/><text x="${x}" y="${y - 6}" text-anchor="middle" font-size="${Math.round(w * 0.55)}">${d.emoji}</text>`
+    };
+  }
+
+  function decoSvg(items) {
+    S.deco.slots.forEach((k, i) => {
+      if (!k || !D.deco[k] || i >= DECO_SLOTS.length) return;
+      const [x, y] = DECO_SLOTS[i];
+      const art = decoArt(k, x, y, i);
+      let s = `<g class="tap" data-act="deco" data-slot="${i}" role="button" tabindex="0" aria-label="${esc(D.deco[k].name)}">${art.svg}`;
+      if (decoReady(k)) s += mark(x, y - art.h - 8);
+      items.push({ y, svg: s + "</g>" });
+    });
+  }
+
+  function petsSvg(items) {
+    for (const [k, p] of Object.entries(D.pets)) {
+      if (!own("p_" + k)) continue;
+      const [x, y] = p.spot;
+      const w = 56;
+      let art;
+      if (p.img) {
+        const h = w * (p.ar || 1);
+        art = `<image href="${IMG}${p.img}" x="${x - w / 2}" y="${f1(y - h)}" width="${w}" height="${f1(h)}"/>`;
+      } else {
+        art = `<circle cx="${x}" cy="${y - 22}" r="23" fill="#fffaf0" stroke="#f3c96b" stroke-width="2.5"/><text x="${x}" y="${y - 12}" text-anchor="middle" font-size="27">${p.emoji}</text>`;
+      }
+      let s = `<g class="tap" data-act="pet" data-pet="${k}" role="button" tabindex="0" aria-label="${esc(p.name)}"><ellipse cx="${x}" cy="${y}" rx="18" ry="5" fill="#000" opacity=".12"/>${art}`;
+      if (dailyReady("pet_" + k)) s += mark(x + 20, y - 52, "♥");
+      items.push({ y, svg: s + "</g>" });
+    }
   }
 
   function workshopArt(x, y) {
@@ -2344,11 +3154,14 @@ const FARM_JS_VERSION = "2026-10-16 v4";
   }
 
   let HITS = [];
+  let STARFIELD_ON = false;
 
   function renderScene() {
 
     const dyn = UI.root && UI.root.querySelector("#fm-dyn");
     if (!dyn) return;
+
+    STARFIELD_ON = skinOn("starfield");
 
     const items = [];
     HITS = [];
@@ -2369,7 +3182,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     const t = now();
     let next = Infinity;
     const consider = ts => { if (ts && ts > t && ts < next) next = ts; };
-    for (const zone of ["field", "herb", "green"]) {
+    for (const zone of ["field", "herb", "green", "pond"]) {
       const z = plotZone(zone);
       for (const key of z.keys) {
         const p = z.store[key];
@@ -2590,7 +3403,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       if (st === "ripe") {
         const res = harvestOne(zone, key);
         if (!res) return toast("倉庫滿了，先去賣掉或用掉一些東西");
-        floatAt(el, `+${res.qty} ${itemIconInline(res.crop)} <small>+${res.exp} EXP</small>${res.seedBack ? " 🌰" : ""}`);
+        floatAt(el, `+${res.qty} ${itemIconInline(res.crop)} <small>+${res.exp} EXP</small>${res.seedBack ? " 🌰" : ""}${res.fox ? " 🦊" : ""}${res.x2 ? " ×2" : ""}`);
         closePop();
         return after();
       }
@@ -2713,7 +3526,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       const i = Number(el.dataset.i);
       const res = collectDish(i);
       if (!res) return toast(invSpace() < 1 ? "倉庫滿了" : "還沒做好");
-      toast(`✨ ${D.dishes[res.dish].name} 做好了！+${res.exp} EXP`);
+      toast(res.perfect ? `🐥 完美料理！${D.dishes[res.dish].name} 多賺 ${num(D.dishes[res.dish].sell)} 星露` : `✨ ${D.dishes[res.dish].name} 做好了！+${res.exp} EXP`);
       after();
     },
 
@@ -2752,10 +3565,12 @@ const FARM_JS_VERSION = "2026-10-16 v4";
 
     collectall: () => {
       let n = 0, exp = 0;
+      let gold = 0;
       for (const a of S.ranch.animals) {
         const res = collectAnimal(a);
-        if (res) { n++; exp += res.exp; }
+        if (res) { n++; exp += res.exp; if (res.item === "goldegg") gold++; }
       }
+      if (gold) toast(`🥚✨ 金雞生了 ${gold} 顆金蛋！`);
       if (!n) return toast(invSpace() < 1 ? "倉庫滿了" : "現在沒有可以收的");
       toast(`🧺 收了 ${n} 個畜產品，+${exp} EXP`);
       after();
@@ -2804,7 +3619,58 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       after();
     },
 
-    openwish: el => openWish(el.dataset.kind),
+    draw: el => doDraw(el.dataset.pool, Number(el.dataset.n || 1)),
+    shopbuy: el => doBuy(el.dataset.item),
+    checkin: () => doCheckin(),
+    observe: () => doObserve(),
+    makeup: el => doMakeup(el.dataset.date),
+    loadmissed: () => loadMissedDays(),
+    secret: el => learnSecret(el.dataset.dish),
+    picktier: el => { UI.pickTier = el.dataset.tier; renderSheet(); },
+    useitem: el => useItem(el.dataset.item),
+    pet: el => petGift(el.dataset.pet),
+    deco: el => { const k = S.deco.slots[Number(el.dataset.slot)]; if (k) decoTap(k); },
+    koi: el => {
+      if (!skinOn("luckykoi") || !dailyReady("koi")) return;
+      dailyDone("koi");
+      const n = 100 + Math.floor(Math.random() * 201);
+      addDew(n);
+      floatAt(el, `+${n} ${ICON.dew}`);
+      toast(`🐟 招財錦鯉：撈到 ${n} 星露`);
+      after();
+    },
+    placedeco: el => {
+      const k = el.dataset.deco;
+      if (decoPlaced(k) >= decoOwned(k)) return toast("都擺上去了");
+      if (!autoPlace(k)) return toast("島上的擺放位置滿了，先收起一個");
+      toast(`🪑 ${D.deco[k].name}擺上島了`);
+      after();
+    },
+    removedeco: el => {
+      const k = el.dataset.deco;
+      const i = S.deco.slots.lastIndexOf(k);
+      if (i >= 0) S.deco.slots[i] = null;
+      after();
+    },
+    skin: el => {
+      const k = el.dataset.skin;
+      const sk = D.skins[k];
+      if (!sk || !own("s_" + k)) return;
+      if (S.skins[sk.group] === k) delete S.skins[sk.group];
+      else S.skins[sk.group] = k;
+      rebuildStatic();
+      after();
+    },
+    title: el => {
+      const k = el.dataset.title || null;
+      S.titleKey = k && own("t_" + k) ? k : null;
+      after();
+    },
+    timeglass: () => {
+      if (!own("tool_timeglass")) return;
+      if (S.glassDay === todayKey()) return toast("時光沙漏今天用過了，明天再來");
+      openModal("pickzone", { use: "timeglass" });
+    },
 
     confirm: el => {
       const m = UI.modal;
@@ -2821,7 +3687,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
 
   function harvestAll() {
     let count = 0, exp = 0, full = false;
-    for (const zone of ["field", "herb", "green"]) {
+    for (const zone of ["field", "herb", "green", "pond"]) {
       const z = plotZone(zone);
       for (const key of z.keys) {
         if (plotState(z.store[key]) !== "ripe") continue;
@@ -2829,7 +3695,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
         if (res) { count++; exp += res.exp; } else full = true;
       }
     }
-    if (S.lv >= D.caps.orchardAll) {
+    if (S.lv >= D.caps.orchardAll || own("tool_goldsickle")) {
       for (const i of Object.keys(S.orchard.trees)) {
         if (treeState(S.orchard.trees[i]) !== "ripe") continue;
         const res = harvestTree(i);
@@ -2940,8 +3806,8 @@ const FARM_JS_VERSION = "2026-10-16 v4";
         const c = D.crops[p.c];
         title = c.name;
         sub = st === "thirsty" ? "口渴了，澆水才會開始長" : `還要 <span data-until="${p.t1}">${dur(p.t1 - now())}</span>`;
-        opts = popOpt("water", ICON.drop, `澆水`, st !== "thirsty" || S.water <= 0) +
-          popOpt("waterall", "🚿", "全部澆水", S.water <= 0 || !anyThirsty()) +
+        opts = popOpt("water", ICON.drop, `澆水`, st !== "thirsty" || !hasWater()) +
+          popOpt("waterall", "🚿", "全部澆水", !hasWater() || !anyThirsty()) +
           popOpt("fert", "🧪", `施肥 ${have("fert")}`, st !== "growing" || p.f || have("fert") <= 0) +
           popOpt("remove", "🧹", "剷掉");
       }
@@ -3087,6 +3953,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     if (!fn) return;
 
     el.className = "fm-sheet " + (t.name === "kitchen" ? "kitchen" : t.name === "ranch" ? "ranch" : t.name === "wish" ? "wish" : "");
+    if (t.name === "wish" && (t.tab || "draw") === "bag" && UI.missed === undefined && net.wishReady) loadMissedDays();
     el.innerHTML = fn(t);
     el.hidden = false;
     el.scrollTop = scroll;
@@ -3105,6 +3972,11 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     return `<span class="fm-tag ${rarity}">${RARITY_NAME[rarity]}</span>`;
   }
 
+  /* 料理的廚房分級（家常／拿手／招牌／傳說），跟品階顏色分開 */
+  function kitchenTag(d) {
+    return `<span class="fm-tag gray">${d.tier}</span>`;
+  }
+
   const SHEETS = {
 
     /* ---------- 選種子 ---------- */
@@ -3114,8 +3986,9 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       let cropZone, title, emptyCount = 0;
 
       if (zone === "orchard") { cropZone = "果園"; title = "種果樹"; }
+      else if (zone === "pond") { cropZone = "蓮池"; title = "蓮池・選種子"; emptyCount = plotZone("pond").keys.filter(k => !S.pond.plots[k]).length; }
       else if (zone === "logs") { cropZone = "菇棚"; title = "放菇木"; }
-      else {
+      else if (zone !== "pond") {
         const z = plotZone(zone);
         cropZone = z.cropZone;
         title = `${z.name}・選種子`;
@@ -3129,18 +4002,21 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       const rows = avail.map(k => {
         const c = D.crops[k];
         const gacha = c.lv === 0;
-        const cost = gacha ? 0 : (c.seed || 0);
-        const afford = gacha || S.dew >= cost;
+        const seeds = gacha ? have("seed_" + k) : 0;
+        const cost = gacha ? (cropUnlocked(k) ? (c.seed || 0) : Infinity) : (c.seed || 0);
+        const afford = seeds > 0 || S.dew >= cost;
+        const price = seeds > 0 ? (zone === "orchard" ? `樹苗 ${seeds} 棵` : `種子 ${seeds} 顆`) : `${zone === "orchard" ? "樹苗" : zone === "logs" ? "菇木" : "種子"} ${num(cost)} 星露`;
         let sub;
-        if (zone === "orchard") sub = `樹苗 ${num(cost)} 星露・明天長大，之後每 ${hoursText(c.hours)}結 ${c.qty} 個`;
-        else if (zone === "logs") sub = `菇木 ${num(cost)} 星露・每 ${hoursText(c.hours)}採 ${c.qty} 朵，可採 4 次`;
-        else sub = `${hoursText(c.hours)}・${gacha ? `種子 ${have("seed_" + k)} 顆` : `種子 ${num(cost)} 星露`}・收成 ${c.sell} 星露、${c.exp} EXP`;
-        const maxN = gacha ? Math.min(emptyCount, have("seed_" + k)) : (cost ? Math.min(emptyCount, Math.floor(S.dew / cost)) : emptyCount);
+        if (zone === "orchard") sub = `${price}・明天長大，之後每 ${hoursText(c.hours)}結 ${c.qty} 個`;
+        else if (zone === "logs") sub = `${price}・每 ${hoursText(c.hours)}採 ${c.qty} 朵，可採 4 次`;
+        else sub = `${hoursText(c.hours)}・${price}・收成 ${c.sell} 星露、${c.exp} EXP`;
+        const byDew = !isFinite(cost) ? 0 : cost > 0 ? Math.floor(S.dew / cost) : emptyCount;
+        const maxN = Math.min(emptyCount, seeds + byDew);
         const btns = `<button type="button" class="fm-btn small green" data-act="plant" data-crop="${k}" ${afford ? "" : "disabled"}>種這格</button>` +
           (emptyCount > 1 && maxN > 1 ? `<button type="button" class="fm-btn small" data-act="plant" data-crop="${k}" data-all="1">種 ${maxN} 格</button>` : "");
         return `<div class="fm-row ${rarityClass(k)}">
           <div class="fm-row-art">${c.icon ? `<img src="${IMG}crop/${k}_i.webp" alt="">` : `<span class="fm-emo">${c.emoji}</span>`}</div>
-          <div><div class="fm-row-name">${esc(c.name)}${tagHtml(c.rarity)}</div><div class="fm-row-sub">${sub}</div></div>
+          <div><div class="fm-row-name">${esc(zone === "orchard" && c.treeName ? c.treeName : c.name)}${tagHtml(c.rarity)}</div><div class="fm-row-sub">${sub}</div></div>
           <div class="fm-row-btns">${btns}</div></div>`;
       }).join("");
 
@@ -3168,7 +4044,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     storage(t) {
 
       const tab = t.tab || "crop";
-      const kinds = { crop: ["crop"], animal: ["animal", "meat"], goods: ["goods"], dish: ["dish"], other: ["tool", "seed"] };
+      const kinds = { crop: ["crop"], animal: ["animal", "meat"], goods: ["goods"], dish: ["dish"], other: ["tool", "seed", "use"] };
       const keys = Object.keys(S.inv).filter(k => have(k) > 0 && kinds[tab].includes(D.items[k]?.kind));
       const market = zoneUnlocked("市集");
       const used = invUsed();
@@ -3181,9 +4057,20 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       if (t.item && have(t.item) > 0) {
         const k = t.item;
         const price = sellPrice(k);
+        const it = D.items[k] || {};
+        if (it.kind === "use") {
+          detail = `<div class="fm-row ${rarityClass(k)}" style="margin-top:10px"><div class="fm-row-art">${itemIcon(k)}</div>
+            <div><div class="fm-row-name">${esc(itemName(k))} ×${have(k)}</div><div class="fm-row-sub">${esc(it.desc || "")}</div></div>
+            <div class="fm-row-btns"><button type="button" class="fm-btn small green" data-act="useitem" data-item="${k}">使用</button></div></div>`;
+        } else if (it.kind === "seed") {
+          const c = D.crops[it.crop];
+          detail = `<div class="fm-row ${rarityClass(k)}" style="margin-top:10px"><div class="fm-row-art">${itemIcon(k)}</div>
+            <div><div class="fm-row-name">${esc(itemName(k))} ×${have(k)}</div><div class="fm-row-sub">${c ? `種在${c.zone}，${hoursText(c.hours)}收成` : ""}</div></div><div></div></div>`;
+        } else {
         detail = `<div class="fm-row" style="margin-top:10px"><div class="fm-row-art ${rarityClass(k)}">${itemIcon(k)}</div>
           <div><div class="fm-row-name">${esc(itemName(k))} ×${have(k)}</div><div class="fm-row-sub">${market ? (price ? `市集收購 ${price} 星露一個` : "不能賣") : `市集 Lv${zoneLv("市集")} 開放後可以賣`}</div></div>
           <div class="fm-row-btns">${market && price ? `<button type="button" class="fm-btn small" data-act="sell" data-item="${k}" data-qty="1">賣 1 個</button><button type="button" class="fm-btn small" data-act="sell" data-item="${k}" data-qty="all">全部賣 ${num(price * have(k))}</button>` : ""}</div></div>`;
+        }
       }
 
       return sheetTop("倉庫", `${used} / ${cap > 9999 ? "∞" : cap}`) +
@@ -3224,17 +4111,17 @@ const FARM_JS_VERSION = "2026-10-16 v4";
         const ok = hasAll(d.need);
         feature = `<div class="fm-panel" style="text-align:center">
           <div style="display:flex;align-items:center;gap:12px;text-align:left">
-            <div class="fm-row-art ${TIER_CLASS[d.tier]}" style="width:96px;height:96px">${itemIcon(pick)}</div>
-            <div style="flex:1;min-width:0"><div class="fm-row-name" style="font-size:19px">${esc(d.name)}<span class="fm-tag ${d.tier === "家常" ? "" : d.tier === "拿手" ? "r" : d.tier === "招牌" ? "l" : "x"}">${d.tier}</span></div>
+            <div class="fm-row-art ${rarityClass(pick)}" style="width:96px;height:96px">${itemIcon(pick)}</div>
+            <div style="flex:1;min-width:0"><div class="fm-row-name" style="font-size:19px">${esc(d.name)}${tagHtml(D.items[pick].tier)}${kitchenTag(d)}</div>
             ${ingsHtml(d.need)}
-            <div class="fm-row-sub">⏱ ${d.minutes} 分鐘・賣 ${num(d.sell)} 星露・${d.exp} EXP</div></div></div>
+            <div class="fm-row-sub">⏱ ${dishMinutes(d)} 分鐘・賣 ${num(d.sell)} 星露・${d.exp} EXP</div></div></div>
           <div style="margin-top:10px"><button type="button" class="fm-btn green" data-act="cook" data-dish="${pick}" ${ok && freeStoves() > 0 ? "" : "disabled"}>${freeStoves() > 0 ? (ok ? "開始做" : "食材不夠") : "爐子都在用"}</button></div></div>`;
       }
 
       const cards = order.map(k => {
         const d = D.dishes[k];
         const ok = hasAll(d.need);
-        return `<button type="button" class="fm-card ${TIER_CLASS[d.tier]}" data-act="pickdish" data-dish="${k}" aria-pressed="${k === pick}">
+        return `<button type="button" class="fm-card ${rarityClass(k)}" data-act="pickdish" data-dish="${k}" aria-pressed="${k === pick}">
           ${S.known.dishes[k] ? `<span class="fm-card-n">${S.known.dishes[k]}</span>` : ""}<div class="fm-card-art" style="${ok ? "" : "opacity:.55"}">${itemIcon(k)}</div><div class="fm-card-name ol">${esc(d.name)}</div></button>`;
       }).join("");
 
@@ -3245,7 +4132,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       if (S.orders && S.orders.list.length) {
         orders = `<div class="fm-panel"><div class="fm-sec ol">今日客人點餐</div><div class="fm-list">${S.orders.list.map((o, i) => {
           const d = D.dishes[o.d];
-          return `<div class="fm-row ${TIER_CLASS[d.tier]}"><div class="fm-row-art">${itemIcon(o.d)}</div><div><div class="fm-row-name">${esc(d.name)}</div>
+          return `<div class="fm-row ${rarityClass(o.d)}"><div class="fm-row-art">${itemIcon(o.d)}</div><div><div class="fm-row-name">${esc(d.name)}</div>
             <div class="fm-row-sub">付 ${num(Math.round(d.sell * 1.5))} 星露・+10 EXP・倉庫有 ${have(o.d)} 份</div></div>
             <div class="fm-row-btns">${o.done ? "✅" : `<button type="button" class="fm-btn small" data-act="serve" data-i="${i}" ${have(o.d) ? "" : "disabled"}>上菜</button>`}</div></div>`;
         }).join("")}</div></div>`;
@@ -3337,7 +4224,7 @@ const FARM_JS_VERSION = "2026-10-16 v4";
           <div class="fm-stoves" style="grid-template-columns:repeat(2,minmax(0,1fr))">${slots.join("")}</div><div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">${btns}</div></div>`;
       }
 
-      const pens = Object.entries(D.animals).filter(([sp, a]) => sp !== "deer" || animalsOf("deer").length).map(([sp, info]) => {
+      const pens = Object.entries(D.animals).filter(([sp, a]) => (sp !== "deer" && !a.gacha) || animalsOf(sp).length).map(([sp, info]) => {
         if (S.lv < info.lv) return null;
         const list = animalsOf(sp);
         const cap = animalCap(sp);
@@ -3371,22 +4258,22 @@ const FARM_JS_VERSION = "2026-10-16 v4";
           if (n) got++;
           cards += `<div class="fm-card ${rarityClass(k)} ${n ? "" : "locked"}">${n ? `<span class="fm-card-n">${n}</span>` : ""}
             <div class="fm-card-art">${c.icon ? `<img src="${IMG}crop/${k}_i.webp" alt="">` : `<span class="fm-emo">${c.emoji}</span>`}</div>
-            <div class="fm-card-name ol">${n ? esc(c.name) : (c.lv ? `Lv${c.lv}` : "星願瓶")}</div></div>`;
+            <div class="fm-card-name ol">${n ? esc(c.name) : (c.lv ? `Lv${c.lv}` : "星願池")}</div></div>`;
         }
       } else if (tab === "dish") {
         for (const [k, d] of Object.entries(D.dishes)) {
           total++;
           const n = S.known.dishes[k] || 0;
           if (n) got++;
-          cards += `<div class="fm-card ${TIER_CLASS[d.tier]} ${n ? "" : "locked"}">${n ? `<span class="fm-card-n">${n}</span>` : ""}
-            <div class="fm-card-art">${itemIcon(k)}</div><div class="fm-card-name ol">${n || dishKnown(k) ? esc(d.name) : (d.gacha ? "星願瓶" : `Lv${d.lv}`)}</div></div>`;
+          cards += `<div class="fm-card ${rarityClass(k)} ${n ? "" : "locked"}">${n ? `<span class="fm-card-n">${n}</span>` : ""}
+            <div class="fm-card-art">${itemIcon(k)}</div><div class="fm-card-name ol">${n || dishKnown(k) ? esc(d.name) : (d.gacha ? "星願池" : `Lv${d.lv}`)}</div></div>`;
         }
       } else {
         for (const [sp, a] of Object.entries(D.animals)) {
           total++;
           const n = S.known.animals[sp] || 0;
           if (n) got++;
-          cards += `<div class="fm-card r-c ${n ? "" : "locked"}"><div class="fm-card-art">${animalIcon(sp, true)}</div><div class="fm-card-name ol">${n ? esc(a.name) : `Lv${a.lv}`}</div></div>`;
+          cards += `<div class="fm-card r-${a.tier || "c"} ${n ? "" : "locked"}"><div class="fm-card-art">${animalIcon(sp, true)}</div><div class="fm-card-name ol">${n ? esc(a.name) : (a.gacha ? "星願池" : `Lv${a.lv}`)}</div></div>`;
         }
       }
 
@@ -3395,29 +4282,20 @@ const FARM_JS_VERSION = "2026-10-16 v4";
 
     },
 
-    /* ---------- 星願瓶 ---------- */
-    wish() {
+    /* ---------- 星願池 ---------- */
+    wish(t) {
 
-      const jars = ["wish_normal", "wish_rare", "wish_limited"].map(k => `<div class="fm-wish"><div class="jar">${WISH_JARS[k]}</div>
-        <div class="n ol" style="--olc:#6a4bbd">${WISH_NAMES[k]}</div><div class="fm-note">有 <b>${net.wish[k] || 0}</b> 個</div>
-        <button type="button" class="fm-btn small ${k === "wish_limited" ? "red" : k === "wish_rare" ? "blue" : ""}" data-act="openwish" data-kind="${k}" ${(net.wish[k] || 0) > 0 && net.mode === "server" ? "" : "disabled"}>打開</button></div>`).join("");
+      const tab = t.tab || "draw";
+      const st = net.ws;
+      const head = sheetTop("星願池", `<span class="fm-dust"><img src="${IMG}item/stardust.webp" alt="">${num(stardust())}</span>`);
 
-      let result = "";
-      if (UI.wishResult) {
-        const r = UI.wishResult;
-        const art = r.dish ? itemIcon(r.dish) : r.item ? itemIcon(r.item) : `<span class="big">${r.icon || "🎁"}</span>`;
-        result = `<div class="fm-wish-result"><div>${art}</div><div class="ol" style="font-size:20px;--olc:#b07a18;margin-top:6px">${esc(r.text)}</div></div>`;
+      if (net.mode !== "server" || !net.wishReady || !st) {
+        const bottles = Object.keys(WISH_NAMES).map(k => `<div class="fm-wish"><img class="jar" src="${IMG}${WISH_IMG[k]}" alt=""><div class="n ol">${WISH_NAMES[k]}</div><div class="fm-note">有 <b>${net.wish[k] || 0}</b> 個</div></div>`).join("");
+        return head + `<div class="fm-panel"><p class="fm-note">⚠️ 星願池的資料庫設定還沒完成：到 Supabase 的 SQL Editor 執行 <b>sql/2026-10-17_星願池.sql</b>，重新整理網頁之後就能抽。</p>
+          <div class="fm-wishes" style="margin-top:8px">${bottles}</div></div>`;
       }
 
-      const local = net.mode === "local" ? `<p class="fm-note" style="margin:0 14px 10px">⚠️ 資料庫的星露島設定還沒完成，暫時不能開星願瓶。</p>` : "";
-
-      return sheetTop("星願瓶") + local + `<div class="fm-panel" style="background:rgba(255,255,255,.75)"><div class="fm-wishes">${jars}</div>
-        <p class="fm-note" style="margin:10px 2px 0">簽到、每月獎勵、島嶼每 5 級都會拿到星願瓶。</p></div>${result}
-        <div class="fm-panel" style="background:rgba(255,255,255,.75)"><div class="fm-sec ol">會抽到什麼</div><ul class="fm-note" style="margin:0;padding-left:18px">
-        <li><b>普通</b>：星露、肥料、飼料、作物 ×5，小機率金穗稻、彩虹玉米、星露草種子、金穗飯糰食譜</li>
-        <li><b>稀有</b>：大量星露、金穗稻、彩虹玉米、星露草種子，金穗飯糰、彩虹玉米濃湯、星露草布丁食譜，極小機率月光蓮</li>
-        <li><b>限定</b>：月光蓮種子、月光蓮花茶食譜、星露草種子、大量星露</li>
-        <li>家具和釣竿等碼頭、裝飾空地開放後加入</li></ul></div>`;
+      return head + tabs([["draw", "抽獎"], ["shop", "商店"], ["bag", "收藏"], ["rules", "機率"]], tab) + (WISH_TABS[tab] || WISH_TABS.draw)(st, t);
 
     },
 
@@ -3431,6 +4309,203 @@ const FARM_JS_VERSION = "2026-10-16 v4";
           <div class="fm-row-btns">${g.claimed ? "✅" : `<button type="button" class="fm-btn small green" data-act="claimgoal" data-i="${i}" ${done ? "" : "disabled"}>領取</button>`}</div></div>`;
       }).join("");
       return sheetTop("今日小目標") + `<div class="fm-panel"><div class="fm-list">${rows}</div><p class="fm-note" style="margin-top:10px">每天凌晨 2 點換新的小目標。</p></div>`;
+    }
+
+  };
+
+  const WISH_TABS = {
+
+    /* 抽獎 */
+    draw(st) {
+      const odds = normalOdds(st.luck);
+      const left = freeLeft();
+      const freeTxt = !st.checked ? "簽到之後可以免費抽" : left > 0 ? `今日免費抽${st.free_total > 1 ? `（還有 ${left} 次）` : ""}` : "今天的免費抽用完了";
+      const free = `<div class="fm-panel fm-free">
+        <button type="button" class="fm-btn green big" data-act="draw" data-pool="free" data-n="1" ${st.checked && left > 0 && !wishBusy ? "" : "disabled"}>${freeTxt}</button>
+        ${st.checked ? "" : `<div style="margin-top:8px"><button type="button" class="fm-btn small blue" data-act="checkin">現在簽到</button></div>`}
+        ${own("f_observatory") ? `<div style="margin-top:8px"><button type="button" class="fm-btn small" data-act="observe" ${st.observed ? "disabled" : ""}>🔭 ${st.observed ? "今天看過流星了" : "到瞭望台看流星（幸運值 +1）"}</button></div>` : ""}
+      </div>`;
+
+      const luck = `<div class="fm-panel fm-luck">
+        <div class="fm-luck-top"><img src="${IMG}item/clover.webp" alt="">
+          <div style="flex:1;min-width:0"><div class="fm-row-name">幸運值 <b>${st.luck}</b> / 30${st.bonus ? `<span class="fm-tag r">加成 +${st.bonus}</span>` : ""}</div>
+          <div class="fm-bar luck"><i style="width:${(st.luck / 30) * 100}%"></i></div>
+          <div class="fm-row-sub">連續簽到 <b>${st.streak}</b> 天${st.checked ? "" : "（今天還沒簽）"}・華品以上 <b>${pct(odds.x + odds.s)}</b>・仙品 ${pct(odds.s)}</div></div></div>
+        <p class="fm-note" style="margin:6px 2px 0">每天簽到幸運值 +1，中華品或仙品就回到 1。斷簽會歸零，補簽可以接回來。</p></div>`;
+
+      const theme = st.theme || {};
+      const hero = theme.hero;
+      const lo = limitedOdds(st.limited_n);
+      const themeHtml = `<div class="fm-panel fm-theme">
+        <div class="fm-theme-art r-${hero ? rewardInfo(hero).tier : "s"}">${hero ? rewardArt(hero) : `<img src="${IMG}item/wish_limited.webp" alt="">`}</div>
+        <div style="min-width:0"><div class="fm-row-name">本月主題：${esc(theme.name || "星光精選")}</div>
+        <div class="fm-row-sub">${hero ? `仙品主角 <b>${esc(rewardInfo(hero).name)}</b>・` : "仙品從所有仙品裡抽・"}還剩 ${st.days_left} 天</div>
+        <div class="fm-row-sub">限定瓶：距離上次主角第 ${st.limited_n} 瓶，主角 ${pct(lo.s)}（第 10 瓶一定中）</div></div></div>`;
+
+      const ro = rareOdds(st.rare_n);
+      const bottle = (k, sub) => {
+        const n = net.wish[k] || 0;
+        const color = k === "wish_limited" ? "red" : k === "wish_rare" ? "blue" : "";
+        return `<div class="fm-wish"><img class="jar" src="${IMG}${WISH_IMG[k]}" alt="">
+          <div class="n ol">${WISH_NAMES[k]}</div><div class="fm-note">有 <b>${n}</b> 個${sub ? `<br>${sub}` : ""}</div>
+          <div class="fm-wish-btns"><button type="button" class="fm-btn small ${color}" data-act="draw" data-pool="${k}" data-n="1" ${n >= 1 && !wishBusy ? "" : "disabled"}>開 1</button>${n >= 10 ? `<button type="button" class="fm-btn small ${color}" data-act="draw" data-pool="${k}" data-n="10" ${wishBusy ? "disabled" : ""}>開 10</button>` : ""}</div></div>`;
+      };
+      const bottles = `<div class="fm-panel"><div class="fm-wishes">${bottle("wish_normal", "用現在的幸運值")}${bottle("wish_rare", `第 ${st.rare_n} 瓶・大獎 ${pct(ro.x + ro.s)}`)}${bottle("wish_limited", "本月主題")}</div>
+        <p class="fm-note" style="margin:8px 2px 0">網站連續簽到每 3 天送普通瓶、每 7 天送稀有瓶；每月累計簽到 7 天送限定瓶，全勤再 2 瓶。</p></div>`;
+
+      return free + luck + themeHtml + bottles;
+    },
+
+    /* 商店 */
+    shop(st) {
+      const dust = stardust();
+      const btn = (item, price, disabled = false) =>
+        `<button type="button" class="fm-btn small" data-act="shopbuy" data-item="${item}" ${disabled || dust < price || wishBusy ? "disabled" : ""}>${price ? `<img src="${IMG}item/stardust.webp" alt="">${num(price)}` : "換"}</button>`;
+      const row = (art, name, sub, button, tier = "c") => `<div class="fm-row r-${tier}"><div class="fm-row-art">${art}</div>
+        <div><div class="fm-row-name">${name}</div><div class="fm-row-sub">${sub}</div></div><div class="fm-row-btns">${button}</div></div>`;
+
+      let html = `<div class="fm-panel"><div class="fm-sec ol">星屑兌換</div>
+        <p class="fm-note" style="margin:0 2px 8px">抽到只能有一個的東西重複了，會換成星屑：凡 1、普 5、珍 20、華 80、仙 300。</p><div class="fm-list">`;
+      html += row(rewardArt("wish_normal"), "普通星願瓶", "抽普通池", btn("wish_normal", W.shop.wish_normal));
+      html += row(rewardArt("wish_rare"), "稀有星願瓶", "抽稀有池", btn("wish_rare", W.shop.wish_rare), "r");
+      html += row(rewardArt("wish_limited"), "限定星願瓶", "抽本月限定池", btn("wish_limited", W.shop.wish_limited), "l");
+      html += row(rewardArt("makeupcard"), "補簽卡", `免費補簽這個月的一天・有 ${makeupCards()} 張`, btn("makeupcard", W.shop.makeupcard), "r");
+      html += row(rewardArt("page"), "食譜殘頁", `3 張換一道秘傳食譜・有 ${S.pages || 0} 張`, btn("page", W.shop.page));
+      html += `</div></div>`;
+
+      /* 指定兌換 */
+      const tier = UI.pickTier || "l";
+      const picks = (W.pool[tier] || []).filter(k => !(isUnique(k) && own(k)) && !["rarebottle", "limitedbottle", "stardust3", "makeupcard"].includes(k));
+      html += `<div class="fm-panel"><div class="fm-sec ol">指定兌換</div>
+        <div class="fm-tierbar">${["r", "l", "x", "s"].map(x => `<button type="button" class="fm-tierbtn r-${x}" data-act="picktier" data-tier="${x}" aria-pressed="${x === tier}">${RARITY_NAME[x]}</button>`).join("")}</div>
+        <div class="fm-list">${picks.map(k => {
+          const r = rewardInfo(k);
+          return row(rewardArt(k), esc(r.name), RARITY_NAME[r.tier] + (isUnique(k) ? "・只能有一個" : ""), btn("pick:" + k, W.pick[tier]), r.tier);
+        }).join("") || `<div class="fm-empty">這個品階的都收集齊了</div>`}</div></div>`;
+
+      /* 過期的每月限定 */
+      const expired = [];
+      for (const [m, th] of Object.entries(W.months)) {
+        if (m >= st.month) continue;
+        for (const x of ["s", "x", "l"]) for (const k of th[x] || []) if (!expired.some(e => e[0] === k) && !(isUnique(k) && own(k))) expired.push([k, x, m]);
+      }
+      if (expired.length) {
+        html += `<div class="fm-panel"><div class="fm-sec ol">過期的每月限定</div><div class="fm-list">${expired.map(([k, x, m]) =>
+          row(rewardArt(k), esc(rewardInfo(k).name), `${m.slice(0, 4)} 年 ${Number(m.slice(5))} 月・${W.months[m].name}`, btn("pick:" + k, W.expired[x]), x)).join("")}</div></div>`;
+      }
+
+      /* 秘傳食譜 */
+      const secrets = Object.entries(D.dishes).filter(([k, d]) => d.secret);
+      html += `<div class="fm-panel"><div class="fm-sec ol">秘傳食譜</div>
+        <p class="fm-note" style="margin:0 2px 8px">食譜殘頁 <b>${S.pages || 0}</b> 張，3 張換一道。</p><div class="fm-list">${secrets.map(([k, d]) => {
+          const known = !!S.known.recipes[k];
+          return row(itemIcon(k), esc(d.name), Object.entries(d.need).map(([i, q]) => `${itemName(i)}×${q}`).join("、"),
+            known ? "✅" : `<button type="button" class="fm-btn small green" data-act="secret" data-dish="${k}" ${(S.pages || 0) >= 3 ? "" : "disabled"}>學會</button>`, D.items[k].tier);
+        }).join("")}</div></div>`;
+
+      /* 毛線換家具 */
+      const yarns = Object.entries(D.deco).filter(([k, d]) => d.yarn);
+      html += `<div class="fm-panel"><div class="fm-sec ol">毛線換家具</div><div class="fm-list">${yarns.map(([k, d]) =>
+        row(rewardArt("f_" + k), esc(d.name), `${itemName(d.yarn)} ×10（有 ${have(d.yarn)}）・紡車把特殊羊毛紡成毛線`,
+          `<button type="button" class="fm-btn small" data-act="shopbuy" data-item="yarn:f_${k}" ${have(d.yarn) >= 10 && !wishBusy ? "" : "disabled"}>換</button>`, d.tier)).join("")}</div></div>`;
+
+      return html;
+    },
+
+    /* 收藏 */
+    bag(st) {
+      const owned = st.owned || {};
+      let html = "";
+
+      /* 夥伴 */
+      const pets = Object.entries(D.pets).filter(([k]) => own("p_" + k));
+      html += `<div class="fm-panel"><div class="fm-sec ol">夥伴</div><div class="fm-list">${pets.map(([k, p]) => `<div class="fm-row r-${p.tier}"><div class="fm-row-art">${p.img ? `<img src="${IMG}${p.img}" alt="">` : `<span class="fm-emo">${p.emoji}</span>`}</div>
+        <div><div class="fm-row-name">${esc(p.name)}</div><div class="fm-row-sub">${esc(p.desc)}</div></div><div></div></div>`).join("") || `<div class="fm-empty">還沒有夥伴，珍品以上有機會抽到</div>`}</div></div>`;
+
+      /* 工具 */
+      const tools = Object.entries(D.tools).filter(([k]) => own("tool_" + k));
+      html += `<div class="fm-panel"><div class="fm-sec ol">工具</div><div class="fm-list">${tools.map(([k, tl]) => `<div class="fm-row r-${tl.tier}"><div class="fm-row-art">${tl.img ? `<img src="${IMG}${tl.img}" alt="">` : "🧰"}</div>
+        <div><div class="fm-row-name">${esc(tl.name)}</div><div class="fm-row-sub">${esc(tl.desc)}</div></div>
+        <div class="fm-row-btns">${k === "timeglass" ? `<button type="button" class="fm-btn small" data-act="timeglass" ${S.glassDay === todayKey() ? "disabled" : ""}>使用</button>` : ""}</div></div>`).join("") || `<div class="fm-empty">還沒有工具</div>`}</div></div>`;
+
+      /* 家具 */
+      const decos = Object.keys(D.deco).filter(k => decoOwned(k) > 0);
+      const free = DECO_SLOTS.length - S.deco.slots.filter(Boolean).length;
+      html += `<div class="fm-panel"><div class="fm-sec ol">家具</div><p class="fm-note" style="margin:0 2px 8px">島上還有 <b>${free}</b> 個擺放位置。</p>
+        <div class="fm-list">${decos.map(k => {
+          const d = D.deco[k];
+          const n = decoOwned(k), placed = decoPlaced(k);
+          return `<div class="fm-row r-${d.tier}"><div class="fm-row-art">${rewardArt("f_" + k)}</div>
+            <div><div class="fm-row-name">${esc(d.name)} <small>×${n}</small></div><div class="fm-row-sub">已擺 ${placed} 個${d.desc ? "・" + esc(d.desc) : ""}</div></div>
+            <div class="fm-row-btns"><button type="button" class="fm-btn small green" data-act="placedeco" data-deco="${k}" ${placed < n && free > 0 ? "" : "disabled"}>擺上</button>
+            <button type="button" class="fm-btn small" data-act="removedeco" data-deco="${k}" ${placed ? "" : "disabled"}>收起</button></div></div>`;
+        }).join("") || `<div class="fm-empty">還沒有家具，凡品就有機會抽到</div>`}</div></div>`;
+
+      /* 島嶼造型 */
+      const skins = Object.keys(D.skins).filter(k => own("s_" + k));
+      html += `<div class="fm-panel"><div class="fm-sec ol">島嶼造型</div><div class="fm-list">${skins.map(k => {
+        const sk = D.skins[k];
+        const on = S.skins[sk.group] === k;
+        return `<div class="fm-row r-${sk.tier}"><div class="fm-row-art">${rewardArt("s_" + k)}</div>
+          <div><div class="fm-row-name">${esc(sk.name)}${on ? `<span class="fm-tag">使用中</span>` : ""}</div><div class="fm-row-sub">${esc(sk.desc || "換掉" + sk.what)}</div></div>
+          <div class="fm-row-btns"><button type="button" class="fm-btn small ${on ? "" : "green"}" data-act="skin" data-skin="${k}">${on ? "取下" : "換上"}</button></div></div>`;
+      }).join("") || `<div class="fm-empty">還沒有造型，華品以上有機會抽到</div>`}</div></div>`;
+
+      /* 稱號 */
+      const titles = Object.keys(D.titles).filter(k => own("t_" + k));
+      html += `<div class="fm-panel"><div class="fm-sec ol">稱號與頭像框</div><div class="fm-list">${titles.map(k => {
+        const ti = D.titles[k];
+        const on = S.titleKey === k;
+        return `<div class="fm-row"><div class="fm-row-art"><span class="fm-frame" style="--frame:${ti.color || "#d8c6a6"}"></span></div>
+          <div><div class="fm-row-name">${esc(ti.name)}${on ? `<span class="fm-tag">使用中</span>` : ""}</div><div class="fm-row-sub">${ti.frame ? esc(ti.frame) : "只有稱號"}</div></div>
+          <div class="fm-row-btns"><button type="button" class="fm-btn small ${on ? "" : "green"}" data-act="title" data-title="${on ? "" : k}">${on ? "取下" : "換上"}</button></div></div>`;
+      }).join("") || `<div class="fm-empty">還沒有稱號：普品以上有機會抽到，連續簽到 30 天、100 天也會送</div>`}</div></div>`;
+
+      /* 補簽卡 */
+      const cards = makeupCards();
+      const missed = UI.missed;
+      html += `<div class="fm-panel"><div class="fm-sec ol">補簽卡 ${cards} 張</div>
+        <p class="fm-note" style="margin:0 2px 8px">免費補簽這個月沒簽到的一天，連續天數和幸運值會一起接回來。連續簽到滿 14 天也會送一張。</p>
+        ${missed === null || missed === undefined ? `<p class="fm-note">讀取中…</p>` : missed.length
+          ? `<div class="fm-days">${missed.map(d => `<button type="button" class="fm-btn small" data-act="makeup" data-date="${d}" ${cards > 0 ? "" : "disabled"}>${Number(d.slice(5, 7))}/${Number(d.slice(8))}</button>`).join("")}</div>`
+          : `<p class="fm-note">這個月都有簽到 👍</p>`}</div>`;
+
+      /* 食譜卡 */
+      const cardsOwned = Object.keys(owned).filter(k => k.startsWith("r_"));
+      if (cardsOwned.length) {
+        html += `<div class="fm-panel"><div class="fm-sec ol">每月限定食譜</div><div class="fm-list">${cardsOwned.map(k => {
+          const dish = rewardInfo(k).dish;
+          return `<div class="fm-row ${rarityClass(dish)}"><div class="fm-row-art">${itemIcon(dish)}</div><div><div class="fm-row-name">${esc(D.dishes[dish].name)}</div><div class="fm-row-sub">已經學會，在料理裡做</div></div><div></div></div>`;
+        }).join("")}</div></div>`;
+      }
+
+      return html;
+    },
+
+    /* 機率 */
+    rules(st) {
+      const head = `<tr><th>幸運值</th>${TIERS.map(t => `<th class="t-${t}">${RARITY_NAME[t].slice(0, 1)}</th>`).join("")}</tr>`;
+      const rowsN = [1, 7, 14, 21, 30].map(L => {
+        const o = normalOdds(L);
+        return `<tr${L === Math.min(30, st.luck) ? ` class="now"` : ""}><td>${L}${L === 30 ? "（上限）" : ""}</td>${TIERS.map(t => `<td>${pct(o[t])}</td>`).join("")}</tr>`;
+      }).join("");
+      const rowsR = [1, 5, 10, 15, 20].map(n => {
+        const o = rareOdds(n);
+        return `<tr${n === st.rare_n ? ` class="now"` : ""}><td>第 ${n} 瓶</td><td>—</td>${["r", "l", "x", "s"].map(t => `<td>${pct(o[t])}</td>`).join("")}</tr>`;
+      }).join("");
+      const rowsL = [1, 3, 5, 8, 10].map(n => {
+        const o = limitedOdds(n);
+        return `<tr${n === st.limited_n ? ` class="now"` : ""}><td>第 ${n} 瓶</td><td>—</td><td>—</td>${["l", "x", "s"].map(t => `<td>${pct(o[t])}</td>`).join("")}</tr>`;
+      }).join("");
+      return `<div class="fm-panel"><div class="fm-sec ol">普通池</div><p class="fm-note" style="margin:-4px 2px 6px;text-align:center">每日免費抽、普通星願瓶</p>
+        <table class="fm-odds">${head}${rowsN}</table>
+        <p class="fm-note">幸運值 = 上次中大獎之後連續簽到幾天＋幸運草和瞭望台的加成。中華品或仙品就回到 1；斷簽歸零，補簽會接回來。開普通瓶用當下的幸運值，十連至少一個普品以上。</p></div>
+        <div class="fm-panel"><div class="fm-sec ol">稀有池</div><table class="fm-odds">${head.replace("幸運值", "距上次大獎")}${rowsR}</table>
+        <p class="fm-note">每開一瓶沒中華品或仙品，華品 +1.5%、仙品 +0.5%；第 20 瓶一定中。</p></div>
+        <div class="fm-panel"><div class="fm-sec ol">每月限定池</div><table class="fm-odds">${head.replace("幸運值", "距上次主角")}${rowsL}</table>
+        <p class="fm-note">仙品就是當月主角。每開一瓶沒中主角，主角 +5%；第 10 瓶一定中，這個進度會帶到下個月。</p></div>
+        <div class="fm-panel"><div class="fm-sec ol">五個品階</div><div class="fm-list">${TIERS.map(t => `<div class="fm-row r-${t}"><div class="fm-row-art"><span class="fm-emo">${{ c: "🌱", r: "💧", l: "🔮", x: "👑", s: "🔥" }[t]}</span></div>
+          <div><div class="fm-row-name">${RARITY_NAME[t]}</div><div class="fm-row-sub">作物 ${hoursText(W.tierHours[t])}成熟・重複換 ${W.dust[t]} 星屑・獎池裡 ${(W.pool[t] || []).length} 種</div></div><div></div></div>`).join("")}</div></div>`;
     }
 
   };
@@ -3585,9 +4660,9 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       html = modalBox("💧 水車",
         `<div class="fm-bar water" style="margin:6px 0 8px"><i style="width:${(S.water / cap.max) * 100}%"></i></div>
          <p class="fm-note">現在 <b>${S.water} / ${cap.max}</b> 滴（${cap.buckets} 桶 × 每桶 ${cap.per} 滴）。</p>
-         <p class="fm-note">每完成 <b>1 個習慣</b>，水車就裝 1 桶（${cap.per} 滴）。今天已經裝了 ${credited} 桶。</p>
+         <p class="fm-note">每完成 <b>1 個習慣或任務</b>，水車就裝 1 桶（${cap.per} 滴）。今天已經裝了 ${credited} 桶。${own("tool_copperwater") ? "銅澆水壺：1 滴水澆 2 格。" : ""}</p>
          <p class="fm-note">菜田和香草園種一格用 1 滴；菇棚、果園、竹林、茶園、溫室不用水。${isRainDay() ? "<b>今天下雨，種什麼都不用水。</b>" : "大約每週會下一次雨。"}</p>`,
-        `<button type="button" class="fm-btn blue" data-act="confirm" data-v="habits">去打卡習慣</button>${close}`);
+        `<button type="button" class="fm-btn blue" data-act="confirm" data-v="habits">去打卡習慣</button>${have("bucket") ? `<button type="button" class="fm-btn" data-act="useitem" data-item="bucket">用水桶（${have("bucket")}）</button>` : ""}${close}`);
     }
 
     else if (m.name === "animal") {
@@ -3634,9 +4709,33 @@ const FARM_JS_VERSION = "2026-10-16 v4";
         `<button type="button" class="fm-btn red" data-act="confirm" data-v="yes">移走</button>${close}`);
     }
 
+    else if (m.name === "wishresult") {
+      const list = m.list || [];
+      const best = list.reduce((b, r) => (TIERS.indexOf(r.tier) > TIERS.indexOf(b) ? r.tier : b), "c");
+      const bigWin = best === "x" || best === "s";
+      el.innerHTML = `<div class="fm-modal-box fm-wishres r-${best} ${bigWin ? "big" : ""}">
+        <div class="fm-modal-title ol">${POOL_NAME[m.pool] || "星願池"}${bigWin ? "・大獎！" : ""}</div>
+        <div class="fm-res-grid ${list.length > 1 ? "many" : ""}">${list.map((r, i) => `<div class="fm-res r-${r.tier}" style="animation-delay:${i * 0.06}s">
+          <span class="fm-res-tier">${RARITY_NAME[r.tier]}</span><div class="fm-res-art">${W.rewards[r.key] || WISH_IMG[r.key] ? rewardArt(r.key) : itemIcon(r.key)}</div>
+          <div class="fm-res-name">${esc(r.name)}</div>${r.note && (list.length === 1 || r.dup) ? `<div class="fm-res-note">${esc(r.dup ? "→ 星屑 +" + (r.dust || 0) : r.note)}</div>` : ""}</div>`).join("")}</div>
+        ${list.length > 1 && list.some(r => r.dup) ? `<p class="fm-note">重複的東西已經換成星屑了。</p>` : ""}
+        <div class="fm-modal-actions"><button type="button" class="fm-btn green" data-act="modalclose">好</button></div></div>`;
+      el.hidden = false;
+      return;
+    }
+
+    else if (m.name === "pickzone") {
+      const glass = m.use === "timeglass";
+      const zones = Object.keys(ZONE_LABEL).filter(z => zoneTimers(z).length);
+      html = modalBox(glass ? "⌛ 時光沙漏" : "⏳ 加速沙漏",
+        `<p class="fm-note">${glass ? "選一區，裡面還在長的東西馬上成熟（每天一次）。" : "選一區，裡面還在長的東西都少 30 分鐘。"}</p>
+         <div class="fm-days">${zones.map(z => `<button type="button" class="fm-btn small" data-act="confirm" data-v="${z}">${ZONE_LABEL[z]}（${zoneTimers(z).length}）</button>`).join("") || `<p class="fm-note">現在沒有還在長的東西</p>`}</div>`,
+        close);
+    }
+
     else if (m.name === "setup") {
       html = modalBox("把存檔放上雲端",
-        `<p class="fm-note" style="text-align:left">現在星露島的進度只存在這台裝置的瀏覽器。到 Supabase 的 SQL Editor 執行網站裡的 <b>sql/2026-10-16_星露島.sql</b>（或重新執行一次 <b>sql/完整設定.sql</b>），重新整理網頁後，進度會自動搬上去，換裝置也看得到，星願瓶也能開。</p>`,
+        `<p class="fm-note" style="text-align:left">現在星露島的進度只存在這台裝置的瀏覽器。到 Supabase 的 SQL Editor 執行網站裡的 <b>sql/2026-10-16_星露島.sql</b> 和 <b>sql/2026-10-17_星願池.sql</b>（或重新執行一次 <b>sql/完整設定.sql</b>），重新整理網頁後，進度會自動搬上去，換裝置也看得到，星願池也能抽。</p>`,
         close);
     }
 
@@ -3682,6 +4781,22 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       if (res !== "ok") return toast(res);
       toast("🍵 種下茶苗");
       return after();
+    }
+
+    if (m.name === "pickzone") {
+      if (!ZONE_LABEL[v]) return;
+      if (m.use === "timeglass") {
+        if (S.glassDay === todayKey()) return toast("時光沙漏今天用過了");
+        S.glassDay = todayKey();
+        const n = speedZone(v, Infinity);
+        toast(`⌛ ${ZONE_LABEL[v]}的 ${n} 樣東西馬上成熟了`);
+      } else {
+        if (!takeItem("speedglass", 1)) return closeModal();
+        const n = speedZone(v, 30 * MIN);
+        toast(`⏳ ${ZONE_LABEL[v]}的 ${n} 樣東西少了 30 分鐘`);
+      }
+      closeModal();
+      return after(true);
     }
 
     if (m.name === "water" && v === "habits") {
@@ -3746,41 +4861,6 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     S.seenLv = S.lv;
     saveSoon(true);
     openModal("levelup", { levels });
-  }
-
-
-  /* =========================================================
-     22. 開星願瓶
-  ========================================================= */
-
-  let wishBusy = false;
-
-  async function openWish(kind) {
-
-    if (wishBusy) return;
-    if ((net.wish[kind] || 0) <= 0) return toast("沒有這種星願瓶");
-    if (net.mode !== "server") return toast("資料庫設定好之後才能開");
-
-    wishBusy = true;
-
-    /* 先把進度存好，免得抽到的東西沒存到 */
-    if (net.dirty) await saveNow();
-
-    try {
-      const { data, error } = await db.rpc("farm_open_wish", { p_item: kind });
-      if (error) throw error;
-      net.wish[kind] = data.left;
-      if (typeof gameCheckinState !== "undefined" && gameCheckinState.items) gameCheckinState.items[kind] = data.left;
-      UI.wishResult = wishReward(kind, Number(data.roll));
-      saveSoon(true);
-      renderAll();
-    } catch (error) {
-      console.error("開星願瓶失敗：", error);
-      toast("開星願瓶失敗：" + (error.message || error));
-    }
-
-    wishBusy = false;
-
   }
 
 
@@ -3863,7 +4943,8 @@ const FARM_JS_VERSION = "2026-10-16 v4";
 
     try {
       await loadSave();
-      await loadWishCounts();
+      await loadWishStatus();
+      replayPending();
     } catch (error) {
       console.error("星露島載入失敗：", error);
       const root = document.getElementById("fm-root");
@@ -3873,9 +4954,10 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     }
 
     buildRoot();
+    calicoHelp();
     renderAll();
     checkLevelPopup();
-    creditHabitWater(false);
+    creditWater(false);
 
     /* 之前升級但還沒領到的星願瓶（例如資料庫晚設定），存檔後補發 */
     if (net.mode === "server" && S.lv >= 5) pendingLevelClaim = true;
@@ -3891,9 +4973,10 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     if (!S || !UI.root) return;
     layoutMap(false);
     processTimers();
+    calicoHelp();
     renderAll();
-    creditHabitWater(true);
-    loadWishCounts().then(renderHud);
+    creditWater(true);
+    loadWishStatus().then(() => { calicoHelp(); renderAll(); });
   }
 
   function syncVisibility() {
@@ -3937,7 +5020,25 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     window.setHabitLog = async function (habitId, dateText, done) {
       const result = await baseHabit.apply(this, arguments);
       if (result && done && S && gameOn() && dateText === todayKey()) {
-        const got = await creditHabitWater(false);
+        const got = await creditWater(false);
+        if (typeof showToast === "function" && got && (got.buckets || got.wasted)) {
+          const cap = waterCap();
+          setTimeout(() => showToast(got.buckets
+            ? `💧 星露島水車 +${got.buckets} 桶（${S.water}/${cap.max}）`
+            : "💧 星露島的水車已經滿了"), 2700);
+        }
+      }
+      return result;
+    };
+  }
+
+  /* 完成任務 → 水車裝水 */
+  if (typeof window.toggleTask === "function") {
+    const baseTask = window.toggleTask;
+    window.toggleTask = async function (taskId, completed) {
+      const result = await baseTask.apply(this, arguments);
+      if (completed && S && gameOn()) {
+        const got = await creditWater(false);
         if (typeof showToast === "function" && got && (got.buckets || got.wasted)) {
           const cap = waterCap();
           setTimeout(() => showToast(got.buckets
@@ -3957,6 +5058,9 @@ const FARM_JS_VERSION = "2026-10-16 v4";
       S = null;
       net.loaded = false;
       net.userId = null;
+      net.ws = null;
+      net.wishReady = false;
+      UI.missed = undefined;
       UI.root = null;
       UI.sheet = null;
       UI.modal = null;
@@ -3996,6 +5100,8 @@ const FARM_JS_VERSION = "2026-10-16 v4";
     version: FARM_JS_VERSION,
     get state() { return S; },
     get net() { return net; },
+    get wish() { return net.ws; },
+    draw: (pool, n) => doDraw(pool, n),
     start: startFarm,
     render: renderAll,
     save: saveNow,
