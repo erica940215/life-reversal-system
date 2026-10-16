@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-16 v3";
+const FARM_JS_VERSION = "2026-10-16 v4";
 
 (function () {
 
@@ -80,6 +80,7 @@ const FARM_JS_VERSION = "2026-10-16 v3";
   function hoursText(h) {
     if (h >= 24 && h % 24 === 0) return `${h / 24} 天`;
     if (h < 1) return `${Math.round(h * 60)} 分鐘`;
+    if (h % 1) return `${Math.floor(h)} 小時 ${Math.round((h % 1) * 60)} 分`;
     return `${h} 小時`;
   }
 
@@ -298,6 +299,46 @@ const FARM_JS_VERSION = "2026-10-16 v3";
   function waterCapFor(lv) {
     const row = capRow(D.caps.water, lv);
     return { max: row[1] * row[2] };
+  }
+
+  /* 生長／產出時間改短之後，舊存檔裡還在等的計時不能比新規則久 */
+  function clampTimers() {
+
+    const t = now();
+    let changed = false;
+    const cap = (obj, key, limit) => {
+      if (obj && obj[key] && obj[key] > limit) { obj[key] = limit; changed = true; }
+    };
+
+    for (const zone of ["field", "herb", "green"]) {
+      for (const p of Object.values(S[zone].plots || {})) {
+        if (p && p.c && p.t1 && p.t0 && D.crops[p.c]) cap(p, "t1", p.t0 + D.crops[p.c].hours * HOUR);
+      }
+    }
+    for (const tr of Object.values(S.orchard.trees || {})) {
+      if (tr && D.crops[tr.c]) cap(tr, "next", Math.max(t, tr.grown) + D.crops[tr.c].hours * HOUR);
+    }
+    for (const l of Object.values(S.logs.slots || {})) {
+      if (l && D.crops[l.c]) cap(l, "next", t + D.crops[l.c].hours * HOUR);
+    }
+    for (const b of Object.values(S.tea.bushes || {})) {
+      if (b) cap(b, "next", Math.max(t, b.grown) + D.crops.tea.hours * HOUR);
+    }
+    for (const a of S.ranch.animals || []) {
+      const info = D.animals[a.sp];
+      if (info && a.t1) cap(a, "t1", t + (a.adult ? info.every : info.grow) * HOUR);
+    }
+    for (const sp of Object.keys(S.ranch.breed || {})) {
+      const info = D.animals[sp];
+      if (info && info.breedHours) cap(S.ranch.breed, sp, t + info.breedHours * HOUR);
+    }
+    for (const slot of S.ranch.inc || []) {
+      const sp = EGG_SPECIES[slot.egg];
+      if (sp) cap(slot, "t1", t + D.animals[sp].hatchHours * HOUR);
+    }
+
+    return changed;
+
   }
 
   /* 舊存檔缺的欄位補上 */
@@ -1233,6 +1274,7 @@ const FARM_JS_VERSION = "2026-10-16 v3";
     }
 
     S = fixState(state || newState());
+    if (clampTimers()) net.dirty = true;
     net.rev = rev;
     net.mode = mode;
     net.loaded = true;
@@ -1322,6 +1364,7 @@ const FARM_JS_VERSION = "2026-10-16 v3";
     const { data } = await db.from("farm_saves").select("state, rev").eq("user_id", uid()).maybeSingle();
     if (data && data.state) {
       S = fixState(data.state);
+      clampTimers();
       net.rev = data.rev;
       toast("別的裝置或分頁存過更新的進度，已經換成那一份");
       renderAll();
