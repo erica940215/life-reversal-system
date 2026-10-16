@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-16 v2";
+const FARM_JS_VERSION = "2026-10-16 v3";
 
 (function () {
 
@@ -27,10 +27,11 @@ const FARM_JS_VERSION = "2026-10-16 v2";
   const HOUR = 60 * MIN;
 
   /* 地圖座標（1 單位 ≈ 手機上 0.7px） */
-  const MAP_W = 1400;
-  const MAP_H = 1330;
-  const FX = 700;          // 菜田 8×8 的中心
-  const FY = 660;
+  const MAP_W = 1500;
+  const MAP_H = 1480;
+  const FX = 750;          // 菜田 8×8 的中心（湖的南邊）
+  const FY = 800;
+  const HOME = { x: 750, y: 640 };   // 一打開畫面的中心：湖和菜田之間
   const TW = 36;           // 田格半寬
   const TH = 18;           // 田格半高
   const TT = 7;            // 田格厚度
@@ -1684,28 +1685,9 @@ const FARM_JS_VERSION = "2026-10-16 v2";
       <linearGradient id="fmRoofG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7fc46a"/><stop offset="1" stop-color="#4a8f3e"/></linearGradient>
       <linearGradient id="fmRoofR" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f29470"/><stop offset="1" stop-color="#c9573c"/></linearGradient>
       <linearGradient id="fmWall" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff7e6"/><stop offset="1" stop-color="#e8d0a6"/></linearGradient>
+      <radialGradient id="fmLake" cx=".5" cy=".4" r=".7"><stop offset="0" stop-color="#bdeaf7"/><stop offset=".6" stop-color="#7fd0ee"/><stop offset="1" stop-color="#4fb3dc"/></radialGradient>
     </defs>`;
   }
-
-  /* 小島外形（平滑曲線） */
-  function blobPath(cx, cy, rx, ry, wobble) {
-    const n = wobble.length;
-    const pts = wobble.map((w, i) => {
-      const a = (i / n) * Math.PI * 2 - Math.PI / 2;
-      return [cx + Math.cos(a) * rx * w, cy + Math.sin(a) * ry * w];
-    });
-    let d = "";
-    for (let i = 0; i < n; i++) {
-      const p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
-      if (i === 0) d += `M${f1(p1[0])} ${f1(p1[1])}`;
-      const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
-      const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
-      d += ` C${f1(c1[0])} ${f1(c1[1])} ${f1(c2[0])} ${f1(c2[1])} ${f1(p2[0])} ${f1(p2[1])}`;
-    }
-    return d + "Z";
-  }
-
-  const WOBBLE = [1, 1.02, .97, 1.03, 1, .98, 1.04, 1, .97, 1.02, 1.03, .99, 1, 1.03, .98, 1.02];
 
   function palm(x, y, s = 1) {
     let leaves = "";
@@ -1718,37 +1700,96 @@ const FARM_JS_VERSION = "2026-10-16 v2";
       <g transform="translate(10 -70) scale(1.15)">${leaves}<circle cx="-3" cy="3" r="3.6" fill="#8a5a37"/><circle cx="3" cy="4" r="3.6" fill="#7a4f2a"/></g></g>`;
   }
 
+  /* 方圓形的小島（超橢圓），邊緣稍微不規則 */
+  function squirclePath(cx, cy, a, bTop, bBottom, p, n = 40) {
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const t = (i / n) * Math.PI * 2;
+      const c = Math.cos(t), sn = Math.sin(t);
+      const w = 1 + 0.018 * Math.sin(i * 2.7) + 0.012 * Math.cos(i * 1.3);
+      pts.push([
+        cx + a * w * Math.sign(c) * Math.pow(Math.abs(c), 2 / p),
+        cy + (sn < 0 ? bTop : bBottom) * w * Math.sign(sn) * Math.pow(Math.abs(sn), 2 / p)
+      ]);
+    }
+    return smoothPath(pts);
+  }
+
+  function smoothPath(pts) {
+    const n = pts.length;
+    let d = "";
+    for (let i = 0; i < n; i++) {
+      const p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
+      if (i === 0) d += `M${f1(p1[0])} ${f1(p1[1])}`;
+      const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
+      const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+      d += ` C${f1(c1[0])} ${f1(c1[1])} ${f1(c2[0])} ${f1(c2[1])} ${f1(p2[0])} ${f1(p2[1])}`;
+    }
+    return d + "Z";
+  }
+
+  /* 湖：建築在北岸、菜田在南岸 */
+  const LAKE = { x: 750, y: 470, rx: 470, ry: 74 };
+  const BRIDGE_X = 662;
+
   function staticIsland() {
 
-    const sand = blobPath(700, 660, 725, 585, WOBBLE);
-    const grass = blobPath(700, 652, 680, 540, WOBBLE);
+    /* 北邊收窄一點，讓一排建築靠著海 */
+    const sand = squirclePath(750, 735, 738, 622, 688, 4);
+    const grass = squirclePath(750, 728, 690, 575, 640, 4);
     let s = "";
 
-    s += `<path d="${sand}" fill="#8fdcea" stroke="#8fdcea" stroke-width="44" stroke-linejoin="round" opacity=".45"/>`;
+    s += `<path d="${sand}" fill="#8fdcea" stroke="#8fdcea" stroke-width="50" stroke-linejoin="round" opacity=".45"/>`;
     s += `<path d="${sand}" fill="url(#fmSand)" stroke="#fffaf0" stroke-width="4" stroke-opacity=".75"/>`;
     s += `<path d="${grass}" transform="translate(0 8)" fill="#84bb50"/>`;
     s += `<path d="${grass}" fill="url(#fmGrass)"/>`;
-    s += `<ellipse cx="700" cy="640" rx="470" ry="360" fill="url(#fmGrassLight)"/>`;
+    s += `<ellipse cx="750" cy="860" rx="520" ry="380" fill="url(#fmGrassLight)"/>`;
 
-    /* 泥土小路：菜田往各個建築 */
-    const paths = [[560, 590, 420, 525], [690, 520, 650, 445], [860, 590, 990, 525], [450, 660, 260, 690], [520, 760, 320, 880], [900, 740, 1130, 840], [700, 800, 700, 1170], [820, 780, 960, 930], [600, 790, 500, 1000], [960, 640, 1110, 630]];
-    for (const [x1, y1, x2, y2] of paths) {
-      s += `<path d="M${x1} ${y1} Q${(x1 + x2) / 2 + 20} ${(y1 + y2) / 2 - 10} ${x2} ${y2}" stroke="#e7cf9c" stroke-width="22" fill="none" stroke-linecap="round" opacity=".75"/>`;
+    /* 小路：北岸步道、橋、菜田往牧場／果園／碼頭 */
+    const road = (d, w = 22) => `<path d="${d}" stroke="#e7cf9c" stroke-width="${w}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/>`;
+    s += road("M210 378 C450 392 1050 392 1300 372", 26);
+    s += road(`M${BRIDGE_X} 560 C${BRIDGE_X + 6} 600 730 625 750 652`);
+    s += road("M470 805 C420 830 380 870 330 892");
+    s += road("M750 950 C750 1100 752 1250 750 1330");
+    s += road("M880 880 C930 980 960 1060 985 1120");
+    s += road("M1000 860 C1100 920 1180 990 1205 1020");
+
+    /* 湖 */
+    const { x: lx, y: ly, rx, ry } = LAKE;
+    s += `<ellipse cx="${lx}" cy="${ly + 6}" rx="${rx + 20}" ry="${ry + 16}" fill="#e9d9a6"/>`;
+    s += `<ellipse cx="${lx}" cy="${ly}" rx="${rx + 6}" ry="${ry + 6}" fill="#6cc5e4"/>`;
+    s += `<ellipse cx="${lx}" cy="${ly + 4}" rx="${rx}" ry="${ry}" fill="url(#fmLake)"/>`;
+    for (const [x, y, w] of [[520, 452, 40], [880, 492, 52], [1050, 458, 34], [420, 492, 30], [760, 440, 46]]) {
+      s += `<path d="M${x} ${y} q${w / 4} -6 ${w / 2} 0 t${w / 2} 0" fill="none" stroke="#e4f7ff" stroke-width="2.4" stroke-linecap="round" opacity=".7"/>`;
+    }
+    for (const [x, y, r] of [[470, 470, 13], [492, 486, 9], [990, 500, 12], [1012, 488, 8], [1140, 470, 11], [360, 478, 10]]) {
+      s += `<path d="M${x} ${y} m${r} 0 a${r} ${r * 0.55} 0 1 1 -${r * 0.4} -${r * 0.45} L${x} ${y}Z" fill="#6fbf4c" stroke="#4f9334" stroke-width="1"/>`;
+    }
+    s += `<circle cx="478" cy="466" r="5" fill="#ffb3c9"/><circle cx="478" cy="466" r="2" fill="#fff3a0"/>`;
+    s += `<circle cx="996" cy="496" r="5" fill="#fff"/><circle cx="996" cy="496" r="2" fill="#fff3a0"/>`;
+    for (const [x, y] of [[300, 440], [318, 448], [1190, 448], [1206, 440], [1180, 520]]) {
+      s += `<path d="M${x} ${y} v-34 M${x + 6} ${y} v-26 M${x - 6} ${y} v-22" stroke="#5f9a3a" stroke-width="2.4" stroke-linecap="round"/><ellipse cx="${x}" cy="${y - 36}" rx="3" ry="8" fill="#8a5a37"/>`;
     }
 
+    /* 木橋 */
+    const by0 = ly - ry - 18, by1 = ly + ry + 22;
+    s += `<rect x="${BRIDGE_X - 24}" y="${by0}" width="48" height="${by1 - by0}" rx="4" fill="#b98352"/>`;
+    for (let y = by0 + 6; y < by1; y += 12) s += `<rect x="${BRIDGE_X - 24}" y="${y}" width="48" height="7" rx="2" fill="#d9a46b"/>`;
+    s += `<path d="M${BRIDGE_X - 26} ${by0} V${by1} M${BRIDGE_X + 26} ${by0} V${by1}" stroke="#8a5a37" stroke-width="5" stroke-linecap="round"/>`;
+
     /* 草叢、小花、石頭 */
-    const tufts = [[300, 260], [690, 230], [1060, 260], [1250, 520], [1300, 760], [90, 640], [130, 860], [420, 1150], [960, 1160], [1210, 1000], [560, 1130], [330, 1020]];
+    const tufts = [[160, 700], [420, 640], [1080, 640], [1390, 760], [130, 1060], [380, 1200], [600, 1270], [920, 1290], [1300, 1180], [470, 1050], [1000, 640], [230, 1180]];
     for (const [x, y] of tufts) {
       s += `<path d="M${x} ${y} l3 -8 l3 8 l3 -9 l3 9" fill="none" stroke="#7cb64b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
     }
-    const flowers = [[330, 240, "#ff9fb6"], [342, 248, "#ffd36b"], [1080, 240, "#b9a3ff"], [1092, 250, "#ff9fb6"], [150, 900, "#fff"], [1250, 960, "#ff9fb6"], [600, 1150, "#ffd36b"], [1300, 700, "#fff"], [80, 700, "#b9a3ff"], [840, 1170, "#ff9fb6"]];
+    const flowers = [[180, 720, "#ff9fb6"], [192, 728, "#ffd36b"], [440, 660, "#b9a3ff"], [1060, 660, "#ff9fb6"], [150, 1080, "#fff"], [1320, 1200, "#ff9fb6"], [620, 1290, "#ffd36b"], [1395, 780, "#fff"], [400, 1220, "#b9a3ff"], [900, 1310, "#ff9fb6"], [480, 1070, "#fff"], [250, 1200, "#ffd36b"]];
     for (const [x, y, c] of flowers) {
       s += `<circle cx="${x}" cy="${y}" r="4.5" fill="${c}"/><circle cx="${x}" cy="${y}" r="1.6" fill="#fff3a0"/>`;
     }
-    s += `<ellipse cx="1250" cy="1102" rx="16" ry="5" fill="#000" opacity=".12"/><ellipse cx="1245" cy="1094" rx="15" ry="10" fill="url(#fmRock)"/><ellipse cx="1262" cy="1099" rx="10" ry="7" fill="url(#fmRock)"/>`;
-    s += `<ellipse cx="380" cy="1180" rx="14" ry="5" fill="#000" opacity=".12"/><ellipse cx="376" cy="1173" rx="13" ry="9" fill="url(#fmRock)"/>`;
+    s += `<ellipse cx="1360" cy="1302" rx="16" ry="5" fill="#000" opacity=".12"/><ellipse cx="1355" cy="1294" rx="15" ry="10" fill="url(#fmRock)"/><ellipse cx="1372" cy="1299" rx="10" ry="7" fill="url(#fmRock)"/>`;
+    s += `<ellipse cx="420" cy="1320" rx="14" ry="5" fill="#000" opacity=".12"/><ellipse cx="416" cy="1313" rx="13" ry="9" fill="url(#fmRock)"/>`;
 
-    s += palm(1300, 1000, 1.1) + palm(120, 1010, 1) + palm(1255, 290, .95) + palm(600, 205, .85);
+    s += palm(130, 900, 1.05) + palm(170, 1240, 1) + palm(1420, 1060, 1) + palm(1440, 420, .9) + palm(70, 420, .9) + palm(420, 1100, .85);
 
     return s;
 
@@ -1959,20 +2000,21 @@ const FARM_JS_VERSION = "2026-10-16 v2";
 
   /* ---------- 建築與各區 ---------- */
 
+  /* 北岸一排建築（背後是海、前面是湖），南岸是菜田；左邊牧場，右邊果園和各種小區域 */
   const POS = {
-    barn: [400, 520, 190],
-    workshop: [650, 440],
-    kitchen: [1010, 520, 215],
-    green: [845, 300],
-    tea: [420, 330],
-    herb: [1200, 650],
-    market: [1165, 850, 175],
-    orchard: [980, 1000],
-    pier: [700, 1290, 200],
-    logs: [480, 1060],
-    gate: [290, 900, 185],
-    wheel: [200, 700, 195],
-    bamboo: [230, 380]
+    barn: [300, 345, 190],
+    kitchen: [530, 350, 215],
+    workshop: [790, 345],
+    market: [1000, 350, 175],
+    green: [1210, 345],
+    wheel: [228, 575, 190],
+    gate: [255, 905, 185],
+    bamboo: [1335, 660],
+    orchard: [1205, 860],
+    herb: [1255, 1015],
+    logs: [1000, 1160],
+    tea: [1190, 1255],
+    pier: [750, 1460, 200]
   };
 
   function lockedZone(zone, x, y, rx, ry) {
@@ -2315,16 +2357,14 @@ const FARM_JS_VERSION = "2026-10-16 v2";
     if (!vw || !vh) return;
 
     const old = UI.scale;
-    UI.scale = (vw / 600) * UI.zoom;
+    UI.scale = (vw / 520) * UI.zoom;
 
     UI.map.style.width = MAP_W * UI.scale + "px";
     UI.map.style.height = MAP_H * UI.scale + "px";
 
     if (center || !UI.centered) {
-      const n = S ? S.field.size : 3;
-      const c = tileXY((n - 1) / 2, (n - 1) / 2);
-      UI.tx = vw / 2 - c.x * UI.scale;
-      UI.ty = vh * 0.5 - (c.y - 10) * UI.scale;
+      UI.tx = vw / 2 - HOME.x * UI.scale;
+      UI.ty = vh * 0.5 - HOME.y * UI.scale;
       UI.centered = true;
     } else if (old && old !== UI.scale) {
       /* 縮放時保持畫面中心 */
