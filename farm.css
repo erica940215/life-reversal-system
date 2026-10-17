@@ -544,6 +544,7 @@ body:not(.game-mode-on) .farm-tab { display: none !important; }
 }
 .fm-pen-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .fm-pen-head h3 { margin: 0; font-weight: 400; font-size: 18px; flex: 1; }
+.fm-mini { width: 1.35em; height: 1.35em; object-fit: contain; vertical-align: -0.3em; }
 .fm-pen-head .fm-note { white-space: nowrap; }
 .fm-animals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .fm-animal {

@@ -145,6 +145,12 @@ const FARM_JS_VERSION = "2026-10-17 v5";
     return `<span class="fm-emo ${cls}">${emo}</span>`;
   }
 
+  /* 文字旁邊的小圖（沒有圖就用表情符號） */
+  function miniIcon(key, emoji) {
+    const src = itemSrc(key);
+    return src ? `<img class="fm-mini" src="${src}" alt="" draggable="false">` : emoji;
+  }
+
   function cropStageSrc(key, stage) {
     const c = D.crops[key];
     return c && c.art ? `${IMG}crop/${key}_${stage}.webp` : null;
@@ -4304,7 +4310,7 @@ const FARM_JS_VERSION = "2026-10-17 v5";
     /* ---------- 牧場 ---------- */
     ranch() {
 
-      const feedRow = `<div class="fm-pen"><div class="fm-pen-head"><h3 class="ol" style="--olc:#4f8f35">🌾 飼料 ${have("feed")}</h3>
+      const feedRow = `<div class="fm-pen"><div class="fm-pen-head"><h3 class="ol" style="--olc:#4f8f35">${miniIcon("feed", "🌾")} 飼料 ${have("feed")}</h3>
         <button type="button" class="fm-btn small green" data-act="feedall">全部餵食</button>
         <button type="button" class="fm-btn small" data-act="collectall">全部收成</button></div>
         <p class="fm-note" style="margin:0">動物每次產出前要吃飼料；幼崽吃飽才會長大。${S.lv >= D.caps.autoFeed ? "自動餵食器運作中。" : `Lv${D.caps.autoFeed} 開自動餵食器。`}</p></div>`;
@@ -4344,7 +4350,7 @@ const FARM_JS_VERSION = "2026-10-17 v5";
       const nextAnimal = Object.values(D.animals).find(a => a.lv > S.lv && a.lv < 50);
       const tease = nextAnimal ? `<p class="fm-note" style="margin:0 14px 16px;text-align:center">下一種動物：${nextAnimal.emoji} ${esc(nextAnimal.name)}（Lv${nextAnimal.lv}）</p>` : "";
 
-      return sheetTop("牧場", `🌾 ${have("feed")}・📦 ${invUsed()}/${storageCap() > 9999 ? "∞" : storageCap()}`) + feedRow + mill + inc + pens + tease;
+      return sheetTop("牧場", `${miniIcon("feed", "🌾")} ${have("feed")}・📦 ${invUsed()}/${storageCap() > 9999 ? "∞" : storageCap()}`) + feedRow + mill + inc + pens + tease;
 
     },
 
@@ -4668,7 +4674,7 @@ const FARM_JS_VERSION = "2026-10-17 v5";
     const info = D.animals[a.sp];
     const st = animalState(a);
     let status = "", bub = "";
-    if (st === "hungry") { status = "餓了"; bub = `<span class="bub">🌾</span>`; }
+    if (st === "hungry") { status = "餓了"; bub = `<span class="bub">${itemSrc("feed") ? `<img src="${itemSrc("feed")}" alt="">` : "🌾"}</span>`; }
     else if (st === "ready") { status = "可以收"; bub = `<span class="bub">${itemIcon(info.product)}</span>`; }
     else if (st === "growing") status = `<span data-until="${a.t1}">${dur(a.t1 - now())}</span>`;
     else if (st === "working") status = `<span data-until="${a.t1}">${dur(a.t1 - now())}</span>`;
