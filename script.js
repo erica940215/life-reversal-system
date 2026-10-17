@@ -5319,37 +5319,49 @@ async function moveMorningItem(itemId, direction) {
 ========================================================= */
 
 /*
-  📈 固定的科目（累積系統用）
-  - main = 主科，sub = 次單元（內容比較少，升級門檻比較低）
+  📈 科目（累積系統用，可以在「紀錄 → 📈 累積 → ✏️ 科目」自己增減）
+  - type：main = 主科、sub = 次單元（升級門檻比較低）、other = 其他（只記時數）
   - alias：以前打過的名字，開頭對得上就算這一科（例如「資結」「多益單字」）
+  - parts：細項，專注的科目選單會多出「多益單字」「多益閱讀」這種選項
   - 專注紀錄的科目文字照舊存（例如「多益單字」），算總數時再歸到「多益」
+  - 下面是預設；存過的科目清單在 user_settings.accum.subjects，由 accum.js 換上
 */
-const ACCUM_SUBJECTS = [
-  { key: "ds",    name: "資料結構", type: "main", alias: ["資料結構", "資結"] },
-  { key: "co",    name: "計概",     type: "main", alias: ["計概", "計算機概論"] },
-  { key: "mis",   name: "MIS",      type: "main", alias: ["MIS", "管理資訊系統"] },
-  { key: "toeic", name: "多益",     type: "main", alias: ["多益", "TOEIC"], parts: ["單字", "文法", "閱讀", "聽力"] },
-  { key: "net",   name: "網路",     type: "sub",  alias: ["網路", "計算機網路", "計網"] },
-  { key: "db",    name: "資料庫",   type: "sub",  alias: ["資料庫", "DB"] },
-  { key: "ai",    name: "AI",       type: "sub",  alias: ["AI", "人工智慧"] }
+const ACCUM_DEFAULT_SUBJECTS = [
+  { key: "ds",    name: "資料結構", type: "main",  alias: ["資結"] },
+  { key: "co",    name: "計概",     type: "main",  alias: ["計算機概論"] },
+  { key: "mis",   name: "MIS",      type: "main",  alias: ["管理資訊系統"] },
+  { key: "toeic", name: "多益",     type: "main",  alias: ["TOEIC"], parts: ["單字", "文法", "閱讀", "聽力"] },
+  { key: "net",   name: "網路",     type: "sub",   alias: ["計算機網路", "計網"] },
+  { key: "db",    name: "資料庫",   type: "sub",   alias: ["DB"] },
+  { key: "ai",    name: "AI",       type: "sub",   alias: ["人工智慧"] },
+  { key: "app",   name: "App 開發", type: "other", alias: [] },
+  { key: "proj",  name: "專題",     type: "other", alias: [] }
 ];
 
-/* 其他：不在固定科目裡、但常用的 */
-const DEFAULT_OTHER_SUBJECTS = ["App 開發", "專題"];
+let ACCUM_SUBJECTS = ACCUM_DEFAULT_SUBJECTS.map(subject => ({ ...subject }));
 
 
-/* 「多益單字」→ { key: "toeic", part: "單字" }；對不上的 → key: "other" */
+/* 「多益單字」→ { key: "toeic", part: "單字" }；對不上的 → key: "other"（未分類） */
 function focusSubjectInfo(text) {
 
   const raw = String(text || "").trim();
   const upper = raw.toUpperCase();
 
+  /* 長的名字先比，才不會「資料」先搶走「資料結構」 */
+  const names = [];
+
   for (const subject of ACCUM_SUBJECTS) {
-    for (const alias of subject.alias) {
-      if (upper.startsWith(alias.toUpperCase())) {
-        const part = raw.slice(alias.length).replace(/^[\s・›>\-_:：/]+/, "").trim();
-        return { key: subject.key, subject, part };
-      }
+    for (const alias of [subject.name, ...(subject.alias || [])]) {
+      if (alias) names.push([alias, subject]);
+    }
+  }
+
+  names.sort((x, y) => y[0].length - x[0].length);
+
+  for (const [alias, subject] of names) {
+    if (upper.startsWith(alias.toUpperCase())) {
+      const part = raw.slice(alias.length).replace(/^[\s・›>\-_:：/]+/, "").trim();
+      return { key: subject.key, subject, part };
     }
   }
 
@@ -5358,17 +5370,24 @@ function focusSubjectInfo(text) {
 }
 
 
-/* 科目選單的分組：主科、多益、次單元、其他（加上以前自己打過的） */
+/* 科目選單的分組：主科、（有細項的主科各一組）、次單元、其他；再補上以前自己打過的 */
 function focusSubjectGroups(used = []) {
 
+  const withParts = subject => (subject.parts || []).length
+    ? subject.parts.map(part => subject.name + part)
+    : [subject.name];
+
+  const mains = ACCUM_SUBJECTS.filter(s => s.type === "main");
+
   const groups = [
-    { label: "主科", items: ["資料結構", "計概", "MIS"] },
-    { label: "多益", items: ["多益單字", "多益文法", "多益閱讀", "多益聽力"] },
-    { label: "次單元", items: ["網路", "資料庫", "AI"] },
-    { label: "其他", items: [...DEFAULT_OTHER_SUBJECTS] }
+    { label: "主科", items: mains.filter(s => !(s.parts || []).length).map(s => s.name) },
+    ...mains.filter(s => (s.parts || []).length).map(s => ({ label: s.name, key: s.key, items: withParts(s) })),
+    { label: "次單元", items: ACCUM_SUBJECTS.filter(s => s.type === "sub").flatMap(withParts) },
+    { label: "其他", items: ACCUM_SUBJECTS.filter(s => s.type === "other").flatMap(withParts) }
   ];
 
   const all = () => groups.flatMap(group => group.items);
+  const otherGroup = groups[groups.length - 1];
 
   for (const text of used) {
 
@@ -5381,16 +5400,25 @@ function focusSubjectGroups(used = []) {
     /* 「資結」這種舊名字已經被「資料結構」包含，不另外列 */
     if (info.key !== "other" && !info.part) continue;
 
-    const target = info.key === "other" ? groups[3]
-      : info.key === "toeic" ? groups[1]
-      : info.subject.type === "main" ? groups[0]
-      : groups[2];
+    const target = info.key === "other" ? otherGroup
+      : groups.find(group => group.key === info.key)
+        || (info.subject.type === "main" ? groups[0] : info.subject.type === "sub" ? groups[groups.length - 2] : otherGroup);
 
     target.items.push(value);
 
   }
 
-  return groups;
+  return groups.filter(group => group.items.length);
+
+}
+
+
+/* 科目清單換了（accum.js 讀到自己存的科目）→ 專注的選單重畫 */
+function refreshFocusSubjects() {
+
+  focusKnownSubjects = focusSubjectGroups(focusUsedSubjects).flatMap(group => group.items);
+
+  if (currentUser && document.getElementById("focus-subject")) renderFocusSetup();
 
 }
 

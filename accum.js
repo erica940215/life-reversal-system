@@ -25,6 +25,11 @@ const EXERCISE_KINDS = ["走路", "跑步", "重訓", "球類", "騎車", "游�
 const EXERCISE_MINUTES = [15, 30, 45, 60, 90];
 
 const ACCUM_STALE_DAYS = 5;     // 超過幾天沒讀就變紅
+const ACCUM_MAX_SUBJECTS = 20;
+const ACCUM_TYPE_NAME = { main: "主科", sub: "次單元", other: "其他" };
+
+/* 對不上任何科目的專注紀錄 */
+const ACCUM_NONE = { key: "other", name: "未分類", type: "none" };
 const ACCUM_HEAT_WEEKS = 4;     // 格子表看幾週
 
 let accumSettings = { ...ACCUM_DEFAULTS };
@@ -106,6 +111,7 @@ async function loadAccumSettings() {
   if (error) {
     if (accumMissingTable(error)) accumSqlReady = false;
     accumSettings = { ...ACCUM_DEFAULTS };
+    accumUseSubjects(null);
     return;
   }
 
@@ -116,6 +122,69 @@ async function loadAccumSettings() {
   for (const key of Object.keys(ACCUM_DEFAULTS)) {
     const value = Number(saved[key]);
     if (Number.isFinite(value) && value > 0) accumSettings[key] = value;
+  }
+
+  accumUseSubjects(accumCleanSubjects(saved.subjects));
+
+}
+
+
+/* 存過的科目清單 → 檢查一遍（名字不能重複、種類只有三種） */
+function accumCleanSubjects(list) {
+
+  if (!Array.isArray(list) || !list.length) return null;
+
+  const out = [];
+  const names = new Set();
+  const keys = new Set(["other"]);
+  const words = v => (Array.isArray(v) ? v : [])
+    .map(x => String(x).trim().slice(0, 20))
+    .filter(Boolean)
+    .slice(0, 10);
+
+  for (const item of list.slice(0, ACCUM_MAX_SUBJECTS)) {
+
+    if (!item || typeof item !== "object") continue;
+
+    const name = String(item.name || "").trim().slice(0, 20);
+    if (!name || names.has(name.toUpperCase())) continue;
+    names.add(name.toUpperCase());
+
+    let key = String(item.key || "");
+    if (!/^[a-z0-9_]{1,24}$/i.test(key) || keys.has(key)) key = accumNewKey(keys);
+    keys.add(key);
+
+    out.push({
+      key,
+      name,
+      type: ["main", "sub", "other"].includes(item.type) ? item.type : "main",
+      alias: words(item.alias).filter(a => a.toUpperCase() !== name.toUpperCase()),
+      parts: words(item.parts)
+    });
+
+  }
+
+  return out.length ? out : null;
+
+}
+
+function accumNewKey(taken) {
+  let key;
+  do { key = "s" + Math.random().toString(36).slice(2, 8); } while (taken && taken.has(key));
+  return key;
+}
+
+/* 換上科目清單（null = 預設），專注的選單跟著重畫 */
+function accumUseSubjects(list) {
+
+  ACCUM_SUBJECTS = (list || ACCUM_DEFAULT_SUBJECTS).map(subject => ({
+    ...subject,
+    alias: [...(subject.alias || [])],
+    parts: [...(subject.parts || [])]
+  }));
+
+  if (typeof refreshFocusSubjects === "function") {
+    try { refreshFocusSubjects(); } catch (error) { console.warn(error); }
   }
 
 }
@@ -191,7 +260,20 @@ async function loadAccumHealth() {
 ========================================================= */
 
 function accumSubjectMeta(key) {
-  return ACCUM_SUBJECTS.find(s => s.key === key) || { key: "other", name: "其他", type: "other" };
+  return ACCUM_SUBJECTS.find(s => s.key === key) || ACCUM_NONE;
+}
+
+/* 有等級的科目：主科、次單元 */
+function accumLeveled() {
+  return ACCUM_SUBJECTS.filter(s => s.type === "main" || s.type === "sub");
+}
+
+/* 總表、格子表、篩選的順序：主科 → 次單元 → 其他 → 未分類 */
+function accumOrderedKeys(stats) {
+  const by = type => ACCUM_SUBJECTS.filter(s => s.type === type).map(s => s.key);
+  const keys = [...by("main"), ...by("sub"), ...by("other")];
+  if (!stats || stats.other.seconds > 0) keys.push("other");
+  return keys;
 }
 
 function accumLevelInfo(key, seconds) {
@@ -216,7 +298,7 @@ function accumSubjectStats() {
   const weekStart = accumWeekStart(today, 0);
   const stats = {};
 
-  for (const s of [...ACCUM_SUBJECTS, { key: "other", name: "其他", type: "other" }]) {
+  for (const s of [...ACCUM_SUBJECTS, ACCUM_NONE]) {
     stats[s.key] = { key: s.key, name: s.name, type: s.type, seconds: 0, week: 0, last: null, days: {}, parts: {} };
   }
 
@@ -233,7 +315,7 @@ function accumSubjectStats() {
   }
 
   for (const st of Object.values(stats)) {
-    if (st.type !== "other") Object.assign(st, accumLevelInfo(st.key, st.seconds));
+    if (st.type === "main" || st.type === "sub") Object.assign(st, accumLevelInfo(st.key, st.seconds));
   }
 
   return stats;
@@ -248,7 +330,7 @@ function accumSubjectLevels() {
   const stats = accumSubjectStats();
   const out = {};
 
-  for (const s of ACCUM_SUBJECTS) out[s.key] = { name: s.name, level: stats[s.key].level };
+  for (const s of accumLeveled()) out[s.key] = { name: s.name, level: stats[s.key].level };
 
   return out;
 
@@ -256,7 +338,8 @@ function accumSubjectLevels() {
 
 /* 升級規則的版本：規則改了，星露島就重新記等級，不補發 */
 function accumLevelSig() {
-  return `${accumSettings.pointMinutes}/${accumSettings.mainLevel}/${accumSettings.subLevel}`;
+  const subjects = accumLeveled().map(s => [s.key, s.type, s.name, ...(s.alias || [])].join(":")).join("|");
+  return `${accumSettings.pointMinutes}/${accumSettings.mainLevel}/${accumSettings.subLevel}/${subjects}`;
 }
 
 /* 升級提示：記在這台裝置，第一次只記下來 */
@@ -271,6 +354,10 @@ function accumCheckLevelUps() {
   try { seen = JSON.parse(localStorage.getItem(key) || "null"); } catch (_) { seen = null; }
 
   const ups = [];
+  const sig = accumLevelSig();
+
+  /* 規則或科目改過：這次只記下來 */
+  if (seen && seen.__sig !== undefined && seen.__sig !== sig) seen = null;
 
   if (seen && typeof seen === "object") {
     for (const [k, info] of Object.entries(levels)) {
@@ -278,8 +365,8 @@ function accumCheckLevelUps() {
     }
   }
 
-  const next = {};
-  for (const [k, info] of Object.entries(levels)) next[k] = Math.max(info.level, (seen && seen[k]) || 0);
+  const next = { __sig: sig };
+  for (const [k, info] of Object.entries(levels)) next[k] = seen ? Math.max(info.level, seen[k] || 0) : info.level;
 
   try { localStorage.setItem(key, JSON.stringify(next)); } catch (_) {}
 
@@ -680,7 +767,7 @@ function accumStudyHtml() {
   if (!accumFocusRows) return `<div class="empty-state">載入中...</div>`;
 
   const stats = accumSubjectStats();
-  const order = [...ACCUM_SUBJECTS.map(s => s.key), "other"];
+  const order = accumOrderedKeys(stats);
 
   /* ---------- 總表 ---------- */
 
@@ -691,11 +778,14 @@ function accumStudyHtml() {
 
     let nameCell;
 
-    if (st.type === "other") {
+    if (st.type === "none") {
       const top = Object.entries(st.parts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([p]) => p).filter(Boolean);
       nameCell = `
-        <div class="accum-name">其他</div>
-        <div class="small-note">${top.length ? escapeHtml(top.join("、")) : "App 開發、專題…"}</div>`;
+        <div class="accum-name">未分類</div>
+        <div class="small-note">${escapeHtml(top.join("、"))}・按「✏️ 科目」新增就會分開算</div>`;
+    } else if (st.type === "other") {
+      nameCell = `
+        <div class="accum-name">${escapeHtml(st.name)} <span class="accum-tag">其他</span></div>`;
     } else {
       nameCell = `
         <div class="accum-name">${escapeHtml(st.name)} <span class="accum-lv">Lv${st.level}</span>${st.type === "sub" ? `<span class="accum-tag">次單元</span>` : ""}</div>
@@ -737,7 +827,10 @@ function accumStudyHtml() {
 
 function accumRadarHtml(stats) {
 
-  const keys = ACCUM_SUBJECTS.map(s => s.key);
+  const keys = accumLeveled().map(s => s.key);
+
+  if (keys.length < 3) return "";
+
   const values = keys.map(k => (stats[k].level - 1) + stats[k].progress);
   const top = Math.max(2, Math.ceil(Math.max(...values)));
 
@@ -796,7 +889,7 @@ function accumHeatHtml(stats) {
 
   const head = days.map((d, i) => `<span class="ht-head">${i % 7 === 0 ? accumMD(d) : ""}</span>`).join("");
 
-  const rows = [...ACCUM_SUBJECTS.map(s => s.key), "other"].map(key => {
+  const rows = accumOrderedKeys(stats).map(key => {
     const st = stats[key];
     const cells = days.map(d => {
       if (d > today) return `<span class="ht-cell future"></span>`;
@@ -821,7 +914,8 @@ function accumHeatHtml(stats) {
 
 function accumLogHtml() {
 
-  const chips = [["all", "全部"], ...ACCUM_SUBJECTS.map(s => [s.key, s.name]), ["other", "其他"]]
+  const stats = accumSubjectStats();
+  const chips = [["all", "全部"], ...accumOrderedKeys(stats).map(k => [k, stats[k].name])]
     .map(([key, label]) => `<button class="chip ${accumLogFilter === key ? "active" : ""}" onclick="accumFilterLog('${key}')">${escapeHtml(label)}</button>`)
     .join("");
 
@@ -1026,7 +1120,11 @@ function openAccumSettings() {
       <div class="modal-row">
         ${field("as-ex", "每週運動（分鐘）", s.exerciseWeek, 10, 3000, 10)}
       </div>
-      <p class="small-note">主科：資料結構、計概、MIS、多益。次單元：網路、資料庫、AI。</p>
+      <p class="small-note">
+        主科：${escapeHtml(ACCUM_SUBJECTS.filter(x => x.type === "main").map(x => x.name).join("、") || "（沒有）")}。
+        次單元：${escapeHtml(ACCUM_SUBJECTS.filter(x => x.type === "sub").map(x => x.name).join("、") || "（沒有）")}。
+        要增減科目，按「✏️ 科目」。
+      </p>
     `,
 
     buttons: [
@@ -1075,7 +1173,7 @@ async function saveAccumSettings() {
 
   const { error } = await db
     .from("user_settings")
-    .upsert({ user_id: currentUser.id, accum: next }, { onConflict: "user_id" });
+    .upsert({ user_id: currentUser.id, accum: { ...next, subjects: accumSubjectsForSave() } }, { onConflict: "user_id" });
 
   if (error) {
     if (accumMissingTable(error)) accumNeedSql();
@@ -1087,6 +1185,162 @@ async function saveAccumSettings() {
   accumCheckLevelUps();
   renderAccumAll();
   showToast("⚙️ 累積規則已更新");
+
+  return true;
+
+}
+
+
+/* ---------- ✏️ 科目：自己增減主科、次單元、其他 ---------- */
+
+function accumSubjectsForSave() {
+  return ACCUM_SUBJECTS.map(({ key, name, type, alias, parts }) => ({ key, name, type, alias: alias || [], parts: parts || [] }));
+}
+
+function accumSubjectRowHtml(subject) {
+
+  const s = subject || { key: "", name: "", type: "main", alias: [], parts: [] };
+  const list = arr => escapeHtml((arr || []).join("、"));
+
+  return `
+    <div class="subj-row" data-key="${escapeHtml(s.key)}">
+      <div class="subj-line">
+        <input type="text" class="subj-name" maxlength="20" placeholder="科目名稱，例如：統計" value="${escapeHtml(s.name)}">
+        <select class="subj-type">
+          ${Object.entries(ACCUM_TYPE_NAME).map(([value, label]) => `<option value="${value}" ${value === s.type ? "selected" : ""}>${label}</option>`).join("")}
+        </select>
+        <button type="button" class="icon-btn" title="刪掉這科" onclick="this.closest('.subj-row').remove()">🗑️</button>
+      </div>
+      <label class="subj-field"><span>舊名字</span><input type="text" class="subj-alias" maxlength="120" placeholder="選填，用、分開，例如：資結" value="${list(s.alias)}"></label>
+      <label class="subj-field"><span>細項</span><input type="text" class="subj-parts" maxlength="120" placeholder="選填，例如：單字、閱讀" value="${list(s.parts)}"></label>
+    </div>`;
+
+}
+
+function openSubjectEditor() {
+
+  openModal({
+
+    title: "✏️ 科目",
+
+    bodyHtml: `
+      <p class="small-note" style="margin-top:0;">
+        <b>主科</b>、<b>次單元</b>會升級（次單元門檻比較低）；<b>其他</b>只記時數。
+        專注時科目的開頭對得上「名稱」或「舊名字」就算這一科。
+        有「細項」的話，專注選單會多出「多益單字」這種選項。
+      </p>
+      <div id="subj-list">${ACCUM_SUBJECTS.map(accumSubjectRowHtml).join("")}</div>
+      <button type="button" class="btn btn-small" style="margin-top:6px;" onclick="accumAddSubjectRow()">＋ 新增科目</button>
+      <p class="small-note">刪掉科目不會刪掉專注紀錄，那些時間會先算到「未分類」，之後再加回來就會回來。</p>
+    `,
+
+    buttons: [
+      { label: "恢復預設", className: "btn", onClick: () => { accumResetSubjectRows(); return false; } },
+      { label: "取消", className: "btn" },
+      { label: "儲存", className: "btn btn-primary", onClick: () => saveSubjects() }
+    ]
+
+  });
+
+}
+
+function accumAddSubjectRow() {
+
+  const box = document.getElementById("subj-list");
+  if (!box) return;
+
+  if (box.querySelectorAll(".subj-row").length >= ACCUM_MAX_SUBJECTS) {
+    alert(`最多 ${ACCUM_MAX_SUBJECTS} 科`);
+    return;
+  }
+
+  box.insertAdjacentHTML("beforeend", accumSubjectRowHtml(null));
+  const last = box.querySelector(".subj-row:last-child .subj-name");
+  if (last) last.focus();
+
+}
+
+function accumResetSubjectRows() {
+  const box = document.getElementById("subj-list");
+  if (box && confirm("科目清單恢復成預設的 9 科？（按「儲存」才會生效）")) {
+    box.innerHTML = ACCUM_DEFAULT_SUBJECTS.map(accumSubjectRowHtml).join("");
+  }
+}
+
+async function saveSubjects() {
+
+  if (!accumSqlReady) {
+    accumNeedSql();
+    return false;
+  }
+
+  const split = text => String(text || "").split(/[、,，;；\s]+/).map(x => x.trim()).filter(Boolean);
+  const rows = [...document.querySelectorAll("#subj-list .subj-row")];
+  const seen = new Set();
+  const keys = new Set(["other"]);
+  const list = [];
+
+  for (const row of rows) {
+
+    const name = row.querySelector(".subj-name").value.trim();
+
+    if (!name) continue;
+
+    if (name.length > 20) {
+      alert(`「${name}」太長了，最多 20 個字`);
+      return false;
+    }
+
+    if (seen.has(name.toUpperCase())) {
+      alert(`「${name}」重複了`);
+      return false;
+    }
+
+    seen.add(name.toUpperCase());
+
+    let key = row.dataset.key;
+    if (!key || keys.has(key)) key = accumNewKey(keys);
+    keys.add(key);
+
+    list.push({
+      key,
+      name,
+      type: row.querySelector(".subj-type").value,
+      alias: split(row.querySelector(".subj-alias").value).filter(a => a.toUpperCase() !== name.toUpperCase()).slice(0, 10),
+      parts: split(row.querySelector(".subj-parts").value).slice(0, 10)
+    });
+
+  }
+
+  if (!list.length) {
+    alert("至少要留一科");
+    return false;
+  }
+
+  const cleaned = accumCleanSubjects(list);
+
+  const { error } = await db
+    .from("user_settings")
+    .upsert({ user_id: currentUser.id, accum: { ...accumSettings, subjects: cleaned } }, { onConflict: "user_id" });
+
+  if (error) {
+    if (accumMissingTable(error)) accumNeedSql();
+    else alert("儲存失敗：" + error.message);
+    return false;
+  }
+
+  accumUseSubjects(cleaned);
+
+  if (!cleaned.some(s => s.key === accumLogFilter)) accumLogFilter = "all";
+
+  /* 科目變了：重新記下目前的等級，不跳升級 */
+  accumCheckLevelUps();
+
+  renderAccumAll();
+
+  const farm = await accumFarmCredit();
+
+  showToast(`✏️ 科目已更新：${cleaned.length} 科${farm ? `・${farm}` : ""}`);
 
   return true;
 

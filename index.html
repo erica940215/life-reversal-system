@@ -4853,6 +4853,49 @@
       }
     }
 
+    .subj-row {
+      display: grid;
+      gap: 6px;
+      padding: 10px;
+      margin-bottom: 8px;
+      border-radius: 12px;
+      border: 1px solid rgba(128, 128, 128, 0.3);
+    }
+
+    .subj-line {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .subj-row input,
+    .subj-row select {
+      width: 100%;
+      min-width: 0;
+      padding: 8px 10px;
+      border: 1px solid #343b4b;
+      border-radius: 10px;
+      background: #10131a;
+      color: #fff;
+      outline: none;
+    }
+
+    .subj-field {
+      display: grid;
+      grid-template-columns: 52px minmax(0, 1fr);
+      align-items: center;
+      gap: 6px;
+      font-size: 0.82rem;
+      opacity: 0.95;
+    }
+
+    .subj-row .subj-alias,
+    .subj-row .subj-parts {
+      font-size: 0.85rem;
+      padding: 6px 10px;
+    }
+
     .meal-good {
       display: flex;
       gap: 16px;
@@ -6840,7 +6883,10 @@
 
       <div class="card-head">
         <h2>📈 累積</h2>
-        <button class="btn btn-small" onclick="openAccumSettings()">⚙️ 規則</button>
+        <div class="card-head-right">
+          <button class="btn btn-small" onclick="openSubjectEditor()">✏️ 科目</button>
+          <button class="btn btn-small" onclick="openAccumSettings()">⚙️ 規則</button>
+        </div>
       </div>
 
       <div id="accum-body">
@@ -7191,7 +7237,7 @@
 <script src="ai.js"></script>
 <script src="datacenter.js"></script>
 <script src="game.js"></script>
-<script src="accum.js?v=20261017b"></script>
+<script src="accum.js?v=20261017d"></script>
 <script src="farm-data.js?v=20261017b"></script>
 <script src="farm.js?v=20261017b"></script>
 <script src="fold.js?v=20261017a"></script>
