@@ -920,6 +920,10 @@ function themeCss(t) {
       background: ${t.track} !important;
     }
 
+    .dc-fill {
+      background: ${t.accent} !important;
+    }
+
     input, textarea, select {
       background: ${t.field} !important;
       color: ${t.text} !important;

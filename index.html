@@ -4598,6 +4598,52 @@
       flex-direction: column;
     }
 
+    /* 今日頁：每張卡片可以往上收起來，只留標題 */
+    .card.can-fold > .card-head,
+    .card.can-fold > h2 {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .card.can-fold > .card-head > h2,
+    .card.can-fold > h2 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .fold-caret {
+      display: inline-block;
+      font-size: 0.75em;
+      opacity: 0.6;
+      transition: transform 0.2s ease;
+    }
+
+    .card.folded .fold-caret {
+      transform: rotate(-90deg);
+    }
+
+    .card.folded > :not(.card-head):not(h2) {
+      display: none !important;
+    }
+
+    .card.folded > .card-head {
+      margin-bottom: 0;
+    }
+
+    .card.folded > .card-head .btn {
+      display: none;
+    }
+
+    .card.folded > h2 {
+      margin-bottom: 0;
+    }
+
+    .card.folded {
+      padding-top: 16px;
+      padding-bottom: 16px;
+    }
+
     /* 📊 數據中心 ＆ ⏱️ 今日進度 */
     .dc-progress-card {
       margin-bottom: 12px;
@@ -4624,12 +4670,8 @@
     .dc-fill {
       height: 100%;
       border-radius: 999px;
-      background: #3987e5;
+      background: linear-gradient(90deg, #5865f2, #9b6cff);
       transition: width 0.6s ease;
-    }
-
-    .dc-fill-time {
-      background: #6b7385;
     }
 
     .dc-ahead {
@@ -5478,36 +5520,6 @@
       <div id="cal-today"></div>
     </section>
 
-    <section class="card ai-box" id="ai-card">
-
-      <div class="card-head">
-        <h2>🤖 AI 助理</h2>
-        <button class="btn btn-small" onclick="aiClearChat()">清除對話</button>
-      </div>
-
-      <div id="ai-chat" class="ai-chat"></div>
-
-      <textarea
-        id="ai-input"
-        maxlength="1000"
-        placeholder="跟我說話…（Ctrl+Enter 送出）"
-      ></textarea>
-
-      <div class="ai-actions">
-        <button
-          class="btn btn-primary"
-          id="ai-send-btn"
-          onclick="aiSend()"
-        >
-          送出
-        </button>
-      </div>
-
-      <div class="ai-msg" id="ai-msg"></div>
-
-    </section>
-
-
     <section class="card fortune-mini" id="fortune-card">
 
       <div class="card-head">
@@ -5729,7 +5741,7 @@
          每日收尾
     ============================== -->
 
-    <section class="card">
+    <section class="card" id="wrapup-card">
 
       <h2>
         🌙 每日收尾
@@ -5786,6 +5798,40 @@
         id="daily-wrapup-message"
         style="margin-top:15px;"
       ></div>
+
+    </section>
+
+
+    <!-- ==============================
+         🤖 AI 助理（放在今日最下面）
+    ============================== -->
+
+    <section class="card ai-box" id="ai-card">
+
+      <div class="card-head">
+        <h2>🤖 AI 助理</h2>
+        <button class="btn btn-small" onclick="aiClearChat()">清除對話</button>
+      </div>
+
+      <div id="ai-chat" class="ai-chat"></div>
+
+      <textarea
+        id="ai-input"
+        maxlength="1000"
+        placeholder="跟我說話…（Ctrl+Enter 送出）"
+      ></textarea>
+
+      <div class="ai-actions">
+        <button
+          class="btn btn-primary"
+          id="ai-send-btn"
+          onclick="aiSend()"
+        >
+          送出
+        </button>
+      </div>
+
+      <div class="ai-msg" id="ai-msg"></div>
 
     </section>
 
@@ -6830,6 +6876,7 @@
 <script src="game.js"></script>
 <script src="farm-data.js?v=20261017a"></script>
 <script src="farm.js?v=20261017a"></script>
+<script src="fold.js?v=20261017a"></script>
 
 
 <!-- 保險：10 秒後還在載入（例如網路斷線），提示重新整理 -->
