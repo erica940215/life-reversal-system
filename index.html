@@ -4598,6 +4598,267 @@
       flex-direction: column;
     }
 
+    /* 📈 累積 */
+    .hq-row {
+      margin-bottom: 14px;
+    }
+
+    .hq-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .hq-label {
+      font-size: 0.95rem;
+      margin-bottom: 6px;
+    }
+
+    .hq-bar {
+      margin-bottom: 8px !important;
+    }
+
+    .hq-bar > div {
+      background: linear-gradient(90deg, #5865f2, #9b6cff);
+    }
+
+    .hq-btns {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .accum-tabs {
+      margin-bottom: 14px;
+    }
+
+    .accum-table td {
+      vertical-align: middle;
+    }
+
+    .accum-row {
+      cursor: pointer;
+    }
+
+    .accum-row.sub .accum-name {
+      font-size: 0.92em;
+    }
+
+    .accum-row.sub td:first-child {
+      padding-left: 18px;
+    }
+
+    .accum-name {
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .accum-lv {
+      font-size: 0.78rem;
+      padding: 1px 7px;
+      border-radius: 999px;
+      background: rgba(88, 101, 242, 0.25);
+      color: #b9c0ff;
+    }
+
+    .accum-tag {
+      font-size: 0.72rem;
+      padding: 1px 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(128, 128, 128, 0.45);
+      opacity: 0.8;
+      font-weight: normal;
+    }
+
+    .accum-bar {
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(128, 128, 128, 0.25);
+      overflow: hidden;
+      margin: 5px 0 3px;
+      max-width: 180px;
+    }
+
+    .accum-bar i {
+      display: block;
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #5865f2, #9b6cff);
+    }
+
+    .accum-stale {
+      color: #ff7b7b;
+      font-weight: bold;
+    }
+
+    .accum-total td {
+      border-top: 2px solid rgba(128, 128, 128, 0.35);
+    }
+
+    .accum-radar {
+      display: flex;
+      justify-content: center;
+    }
+
+    .accum-radar svg {
+      width: 100%;
+      max-width: 360px;
+      height: auto;
+    }
+
+    .accum-radar .rd-ring {
+      fill: none;
+      stroke: rgba(128, 128, 128, 0.35);
+      stroke-width: 1;
+    }
+
+    .accum-radar .rd-axis {
+      stroke: rgba(128, 128, 128, 0.35);
+      stroke-width: 1;
+    }
+
+    .accum-radar .rd-label {
+      fill: currentColor;
+      font-size: 11px;
+      opacity: 0.85;
+    }
+
+    .accum-radar .rd-area {
+      fill: rgba(123, 140, 255, 0.35);
+      stroke: #7b8cff;
+      stroke-width: 2;
+    }
+
+    .accum-radar .rd-dot {
+      fill: #7b8cff;
+    }
+
+    .accum-heat {
+      max-width: 640px;
+      display: grid;
+      grid-template-columns: 58px repeat(var(--days), minmax(0, 1fr));
+      gap: 2px;
+      align-items: center;
+      font-size: 0.75rem;
+    }
+
+    .ht-name {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding-right: 4px;
+    }
+
+    .ht-head {
+      white-space: nowrap;
+      overflow: visible;
+      font-size: 0.68rem;
+      opacity: 0.7;
+      height: 14px;
+    }
+
+    .ht-cell {
+      display: block;
+      aspect-ratio: 1 / 1;
+      border-radius: 2px;
+      background: rgba(128, 128, 128, 0.18);
+    }
+
+    .ht-cell.h1 { background: rgba(66, 211, 146, 0.35); }
+    .ht-cell.h2 { background: rgba(66, 211, 146, 0.55); }
+    .ht-cell.h3 { background: rgba(66, 211, 146, 0.78); }
+    .ht-cell.h4 { background: #42d392; }
+    .ht-cell.future { background: transparent; }
+
+    .ht-legend {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      margin-top: 8px;
+    }
+
+    .ht-legend .ht-cell {
+      width: 11px;
+      display: inline-block;
+    }
+
+    .accum-log-item {
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+    }
+
+    .accum-log-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .accum-log-note {
+      margin-top: 3px;
+      font-size: 0.9rem;
+      opacity: 0.85;
+    }
+
+    .focus-note {
+      margin-top: 2px;
+    }
+
+    .hw-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .accum-week {
+      font-size: 0.82rem;
+    }
+
+    .accum-week th,
+    .accum-week td {
+      padding: 6px 3px;
+      text-align: center;
+    }
+
+    .accum-week td:first-child,
+    .accum-week th:first-child {
+      text-align: left;
+    }
+
+    .accum-week th.is-today {
+      color: #8f9bff;
+    }
+
+    .hw-cell.ok {
+      background: rgba(66, 211, 146, 0.28);
+      font-weight: bold;
+    }
+
+    .hw-cell.empty {
+      opacity: 0.4;
+    }
+
+    .accum-tiles {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    @media (max-width: 700px) {
+      .accum-tiles {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    .meal-good {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
     /* 今日頁：每張卡片可以往上收起來，只留標題 */
     .card.can-fold > .card-head,
     .card.can-fold > h2 {
@@ -5245,7 +5506,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Huninn&display=swap">
-<link rel="stylesheet" href="farm.css?v=20261017a">
+<link rel="stylesheet" href="farm.css?v=20261017b">
 
 </head>
 
@@ -5619,6 +5880,27 @@
         <div class="empty-state">
           載入中...
         </div>
+      </div>
+
+    </section>
+
+
+
+    <!-- ==============================
+         💧 喝水・🏃 運動（由 accum.js 繪製）
+    ============================== -->
+
+    <section class="card" id="health-card">
+
+      <div class="card-head">
+        <h2>💧 喝水・🏃 運動</h2>
+        <div class="card-head-right">
+          <span class="pill" id="health-pill"></span>
+        </div>
+      </div>
+
+      <div id="health-quick">
+        <div class="empty-state">載入中...</div>
       </div>
 
     </section>
@@ -6453,7 +6735,7 @@
       </h1>
 
       <p>
-        作息和三餐，記下來就好。
+        作息、三餐、喝水和運動，記下來就好。
       </p>
 
     </div>
@@ -6526,13 +6808,48 @@
 
     </section>
 
+
+    <!-- ==============================
+         💧 喝水・🏃 運動（由 accum.js 繪製）
+    ============================== -->
+
+    <section class="card" id="health-life-card">
+
+      <div class="card-head">
+        <h2>💧 喝水・🏃 運動</h2>
+        <button class="btn btn-small" onclick="openAccumSettings()">🎯 目標</button>
+      </div>
+
+      <div id="health-life">
+        <div class="empty-state">載入中...</div>
+      </div>
+
+    </section>
+
     </div>
 
 
     <!-- ================= 📄 分頁：records ================= -->
     <div class="page" data-page="records">
 
-    <!-- 🎨 主題選擇（由 theme.js 繪製） -->
+    <!-- ==============================
+         📈 累積（由 accum.js 繪製）
+    ============================== -->
+
+    <section class="card" id="accum-card">
+
+      <div class="card-head">
+        <h2>📈 累積</h2>
+        <button class="btn btn-small" onclick="openAccumSettings()">⚙️ 規則</button>
+      </div>
+
+      <div id="accum-body">
+        <div class="empty-state">載入中...</div>
+      </div>
+
+    </section>
+
+    <!-- 🎨 主題選擇（由 datacenter.js 繪製） -->
     <div id="theme-picker"></div>
 
 
@@ -6874,8 +7191,9 @@
 <script src="ai.js"></script>
 <script src="datacenter.js"></script>
 <script src="game.js"></script>
-<script src="farm-data.js?v=20261017a"></script>
-<script src="farm.js?v=20261017a"></script>
+<script src="accum.js?v=20261017b"></script>
+<script src="farm-data.js?v=20261017b"></script>
+<script src="farm.js?v=20261017b"></script>
 <script src="fold.js?v=20261017a"></script>
 
 

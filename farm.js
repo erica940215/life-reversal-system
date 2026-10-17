@@ -332,7 +332,8 @@ const FARM_JS_VERSION = "2026-10-17 v5";
       daily: { day: null, done: {} },
       glassDay: null,               // 時光沙漏今天用過了沒
       wishApplied: [],              // 已經放進島上的抽獎紀錄（避免重複）
-      ownedCache: {}
+      ownedCache: {},
+      subjLv: {}                    // 各科等級（累積系統），升級送星露用
     };
 
   }
@@ -405,6 +406,7 @@ const FARM_JS_VERSION = "2026-10-17 v5";
     if (!Array.isArray(st.deco.slots)) st.deco.slots = [];
     if (!Array.isArray(st.wishApplied)) st.wishApplied = [];
     if (!st.skins || typeof st.skins !== "object") st.skins = {};
+    if (!st.subjLv || typeof st.subjLv !== "object") st.subjLv = {};
 
     st.lv = Math.min(50, Math.max(1, st.lv | 0));
 
@@ -2059,75 +2061,176 @@ const FARM_JS_VERSION = "2026-10-17 v5";
      同一個習慣（或任務）同一天只算一次（取消再打卡不會重複裝水）
   ========================================================= */
 
+  /*
+    水車裝水（今天和昨天的，每一筆只算一次，記在 S.wcred）
+    - 完成習慣、任務：1 桶
+    - 專注每 15 分鐘、記一次喝水、記一餐、記一次運動：1 滴
+    - 喝水達標：1 桶
+    另外：睡滿目標 → 加速沙漏 1 個；當天運動達標 → 星露 100；各科升級 → 每級星露 100
+  */
+  const ACCUM_DEFAULT = { waterMl: 2250, sleepHours: 7, exerciseWeek: 150 };
+
+  function accumRules() {
+    try {
+      if (typeof window.accumGetSettings === "function") return { ...ACCUM_DEFAULT, ...window.accumGetSettings() };
+    } catch (e) { /* 用預設 */ }
+    return { ...ACCUM_DEFAULT };
+  }
+
   async function creditWater(showToast_ = true) {
 
-    if (!S || !uid()) return { buckets: 0, wasted: 0 };
+    const got = { buckets: 0, drops: 0, wasted: 0, glass: 0, dew: 0, levels: [] };
+
+    if (!S || !uid()) return got;
 
     const day = todayKey();
     const yesterday = shiftDay(day, -1);
-    const credits = [];
+    const rules = accumRules();
+    const credits = [];   // [日期, 編號, "bucket" | "drop" | "glass" | "dew"]
 
-    try {
-      const { data, error } = await db
-        .from("habit_logs")
-        .select("habit_id, log_date, is_makeup")
-        .eq("user_id", uid())
-        .gte("log_date", yesterday)
-        .limit(500);
+    const read = async (label, fn) => {
+      try { await fn(); } catch (error) { console.warn(`讀取${label}失敗：`, error); }
+    };
+
+    await read("習慣打卡", async () => {
+      const { data, error } = await db.from("habit_logs").select("habit_id, log_date, is_makeup")
+        .eq("user_id", uid()).gte("log_date", yesterday).limit(500);
       if (error) throw error;
-      for (const row of data || []) {
-        if (!row.is_makeup) credits.push([row.log_date, row.habit_id]);
-      }
-    } catch (error) {
-      console.warn("讀取習慣打卡失敗：", error);
-    }
+      for (const row of data || []) if (!row.is_makeup) credits.push([row.log_date, row.habit_id, "bucket"]);
+    });
 
-    try {
+    await read("任務", async () => {
       /* 今天（凌晨 2 點之後）完成的任務 */
       const start = new Date(day + "T02:00:00");
-      const { data, error } = await db
-        .from("tasks")
-        .select("id, completed_at")
-        .eq("user_id", uid())
-        .eq("completed", true)
-        .gte("completed_at", start.toISOString())
-        .limit(300);
+      const { data, error } = await db.from("tasks").select("id, completed_at")
+        .eq("user_id", uid()).eq("completed", true).gte("completed_at", start.toISOString()).limit(300);
       if (error) throw error;
-      for (const row of data || []) credits.push([day, "t" + row.id]);
-    } catch (error) {
-      console.warn("讀取任務失敗：", error);
-    }
+      for (const row of data || []) credits.push([day, "t" + row.id, "bucket"]);
+    });
+
+    await read("專注", async () => {
+      const { data, error } = await db.from("focus_sessions").select("session_date, duration_seconds")
+        .eq("user_id", uid()).gte("session_date", yesterday).limit(500);
+      if (error) throw error;
+      const minutes = {};
+      for (const row of data || []) minutes[row.session_date] = (minutes[row.session_date] || 0) + (Number(row.duration_seconds) || 0) / 60;
+      for (const [date, m] of Object.entries(minutes)) {
+        for (let i = 1; i <= Math.floor(m / 15); i++) credits.push([date, "f" + i, "drop"]);
+      }
+    });
+
+    await read("喝水", async () => {
+      const { data, error } = await db.from("water_logs").select("id, log_date, ml")
+        .eq("user_id", uid()).gte("log_date", yesterday).limit(500);
+      if (error) throw error;
+      const total = {};
+      for (const row of data || []) {
+        credits.push([row.log_date, "w" + row.id, "drop"]);
+        total[row.log_date] = (total[row.log_date] || 0) + (Number(row.ml) || 0);
+      }
+      for (const [date, ml] of Object.entries(total)) if (ml >= rules.waterMl) credits.push([date, "W", "bucket"]);
+    });
+
+    await read("三餐", async () => {
+      const { data, error } = await db.from("meal_logs").select("id, log_date, skipped")
+        .eq("user_id", uid()).gte("log_date", yesterday).limit(100);
+      if (error) throw error;
+      for (const row of data || []) if (!row.skipped) credits.push([row.log_date, "m" + row.id, "drop"]);
+    });
+
+    await read("運動", async () => {
+      const { data, error } = await db.from("exercise_logs").select("id, log_date, minutes")
+        .eq("user_id", uid()).gte("log_date", yesterday).limit(200);
+      if (error) throw error;
+      const total = {};
+      for (const row of data || []) {
+        credits.push([row.log_date, "e" + row.id, "drop"]);
+        total[row.log_date] = (total[row.log_date] || 0) + (Number(row.minutes) || 0);
+      }
+      const daily = Math.ceil(rules.exerciseWeek / 5);
+      for (const [date, m] of Object.entries(total)) if (m >= daily) credits.push([date, "E", "dew"]);
+    });
+
+    await read("作息", async () => {
+      /* 前一晚睡滿 → 起床那天送加速沙漏 */
+      const { data, error } = await db.from("sleep_logs").select("night_date, bed_at, wake_at")
+        .eq("user_id", uid()).gte("night_date", shiftDay(yesterday, -1)).limit(10);
+      if (error) throw error;
+      for (const row of data || []) {
+        if (!row.bed_at || !row.wake_at) continue;
+        const minutes = (new Date(row.wake_at) - new Date(row.bed_at)) / 60000;
+        const wakeDay = shiftDay(row.night_date, 1);
+        if (minutes >= rules.sleepHours * 60 && (wakeDay === day || wakeDay === yesterday)) credits.push([wakeDay, "S", "glass"]);
+      }
+    });
 
     const cap = waterCap();
-    let buckets = 0;
-    let wasted = 0;
+    const pour = n => {
+      if (S.water >= cap.max) { got.wasted++; return false; }
+      S.water = Math.min(cap.max, S.water + n);
+      return true;
+    };
 
-    for (const [date, id] of credits) {
+    for (const [date, id, kind] of credits) {
       const list = S.wcred[date] || (S.wcred[date] = []);
       if (list.includes(id)) continue;
       list.push(id);
-      if (S.water + cap.per <= cap.max) {
-        S.water += cap.per;
-        buckets++;
-      } else if (S.water < cap.max) {
-        S.water = cap.max;
-        buckets++;
-      } else {
-        wasted++;
-      }
+      if (kind === "bucket") { if (pour(cap.per)) got.buckets++; }
+      else if (kind === "drop") { if (pour(1)) got.drops++; }
+      else if (kind === "glass") { addItem("speedglass", 1); got.glass++; }
+      else if (kind === "dew") { addDew(100); got.dew += 100; }
     }
 
-    if (buckets || wasted) {
+    /* 各科升級：每升一級送 100 星露（第一次看到的等級只記下來，不補發） */
+    try {
+      const levels = typeof window.accumSubjectLevels === "function" ? window.accumSubjectLevels() : null;
+      const sig = typeof window.accumLevelSig === "function" ? window.accumLevelSig() : "";
+      /* 改了升級規則：重新記下目前的等級，不補發 */
+      if (levels && S.subjSig !== sig) {
+        for (const [key, info] of Object.entries(levels)) S.subjLv[key] = info.level;
+        S.subjSig = sig;
+        saveSoon();
+      } else if (levels) {
+        for (const [key, info] of Object.entries(levels)) {
+          const before = S.subjLv[key];
+          if (before === undefined) { S.subjLv[key] = info.level; continue; }
+          if (info.level > before) {
+            got.dew += (info.level - before) * 100;
+            addDew((info.level - before) * 100);
+            got.levels.push(`${info.name} Lv${info.level}`);
+            S.subjLv[key] = info.level;
+          }
+        }
+      }
+    } catch (error) {
+      console.warn("各科等級同步失敗：", error);
+    }
+
+    if (got.buckets || got.drops || got.wasted || got.glass || got.dew) {
       saveSoon();
       renderAll();
       if (showToast_) {
-        if (buckets) toast(`💧 完成習慣和任務，水車裝了 ${buckets} 桶水`);
-        else toast("💧 水車已經滿了，這次的水裝不下");
+        const text = creditText(got);
+        if (text) toast(text);
       }
     }
 
-    return { buckets, wasted };
+    return got;
 
+  }
+
+  function creditText(got) {
+    if (!got) return "";
+    const parts = [];
+    if (got.buckets) parts.push(`+${got.buckets} 桶`);
+    if (got.drops) parts.push(`+${got.drops} 滴`);
+    const extra = [];
+    if (got.glass) extra.push(`睡滿目標，送加速沙漏 ×${got.glass}`);
+    if (got.levels && got.levels.length) extra.push(`${got.levels.join("、")}，升級獎勵`);
+    if (got.dew) extra.push(`星露 +${got.dew}`);
+    if (!parts.length && !extra.length) return got.wasted ? "💧 星露島的水車已經滿了" : "";
+    const cap = waterCap();
+    return [parts.length ? `💧 星露島水車 ${parts.join("、")}（${S.water}/${cap.max}）` : "", ...extra].filter(Boolean).join("・");
   }
 
 
@@ -4660,7 +4763,7 @@ const FARM_JS_VERSION = "2026-10-17 v5";
       html = modalBox("💧 水車",
         `<div class="fm-bar water" style="margin:6px 0 8px"><i style="width:${(S.water / cap.max) * 100}%"></i></div>
          <p class="fm-note">現在 <b>${S.water} / ${cap.max}</b> 滴（${cap.buckets} 桶 × 每桶 ${cap.per} 滴）。</p>
-         <p class="fm-note">每完成 <b>1 個習慣或任務</b>，水車就裝 1 桶（${cap.per} 滴）。今天已經裝了 ${credited} 桶。${own("tool_copperwater") ? "銅澆水壺：1 滴水澆 2 格。" : ""}</p>
+         <p class="fm-note">完成 <b>1 個習慣或任務</b>、<b>喝水達標</b>：裝 1 桶（${cap.per} 滴）。<b>專注每 15 分鐘</b>、<b>記一次喝水、一餐、一次運動</b>：1 滴。今天已經算了 ${credited} 次。${own("tool_copperwater") ? "銅澆水壺：1 滴水澆 2 格。" : ""}</p>
          <p class="fm-note">菜田和香草園種一格用 1 滴；菇棚、果園、竹林、茶園、溫室不用水。${isRainDay() ? "<b>今天下雨，種什麼都不用水。</b>" : "大約每週會下一次雨。"}</p>`,
         `<button type="button" class="fm-btn blue" data-act="confirm" data-v="habits">去打卡習慣</button>${have("bucket") ? `<button type="button" class="fm-btn" data-act="useitem" data-item="bucket">用水桶（${have("bucket")}）</button>` : ""}${close}`);
     }
@@ -5021,12 +5124,8 @@ const FARM_JS_VERSION = "2026-10-17 v5";
       const result = await baseHabit.apply(this, arguments);
       if (result && done && S && gameOn() && dateText === todayKey()) {
         const got = await creditWater(false);
-        if (typeof showToast === "function" && got && (got.buckets || got.wasted)) {
-          const cap = waterCap();
-          setTimeout(() => showToast(got.buckets
-            ? `💧 星露島水車 +${got.buckets} 桶（${S.water}/${cap.max}）`
-            : "💧 星露島的水車已經滿了"), 2700);
-        }
+        const text = creditText(got);
+        if (typeof showToast === "function" && text) setTimeout(() => showToast(text), 2700);
       }
       return result;
     };
@@ -5039,12 +5138,8 @@ const FARM_JS_VERSION = "2026-10-17 v5";
       const result = await baseTask.apply(this, arguments);
       if (completed && S && gameOn()) {
         const got = await creditWater(false);
-        if (typeof showToast === "function" && got && (got.buckets || got.wasted)) {
-          const cap = waterCap();
-          setTimeout(() => showToast(got.buckets
-            ? `💧 星露島水車 +${got.buckets} 桶（${S.water}/${cap.max}）`
-            : "💧 星露島的水車已經滿了"), 2700);
-        }
+        const text = creditText(got);
+        if (typeof showToast === "function" && text) setTimeout(() => showToast(text), 2700);
       }
       return result;
     };
@@ -5102,6 +5197,8 @@ const FARM_JS_VERSION = "2026-10-17 v5";
     get net() { return net; },
     get wish() { return net.ws; },
     draw: (pool, n) => doDraw(pool, n),
+    credit: show => creditWater(show !== false),
+    creditText: got => creditText(got),
     start: startFarm,
     render: renderAll,
     save: saveNow,

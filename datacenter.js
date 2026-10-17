@@ -920,7 +920,7 @@ function themeCss(t) {
       background: ${t.track} !important;
     }
 
-    .dc-fill {
+    .dc-fill, .accum-bar i, .hq-bar > div {
       background: ${t.accent} !important;
     }
 

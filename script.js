@@ -5318,17 +5318,100 @@ async function moveMorningItem(itemId, direction) {
    3. ⏱️ 專注
 ========================================================= */
 
-const DEFAULT_FOCUS_SUBJECTS = [
-  "計概",
-  "資結",
-  "MIS",
-  "多益單字",
-  "多益文法",
-  "多益閱讀",
-  "資料庫",
-  "AI",
-  "App 開發"
+/*
+  📈 固定的科目（累積系統用）
+  - main = 主科，sub = 次單元（內容比較少，升級門檻比較低）
+  - alias：以前打過的名字，開頭對得上就算這一科（例如「資結」「多益單字」）
+  - 專注紀錄的科目文字照舊存（例如「多益單字」），算總數時再歸到「多益」
+*/
+const ACCUM_SUBJECTS = [
+  { key: "ds",    name: "資料結構", type: "main", alias: ["資料結構", "資結"] },
+  { key: "co",    name: "計概",     type: "main", alias: ["計概", "計算機概論"] },
+  { key: "mis",   name: "MIS",      type: "main", alias: ["MIS", "管理資訊系統"] },
+  { key: "toeic", name: "多益",     type: "main", alias: ["多益", "TOEIC"], parts: ["單字", "文法", "閱讀", "聽力"] },
+  { key: "net",   name: "網路",     type: "sub",  alias: ["網路", "計算機網路", "計網"] },
+  { key: "db",    name: "資料庫",   type: "sub",  alias: ["資料庫", "DB"] },
+  { key: "ai",    name: "AI",       type: "sub",  alias: ["AI", "人工智慧"] }
 ];
+
+/* 其他：不在固定科目裡、但常用的 */
+const DEFAULT_OTHER_SUBJECTS = ["App 開發", "專題"];
+
+
+/* 「多益單字」→ { key: "toeic", part: "單字" }；對不上的 → key: "other" */
+function focusSubjectInfo(text) {
+
+  const raw = String(text || "").trim();
+  const upper = raw.toUpperCase();
+
+  for (const subject of ACCUM_SUBJECTS) {
+    for (const alias of subject.alias) {
+      if (upper.startsWith(alias.toUpperCase())) {
+        const part = raw.slice(alias.length).replace(/^[\s・›>\-_:：/]+/, "").trim();
+        return { key: subject.key, subject, part };
+      }
+    }
+  }
+
+  return { key: "other", subject: null, part: raw };
+
+}
+
+
+/* 科目選單的分組：主科、多益、次單元、其他（加上以前自己打過的） */
+function focusSubjectGroups(used = []) {
+
+  const groups = [
+    { label: "主科", items: ["資料結構", "計概", "MIS"] },
+    { label: "多益", items: ["多益單字", "多益文法", "多益閱讀", "多益聽力"] },
+    { label: "次單元", items: ["網路", "資料庫", "AI"] },
+    { label: "其他", items: [...DEFAULT_OTHER_SUBJECTS] }
+  ];
+
+  const all = () => groups.flatMap(group => group.items);
+
+  for (const text of used) {
+
+    const value = String(text || "").trim();
+
+    if (!value || all().includes(value)) continue;
+
+    const info = focusSubjectInfo(value);
+
+    /* 「資結」這種舊名字已經被「資料結構」包含，不另外列 */
+    if (info.key !== "other" && !info.part) continue;
+
+    const target = info.key === "other" ? groups[3]
+      : info.key === "toeic" ? groups[1]
+      : info.subject.type === "main" ? groups[0]
+      : groups[2];
+
+    target.items.push(value);
+
+  }
+
+  return groups;
+
+}
+
+
+function focusSubjectSelectHtml(selected, used = []) {
+
+  const groups = focusSubjectGroups([...used, ...(selected && selected !== "__custom__" ? [selected] : [])]);
+
+  return groups
+    .map(group => `
+      <optgroup label="${escapeHtml(group.label)}">
+        ${group.items
+          .map(item => `<option value="${escapeHtml(item)}" ${item === selected ? "selected" : ""}>${escapeHtml(item)}</option>`)
+          .join("")}
+      </optgroup>
+    `)
+    .join("") + `<option value="__custom__" ${selected === "__custom__" ? "selected" : ""}>＋ 自訂科目…</option>`;
+
+}
+
+let focusUsedSubjects = [];   // 用過的科目文字（給選單補上自訂的）
 
 const FOCUS_PRESET_MINUTES = [15, 25, 45, 60];
 
@@ -5435,17 +5518,11 @@ async function loadFocus() {
 
     focusSessions = sessionsResult.data || [];
 
-    const used = (subjectsResult.data || []).map(row => row.subject);
-
-    focusKnownSubjects = [
-      ...new Set([...DEFAULT_FOCUS_SUBJECTS, ...used])
-    ];
+    focusUsedSubjects = [...new Set((subjectsResult.data || []).map(row => row.subject))];
 
   }
 
-  if (focusKnownSubjects.length === 0) {
-    focusKnownSubjects = [...DEFAULT_FOCUS_SUBJECTS];
-  }
+  focusKnownSubjects = focusSubjectGroups(focusUsedSubjects).flatMap(group => group.items);
 
 
   /* 恢復進行中的計時 */
@@ -5523,14 +5600,18 @@ function renderFocusSetup() {
   const select = document.getElementById("focus-subject");
   const previous = select.value || storageGet(`focusLastSubject:${currentUser.id}`);
 
-  select.innerHTML =
-    focusKnownSubjects
-      .map(subject => `<option value="${escapeHtml(subject)}">${escapeHtml(subject)}</option>`)
-      .join("") +
-    `<option value="__custom__">＋ 自訂科目…</option>`;
+  /* 以前存的「資結」→ 選「資料結構」 */
+  let wanted = previous;
 
-  if (previous && (focusKnownSubjects.includes(previous) || previous === "__custom__")) {
-    select.value = previous;
+  if (wanted && wanted !== "__custom__" && !focusKnownSubjects.includes(wanted)) {
+    const info = focusSubjectInfo(wanted);
+    if (info.subject && !info.part) wanted = info.subject.name;
+  }
+
+  select.innerHTML = focusSubjectSelectHtml(null, focusUsedSubjects);
+
+  if (wanted && (focusKnownSubjects.includes(wanted) || wanted === "__custom__")) {
+    select.value = wanted;
   }
 
   onFocusSubjectChange();
@@ -5691,7 +5772,10 @@ function renderFocusLog() {
     .map(session => `
       <tr>
         <td>${formatTimeOfDay(session.started_at)}</td>
-        <td>${escapeHtml(session.subject)}</td>
+        <td>
+          ${escapeHtml(session.subject)}
+          ${session.note ? `<div class="small-note focus-note">📝 ${escapeHtml(session.note)}</div>` : ""}
+        </td>
         <td class="num">${formatDuration(session.duration_seconds)}</td>
         <td>
           ${session.is_manual ? "補記" : session.mode === "down" ? "倒計時" : "正計時"}
@@ -6071,7 +6155,7 @@ async function finishFocus(reason) {
 
     const sessionDate = toTaipeiDate(timer.startedAt);
 
-    const { error } = await db
+    const { data: inserted, error } = await db
       .from("focus_sessions")
       .insert({
         user_id: currentUser.id,
@@ -6082,7 +6166,9 @@ async function finishFocus(reason) {
         started_at: timer.startedAt,
         ended_at: new Date().toISOString(),
         session_date: sessionDate
-      });
+      })
+      .select("id")
+      .maybeSingle();
 
     if (error) throw error;
 
@@ -6123,6 +6209,16 @@ async function finishFocus(reason) {
 
     await loadFocus();
 
+    /* 📈 累積：各科等級、星露島水滴 */
+    if (typeof accumAfterFocus === "function") {
+      try { accumAfterFocus(); } catch (accumError) { console.warn(accumError); }
+    }
+
+    /* 📝 這次完成了什麼（選填）；離開期間自動結束的就不問 */
+    if (reason !== "away" && inserted && inserted.id) {
+      askFocusNote(inserted.id, timer.subject);
+    }
+
   } catch (error) {
 
     console.error("專注紀錄儲存失敗：", error);
@@ -6156,6 +6252,110 @@ async function finishFocus(reason) {
 }
 
 
+/* 📝 同一科最近寫過的內容（點一下帶入） */
+async function recentFocusNotes(subject) {
+
+  const { data, error } = await db
+    .from("focus_sessions")
+    .select("subject, note")
+    .eq("user_id", currentUser.id)
+    .not("note", "is", null)
+    .order("started_at", { ascending: false })
+    .limit(80);
+
+  if (error) return [];
+
+  const key = focusSubjectInfo(subject).key;
+
+  const same = (data || []).filter(row =>
+    key === "other" ? row.subject === subject : focusSubjectInfo(row.subject).key === key);
+
+  return [...new Set(same.map(row => String(row.note || "").trim()).filter(Boolean))].slice(0, 6);
+
+}
+
+
+async function askFocusNote(sessionId, subject) {
+
+  /* 還沒執行「累積」SQL 就不問（存不進去） */
+  if (typeof accumSqlReady !== "undefined" && accumSqlReady === false) return;
+
+  const recent = await recentFocusNotes(subject);
+
+  openModal({
+
+    title: "📝 這次完成了什麼？",
+
+    bodyHtml: `
+      <p class="small-note" style="margin-top:0;">
+        ${escapeHtml(subject)}・可以不填。之後在「今日專注紀錄」按 ✏️ 也能補。
+      </p>
+
+      <div class="modal-field">
+        <input type="text" id="fn-note" maxlength="200" placeholder="例如：第 4 章 樹的走訪"
+          onkeydown="if (event.key === 'Enter') { event.preventDefault(); modalAction(1); }">
+      </div>
+
+      ${recent.length ? `
+        <div class="meal-chips">
+          <span class="small-note" style="align-self:center;">最近寫過：</span>
+          ${recent.map(text => `<button type="button" class="chip" onclick="document.getElementById('fn-note').value = this.textContent">${escapeHtml(text)}</button>`).join("")}
+        </div>` : ""}
+    `,
+
+    buttons: [
+      { label: "略過", className: "btn" },
+      { label: "記下", className: "btn btn-primary", onClick: () => saveFocusNote(sessionId) }
+    ],
+
+    focus: "#fn-note"
+
+  });
+
+}
+
+
+function focusNoteMissing(error) {
+
+  return Boolean(error) && /note/.test(String(error.message || "")) && /column|schema/i.test(String(error.message || ""));
+
+}
+
+
+async function saveFocusNote(sessionId) {
+
+  const note = document.getElementById("fn-note").value.trim();
+
+  if (!note) return true;
+
+  const { error } = await db
+    .from("focus_sessions")
+    .update({ note })
+    .eq("id", sessionId)
+    .eq("user_id", currentUser.id);
+
+  if (error) {
+
+    if (focusNoteMissing(error)) {
+      alert("還不能記：要先到 Supabase 的 SQL Editor 執行 sql/2026-10-17_累積.sql");
+      return true;
+    }
+
+    alert("儲存失敗：" + error.message);
+
+    return false;
+
+  }
+
+  showToast("📝 記下了");
+
+  await loadFocus();
+
+  return true;
+
+}
+
+
 async function deleteFocusSession(sessionId) {
 
   const session = focusSessions.find(
@@ -6180,6 +6380,8 @@ async function deleteFocusSession(sessionId) {
   }
 
   await loadFocus();
+
+  if (typeof accumAfterFocus === "function") accumAfterFocus();
 
   await syncFocusReward(session ? session.session_date : getToday());
 
@@ -9216,18 +9418,7 @@ function isoToTaipeiTime(iso) {
 
 function focusSubjectOptionsHtml(selected) {
 
-  const subjects = [...new Set([
-    ...focusKnownSubjects,
-    ...(selected ? [selected] : [])
-  ])];
-
-  return subjects
-    .map(subject => `
-      <option value="${escapeHtml(subject)}" ${subject === selected ? "selected" : ""}>
-        ${escapeHtml(subject)}
-      </option>
-    `)
-    .join("") + `<option value="__custom__">＋ 自訂科目…</option>`;
+  return focusSubjectSelectHtml(selected, focusUsedSubjects);
 
 }
 
@@ -9307,6 +9498,12 @@ function openFocusEditor(sessionId) {
         <input type="number" id="fe-minutes" min="1" max="${FOCUS_MAX_MINUTES}" value="${minutes}">
       </div>
 
+      <div class="modal-field">
+        <label for="fe-note">這次完成了什麼（選填）</label>
+        <input type="text" id="fe-note" maxlength="200" placeholder="例如：第 4 章 樹的走訪"
+          value="${escapeHtml(session && session.note ? session.note : "")}">
+      </div>
+
       <p class="small-note">
         ${session
           ? "日期不能改；要改到別天，請刪掉這筆再補記一筆。"
@@ -9348,6 +9545,10 @@ async function saveFocusEditor(session) {
 
   const minutes = Math.round(Number(document.getElementById("fe-minutes").value));
 
+  const noteInput = document.getElementById("fe-note");
+
+  const note = noteInput ? noteInput.value.trim() : "";
+
 
   /* ---------- 檢查 ---------- */
 
@@ -9385,25 +9586,28 @@ async function saveFocusEditor(session) {
 
   let error;
 
-  if (session) {
+  /* note 欄位要執行過「累積」SQL 才有；還沒有的話先不存它 */
+  const withNote = row => (note || (session && session.note) ? { ...row, note: note || null } : row);
 
-    ({ error } = await db
-      .from("focus_sessions")
-      .update({
+  const writeSession = async row => {
+
+    const query = session
+      ? db.from("focus_sessions").update(row).eq("id", session.id).eq("user_id", currentUser.id)
+      : db.from("focus_sessions").insert(row);
+
+    return (await query).error;
+
+  };
+
+  const row = session
+    ? {
         subject,
         started_at: startIso,
         ended_at: end.toISOString(),
         duration_seconds: minutes * 60,
         edited_at: new Date().toISOString()
-      })
-      .eq("id", session.id)
-      .eq("user_id", currentUser.id));
-
-  } else {
-
-    ({ error } = await db
-      .from("focus_sessions")
-      .insert({
+      }
+    : {
         user_id: currentUser.id,
         subject,
         mode: "up",
@@ -9413,8 +9617,13 @@ async function saveFocusEditor(session) {
         ended_at: end.toISOString(),
         session_date: dateText,
         is_manual: true
-      }));
+      };
 
+  error = await writeSession(withNote(row));
+
+  if (error && focusNoteMissing(error)) {
+    error = await writeSession(row);
+    if (!error && note) showToast("⚠️ 「完成了什麼」要先執行累積的 SQL 才會存");
   }
 
 
@@ -9430,6 +9639,8 @@ async function saveFocusEditor(session) {
 
 
   await loadFocus();
+
+  if (typeof accumAfterFocus === "function") accumAfterFocus();
 
 
   /* 獎勵：只有今天的會變動（資料庫也會擋） */
@@ -11157,6 +11368,7 @@ function renderMeals() {
       const state = !meal ? "empty" : meal.skipped ? "skipped" : "";
 
       const info = [];
+      if (meal && !meal.skipped && (meal.has_veg || meal.has_protein)) info.push(`${meal.has_veg ? "🥦" : ""}${meal.has_protein ? "🍗" : ""}`);
       if (meal && meal.eaten_at && !meal.skipped) info.push(trimTime(meal.eaten_at));
       if (meal && meal.cost !== null && meal.cost !== undefined && !meal.skipped) info.push(`$${Number(meal.cost)}`);
 
@@ -11306,6 +11518,11 @@ function openMealEditor(type, dateText) {
 
       <div class="meal-chips" id="me-chips"></div>
 
+      <div class="modal-field meal-good">
+        <label class="check-line"><input type="checkbox" id="me-veg"> 🥦 有蔬菜</label>
+        <label class="check-line"><input type="checkbox" id="me-protein"> 🍗 有蛋白質</label>
+      </div>
+
       <div class="modal-row">
 
         <div class="modal-field">
@@ -11362,6 +11579,10 @@ function fillMealEditor() {
   document.getElementById("me-cost").value =
     meal && meal.cost !== null && meal.cost !== undefined ? String(meal.cost) : "";
 
+  document.getElementById("me-veg").checked = Boolean(meal && meal.has_veg);
+
+  document.getElementById("me-protein").checked = Boolean(meal && meal.has_protein);
+
   document.getElementById("me-note").textContent = meal
     ? "這一餐已經記錄過，儲存會更新它。"
     : "";
@@ -11402,7 +11623,7 @@ function updateMealSkipped() {
 
   const skipped = document.getElementById("me-skipped").checked;
 
-  ["me-content", "me-time", "me-cost"].forEach(id => {
+  ["me-content", "me-time", "me-cost", "me-veg", "me-protein"].forEach(id => {
     document.getElementById(id).disabled = skipped;
   });
 
@@ -11426,6 +11647,10 @@ async function saveMealEditor() {
   const timeText = document.getElementById("me-time").value;
 
   const costText = document.getElementById("me-cost").value.trim();
+
+  const hasVeg = !skipped && document.getElementById("me-veg").checked;
+
+  const hasProtein = !skipped && document.getElementById("me-protein").checked;
 
 
   if (!dateText || dateText > today) {
@@ -11452,20 +11677,26 @@ async function saveMealEditor() {
   }
 
 
-  const { error } = await db
+  const mealRow = {
+    user_id: currentUser.id,
+    log_date: dateText,
+    meal_type: type,
+    content: skipped ? "" : content,
+    eaten_at: skipped || !timeText ? null : timeText,
+    skipped,
+    cost
+  };
+
+  const upsertMeal = async row => (await db
     .from("meal_logs")
-    .upsert(
-      {
-        user_id: currentUser.id,
-        log_date: dateText,
-        meal_type: type,
-        content: skipped ? "" : content,
-        eaten_at: skipped || !timeText ? null : timeText,
-        skipped,
-        cost
-      },
-      { onConflict: "user_id,log_date,meal_type" }
-    );
+    .upsert(row, { onConflict: "user_id,log_date,meal_type" })).error;
+
+  let error = await upsertMeal({ ...mealRow, has_veg: hasVeg, has_protein: hasProtein });
+
+  /* 還沒執行「累積」SQL：先不存蔬菜／蛋白質 */
+  if (error && /has_veg|has_protein/.test(String(error.message || ""))) {
+    error = await upsertMeal(mealRow);
+  }
 
   if (error) {
     console.error("三餐儲存失敗：", error);
@@ -11474,6 +11705,8 @@ async function saveMealEditor() {
   }
 
   await loadMeals();
+
+  if (typeof accumAfterHealth === "function") accumAfterHealth();
 
   const item = getMealType(type);
 
