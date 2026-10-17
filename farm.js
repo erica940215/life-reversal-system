@@ -999,6 +999,11 @@ const FARM_JS_VERSION = "2026-10-17 v5";
 
   const QUEUE_MAX = 3;
 
+  /* 機器的圖：有圖用圖，沒圖退回 emoji */
+  function machineTag(info) {
+    return info.img ? `<img src="${IMG}${info.img}" alt="" style="height:1.3em;width:auto;vertical-align:-0.25em">` : info.emoji;
+  }
+
   function machineOpen(m) {
     const info = D.machines[m];
     if (S.lv < info.lv) return false;
@@ -4644,7 +4649,7 @@ const FARM_JS_VERSION = "2026-10-17 v5";
     const open = machineOpen(m);
 
     if (!open) {
-      return S.lv < info.lv ? `<div class="${inRanch ? "fm-pen" : "fm-panel"}" style="opacity:.6"><div class="fm-row-name">${info.emoji} ${esc(info.name)}</div><div class="fm-note">Lv${info.lv} 開放</div></div>` : "";
+      return S.lv < info.lv ? `<div class="${inRanch ? "fm-pen" : "fm-panel"}" style="opacity:.6"><div class="fm-row-name">${machineTag(info)} ${esc(info.name)}</div><div class="fm-note">Lv${info.lv} 開放</div></div>` : "";
     }
 
     const q = machineQueue(m);
@@ -4664,7 +4669,7 @@ const FARM_JS_VERSION = "2026-10-17 v5";
         <div class="fm-row-btns"><button type="button" class="fm-btn small green" data-act="startrecipe" data-r="${k}" ${ok && q.length < QUEUE_MAX ? "" : "disabled"}>做</button></div></div>`;
     }).join("");
 
-    return `<div class="${inRanch ? "fm-pen" : "fm-panel"}"><div class="fm-pen-head"><h3 class="ol" style="--olc:#6a4220">${info.emoji} ${esc(info.name)}</h3>
+    return `<div class="${inRanch ? "fm-pen" : "fm-panel"}"><div class="fm-pen-head"><h3 class="ol" style="--olc:#6a4220">${machineTag(info)} ${esc(info.name)}</h3>
       <span class="fm-note">排隊 ${q.length}/${QUEUE_MAX}</span>${ready ? `<button type="button" class="fm-btn small" data-act="collectmach" data-m="${m}">收取 ${ready}</button>` : ""}</div>
       ${queue ? `<div class="fm-ings" style="margin-bottom:8px">${queue}</div>` : ""}<div class="fm-list">${rows}</div></div>`;
 
