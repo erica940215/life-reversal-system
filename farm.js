@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-17 v5";
+const FARM_JS_VERSION = "2026-10-18 v1";
 
 (function () {
 
@@ -46,6 +46,27 @@ const FARM_JS_VERSION = "2026-10-17 v5";
   /* 五個品階：凡（綠）普（藍）珍（紫）華（金）仙（紅） */
   const TIERS = ["c", "r", "l", "x", "s"];
   const RARITY_NAME = { c: "凡品", r: "普品", l: "珍品", x: "華品", s: "仙品" };
+  const RARITY_BADGE = { c: "rarity_common", r: "rarity_uncommon", l: "rarity_rare", x: "rarity_epic", s: "rarity_legendary" };
+
+  /* 介面小圖示（img/ui/） */
+  const UI_IMG = "img/ui/";
+  function uiIcon(k, cls = "") {
+    return `<img class="fm-ui ${cls}" src="${UI_IMG}${k}.webp" alt="">`;
+  }
+
+  /* 動物住處的圖 */
+  const HOUSE_IMG = {
+    chicken: "coop", turkey: "coop", goldhen: "coop", cow: "cowshed", pig: "pigsty",
+    duck: "duckpond", goose: "duckpond", bee: "beehive",
+    sheep: "sheeppen", goat: "sheeppen", blacksheep: "sheeppen", cloudsheep: "sheeppen",
+    rabbit: "rabbithutch", moonrabbit: "rabbithutch", ostrich: "ostrichpen",
+    alpaca: "alpacaranch", rainbowalpaca: "alpacaranch", deer: "starforest"
+  };
+  function houseIcon(sp, cls = "") {
+    const k = HOUSE_IMG[sp];
+    if (!k || !BLD[k]) return `<span class="fm-emo ${cls}">${(D.animals[sp] && D.animals[sp].emoji) || "🏠"}</span>`;
+    return `<img class="fm-house ${cls}" src="${IMG}bld/${k}.webp" alt="">`;
+  }
 
 
   /* =========================================================
@@ -537,13 +558,13 @@ const FARM_JS_VERSION = "2026-10-17 v5";
   ========================================================= */
 
   const GOAL_TYPES = [
-    { k: "harvest", name: "收成作物", icon: "🌾", lv: 1, n: lv => 5 + Math.floor(lv / 4) },
-    { k: "plant", name: "種下作物", icon: "🌱", lv: 1, n: lv => 6 + Math.floor(lv / 4) },
-    { k: "animal", name: "收畜產品", icon: "🥚", lv: 1, n: lv => 3 + Math.floor(lv / 10) },
-    { k: "feed", name: "餵動物", icon: "🐔", lv: 1, n: lv => 2 + Math.floor(lv / 10) },
-    { k: "cook", name: "做料理", icon: "🍳", lv: 1, n: lv => 1 + Math.floor(lv / 15) },
+    { k: "harvest", name: "收成作物", icon: "🌾", ui: "harvest", lv: 1, n: lv => 5 + Math.floor(lv / 4) },
+    { k: "plant", name: "種下作物", icon: "🌱", ui: "plant", lv: 1, n: lv => 6 + Math.floor(lv / 4) },
+    { k: "animal", name: "收畜產品", icon: "🥚", ui: "nest", lv: 1, n: lv => 3 + Math.floor(lv / 10) },
+    { k: "feed", name: "餵動物", icon: "🐔", ui: "feedbowl", lv: 1, n: lv => 2 + Math.floor(lv / 10) },
+    { k: "cook", name: "做料理", icon: "🍳", ui: "cook", lv: 1, n: lv => 1 + Math.floor(lv / 15) },
     { k: "sell", name: "在市集賣東西", icon: "🪙", lv: 3, n: () => 3 },
-    { k: "process", name: "加工", icon: "⚙️", lv: 10, n: () => 2 }
+    { k: "process", name: "加工", icon: "⚙️", ui: "process", lv: 10, n: () => 2 }
   ];
 
   const GOAL_EXP = 20;
@@ -1737,7 +1758,12 @@ const FARM_JS_VERSION = "2026-10-17 v5";
   function petGift(k) {
     const p = D.pets[k];
     if (!p) return;
-    if (!dailyReady("pet_" + k)) return toast(`${p.emoji} ${p.name}：${PET_LINES[k] || "今天也很開心"}`);
+    /* 點一下：換成開心的樣子、冒一顆愛心 */
+    UI.petHappy = { k, until: now() + 2600 };
+    setTimeout(() => {
+      if (UI.petHappy && UI.petHappy.k === k && now() >= UI.petHappy.until) { UI.petHappy = null; renderScene(); }
+    }, 2700);
+    if (!dailyReady("pet_" + k)) { renderScene(); return toast(`${p.emoji} ${p.name}：${PET_LINES[k] || "今天也很開心"}`); }
     dailyDone("pet_" + k);
     const gifts = [["dew", 30], ["fert", 1], ["feed", 3], ["bucket", 1]];
     const [g, n] = gifts[Math.floor(Math.random() * gifts.length)];
@@ -2337,7 +2363,7 @@ const FARM_JS_VERSION = "2026-10-17 v5";
       <div class="fm-zoom">
         <button type="button" data-act="zoom" data-z="1" aria-label="放大">＋</button>
         <button type="button" data-act="zoom" data-z="-1" aria-label="縮小">－</button>
-        <button type="button" data-act="home" aria-label="回到菜田">🏠</button>
+        <button type="button" data-act="home" aria-label="回到菜田">${uiIcon("home")}</button>
       </div>
       <button type="button" class="fm-goal" id="fm-goal" data-act="goals"></button>
       <nav class="fm-dock" id="fm-dock" aria-label="星露島選單"></nav>
@@ -2406,7 +2432,10 @@ const FARM_JS_VERSION = "2026-10-17 v5";
     const frame = ti && ti.color ? `style="--frame:${ti.color}"` : "";
 
     UI.root.querySelector("#fm-prof").innerHTML = `
-      <div class="fm-ava ${ti && ti.color ? "framed" : ""} ${S.titleKey === "immortal" && ti ? "meteor" : ""}" ${frame}><img src="${IMG}crop/onion_3.webp" alt=""></div>
+      <div class="fm-ava-wrap">
+        <div class="fm-ava ${ti && ti.color && !ti.frameImg ? "framed" : ""} ${S.titleKey === "immortal" && ti ? "meteor" : ""}" ${frame}><img src="${IMG}crop/onion_3.webp" alt=""></div>
+        ${ti && ti.frameImg ? `<img class="fm-ava-frame ${S.titleKey === "immortal" ? "meteor" : ""}" src="${IMG}${ti.frameImg}" alt="">` : ""}
+      </div>
       <div class="fm-prof-r">
         <div class="fm-lvrow">
           <div class="fm-lv ol">${S.lv}</div>
@@ -2454,12 +2483,12 @@ const FARM_JS_VERSION = "2026-10-17 v5";
     el.classList.toggle("ready", claimable > 0);
 
     if (done) {
-      el.innerHTML = `<span class="fm-goal-ic">🏅</span><span>今天的小目標都完成了</span>`;
+      el.innerHTML = `<span class="fm-goal-ic">${uiIcon("complete")}</span><span>今天的小目標都完成了</span>`;
     } else if (claimable) {
-      el.innerHTML = `<span class="fm-goal-ic">🎁</span><span>小目標完成，點我領獎勵！</span>`;
+      el.innerHTML = `<span class="fm-goal-ic">${uiIcon("claim")}</span><span>小目標完成，點我領獎勵！</span>`;
     } else {
       const t = GOAL_TYPES.find(x => x.k === open.k);
-      el.innerHTML = `<span class="fm-goal-ic">${t.icon}</span><span>今日小目標：${t.name} ${open.n} 次 <em>(${open.got}/${open.n})</em></span>`;
+      el.innerHTML = `<span class="fm-goal-ic">${t.ui ? uiIcon(t.ui) : t.icon}</span><span>今日小目標：${t.name} ${open.n} 次 <em>(${open.got}/${open.n})</em></span>`;
     }
 
   }
@@ -2474,10 +2503,10 @@ const FARM_JS_VERSION = "2026-10-17 v5";
     const ripe = countRipe();
 
     UI.root.querySelector("#fm-dock").innerHTML = `
-      <button type="button" data-act="storage"><span class="fm-dk-ic">📦</span><span>倉庫</span></button>
-      <button type="button" data-act="kitchen"><span class="fm-dk-ic"><img src="${IMG}dish/tomatoegg.webp" alt=""></span><span>料理</span>${kitchenDone ? `<i class="fm-dot">${kitchenDone}</i>` : (cookable ? `<i class="fm-dot"></i>` : "")}</button>
-      <button type="button" data-act="harvestall"><span class="fm-dk-ic"><img src="${IMG}crop/corn_i.webp" alt=""></span><span>一鍵收成</span>${ripe ? `<i class="fm-dot">${ripe}</i>` : ""}</button>
-      <button type="button" data-act="book"><span class="fm-dk-ic">📖</span><span>圖鑑</span></button>`;
+      <button type="button" data-act="storage"><span class="fm-dk-ic">${uiIcon("warehouse")}</span><span>倉庫</span></button>
+      <button type="button" data-act="kitchen"><span class="fm-dk-ic">${uiIcon("cook")}</span><span>料理</span>${kitchenDone ? `<i class="fm-dot">${kitchenDone}</i>` : (cookable ? `<i class="fm-dot"></i>` : "")}</button>
+      <button type="button" data-act="harvestall"><span class="fm-dk-ic">${uiIcon("harvest")}</span><span>一鍵收成</span>${ripe ? `<i class="fm-dot">${ripe}</i>` : ""}</button>
+      <button type="button" data-act="book"><span class="fm-dk-ic">${uiIcon("codex")}</span><span>圖鑑</span></button>`;
 
   }
 
@@ -2522,6 +2551,9 @@ const FARM_JS_VERSION = "2026-10-17 v5";
       <linearGradient id="fmRoofG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7fc46a"/><stop offset="1" stop-color="#4a8f3e"/></linearGradient>
       <linearGradient id="fmRoofR" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f29470"/><stop offset="1" stop-color="#c9573c"/></linearGradient>
       <linearGradient id="fmWall" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff7e6"/><stop offset="1" stop-color="#e8d0a6"/></linearGradient>
+      <pattern id="fmMapleTex" patternUnits="userSpaceOnUse" width="130" height="64"><image href="${IMG}skin/maple_tex.webp" width="130" height="64" preserveAspectRatio="none"/></pattern>
+      <pattern id="fmSnowTex" patternUnits="userSpaceOnUse" width="130" height="64"><image href="${IMG}skin/snow_tex.webp" width="130" height="64" preserveAspectRatio="none"/></pattern>
+      <pattern id="fmStarTex" patternUnits="userSpaceOnUse" width="72" height="36"><image href="${IMG}skin/star_tex.webp" width="72" height="36" preserveAspectRatio="none"/></pattern>
       <radialGradient id="fmLake" cx=".5" cy=".4" r=".7"><stop offset="0" stop-color="#bdeaf7"/><stop offset=".6" stop-color="#7fd0ee"/><stop offset="1" stop-color="#4fb3dc"/></radialGradient>
     </defs>`;
   }
@@ -2584,14 +2616,16 @@ const FARM_JS_VERSION = "2026-10-17 v5";
 
     /* 地面造型：楓葉、雪景 */
     if (S && skinOn("mapleground")) {
-      s += `<path d="${grass}" fill="#f0a24e" opacity=".26"/>`;
+      s += `<path d="${grass}" fill="url(#fmMapleTex)" opacity=".34"/>`;
+      s += `<path d="${grass}" fill="#f0a24e" opacity=".14"/>`;
       for (let i = 0; i < 70; i++) {
         const x = 120 + (hash("mx" + i) % 1260), y = 330 + (hash("my" + i) % 1000);
         const c = ["#e2552f", "#f08a2a", "#d8402c", "#f4b23c"][i % 4];
         s += `<path transform="translate(${x} ${y}) rotate(${hash("mr" + i) % 360}) scale(.9)" d="M0 -9 L3 -3 L9 -4 L5 1 L7 7 L0 4 L-7 7 L-5 1 L-9 -4 L-3 -3Z" fill="${c}" opacity=".85"/>`;
       }
     } else if (S && skinOn("snowground")) {
-      s += `<path d="${grass}" fill="#ffffff" opacity=".62"/>`;
+      s += `<path d="${grass}" fill="url(#fmSnowTex)" opacity=".85"/>`;
+      s += `<path d="${grass}" fill="#ffffff" opacity=".25"/>`;
       for (let i = 0; i < 90; i++) {
         const x = 100 + (hash("sx" + i) % 1300), y = 320 + (hash("sy" + i) % 1020);
         s += `<circle cx="${x}" cy="${y}" r="${2 + (i % 3)}" fill="#fff" opacity=".9"/>`;
@@ -2626,6 +2660,7 @@ const FARM_JS_VERSION = "2026-10-17 v5";
 
     /* 招財錦鯉：湖裡游的錦鯉 */
     if (S && skinOn("luckykoi")) {
+      if (D.skins.luckykoi.img) s += `<image href="${IMG}${D.skins.luckykoi.img}" x="1046" y="425" width="68" height="80"/>`;
       for (const [x, y, k, r] of [[520, 470, "koi_rw", -20], [860, 492, "koi_gold", 15], [1040, 462, "koi_rw", 160], [700, 445, "koi_gold", 200]]) {
         s += `<image href="${IMG}item/${k}.webp" x="${x - 22}" y="${y - 22}" width="44" height="44" transform="rotate(${r} ${x} ${y})" opacity=".95"/>`;
       }
@@ -2779,7 +2814,7 @@ const FARM_JS_VERSION = "2026-10-17 v5";
     const L = [x - tw, y], B = [x, y + th], R = [x + tw, y], T = [x, y - th];
     let s = `<polygon points="${L} ${B} ${B[0]},${B[1] + tt} ${L[0]},${L[1] + tt}" fill="${wet ? "#5e3c26" : "#8d5b36"}"/>`;
     s += `<polygon points="${B} ${R} ${R[0]},${R[1] + tt} ${B[0]},${B[1] + tt}" fill="${wet ? "#4c301e" : "#74482a"}"/>`;
-    s += `<polygon points="${T} ${R} ${B} ${L}" fill="url(#${wet ? "fmSoilWet" : "fmSoil"})" stroke="${sel ? "#ffe066" : (wet ? "#5a3a24" : "#9c693f")}" stroke-width="${sel ? 4 : 1.2}" stroke-linejoin="round"/>`;
+    s += `<polygon points="${T} ${R} ${B} ${L}" fill="url(#${STARFIELD_ON ? "fmStarTex" : wet ? "fmSoilWet" : "fmSoil"})" stroke="${sel ? "#ffe066" : (wet ? "#5a3a24" : "#9c693f")}" stroke-width="${sel ? 4 : 1.2}" stroke-linejoin="round"/>`;
     const glow = STARFIELD_ON;
     for (const t of [0.25, 0.5, 0.75]) {
       const a = [L[0] + (B[0] - L[0]) * t, L[1] + (B[1] - L[1]) * t];
@@ -2838,6 +2873,10 @@ const FARM_JS_VERSION = "2026-10-17 v5";
   }
 
   function sprinklerArt(x, y) {
+    if (BLD.sprinkler) {
+      const w = 46, h = w * BLD.sprinkler[1] / BLD.sprinkler[0];
+      return `<image href="${IMG}bld/sprinkler.webp" x="${f1(x - w / 2)}" y="${f1(y + 8 - h)}" width="${w}" height="${f1(h)}"/>`;
+    }
     return `<g transform="translate(${x} ${y + 4})"><ellipse rx="16" ry="6" fill="#000" opacity=".15"/>
       <rect x="-3" y="-30" width="6" height="30" rx="2" fill="#9aa6b2"/>
       <circle cy="-32" r="8" fill="#c7d2dc" stroke="#7f8a96" stroke-width="1.5"/>
@@ -3126,20 +3165,24 @@ const FARM_JS_VERSION = "2026-10-17 v5";
       if (!own("p_" + k)) continue;
       const [x, y] = p.spot;
       const w = 56;
+      const happy = !!(UI.petHappy && UI.petHappy.k === k && now() < UI.petHappy.until);
       let art;
       if (p.img) {
         const h = w * (p.ar || 1);
-        art = `<image href="${IMG}${p.img}" x="${x - w / 2}" y="${f1(y - h)}" width="${w}" height="${f1(h)}"/>`;
+        const src = happy && p.happy ? p.happy : p.img;
+        art = `<image href="${IMG}${src}" x="${x - w / 2}" y="${f1(y - h)}" width="${w}" height="${f1(h)}"/>`;
       } else {
         art = `<circle cx="${x}" cy="${y - 22}" r="23" fill="#fffaf0" stroke="#f3c96b" stroke-width="2.5"/><text x="${x}" y="${y - 12}" text-anchor="middle" font-size="27">${p.emoji}</text>`;
       }
       let s = `<g class="tap" data-act="pet" data-pet="${k}" role="button" tabindex="0" aria-label="${esc(p.name)}"><ellipse cx="${x}" cy="${y}" rx="18" ry="5" fill="#000" opacity=".12"/>${art}`;
-      if (dailyReady("pet_" + k)) s += mark(x + 20, y - 52, "♥");
+      if (happy) s += `<g transform="translate(${x} ${f1(y - w * (p.ar || 1) - 6)})" pointer-events="none"><image class="fm-heart-pop" href="${UI_IMG}heart.webp" x="-14" y="-28" width="28" height="28"/></g>`;
+      else if (dailyReady("pet_" + k)) s += `<g transform="translate(${x + 20} ${y - 52})" pointer-events="none"><g class="bob"><circle cx="0" cy="-16" r="15" fill="#fffaf0" stroke="#f3a0a0" stroke-width="1.6"/><image href="${UI_IMG}heart.webp" x="-11" y="-27" width="22" height="22"/></g></g>`;
       items.push({ y, svg: s + "</g>" });
     }
   }
 
   function workshopArt(x, y) {
+    if (BLD.workshop) return building("workshop", x, y, 150);
     return `<g transform="translate(${x} ${y})"><ellipse cx="0" cy="-4" rx="72" ry="16" fill="#3f6b25" opacity=".2"/>
       <polygon points="-62,-30 0,0 0,-60 -62,-90" fill="url(#fmWall)" stroke="#b08655" stroke-width="1.5"/>
       <polygon points="0,0 62,-30 62,-90 0,-60" fill="#e2c595" stroke="#b08655" stroke-width="1.5"/>
@@ -3152,6 +3195,7 @@ const FARM_JS_VERSION = "2026-10-17 v5";
   }
 
   function greenhouseArt(x, y) {
+    if (BLD.greenhouse) return building("greenhouse", x, y, 150);
     return `<g transform="translate(${x} ${y})"><ellipse cx="0" cy="-4" rx="78" ry="16" fill="#3f6b25" opacity=".2"/>
       <polygon points="-70,-28 0,6 0,-50 -70,-84" fill="url(#fmGlass)" stroke="#fff" stroke-width="2"/>
       <polygon points="0,6 70,-28 70,-84 0,-50" fill="url(#fmGlass)" stroke="#fff" stroke-width="2"/>
@@ -3163,7 +3207,9 @@ const FARM_JS_VERSION = "2026-10-17 v5";
 
   function logsSvg(items, x, y) {
     const n = logSlots();
-    let shed = `<g class="tap" data-act="logs" role="button" tabindex="0" aria-label="菇棚">
+    let shed = BLD.mushroomshed
+      ? `<g class="tap" data-act="logs" role="button" tabindex="0" aria-label="菇棚">${building("mushroomshed", x - 110, y - 22, 100)}${nameplate(x - 110, y + 2, "菇棚")}</g>`
+      : `<g class="tap" data-act="logs" role="button" tabindex="0" aria-label="菇棚">
       <g transform="translate(${x - 110} ${y - 30})"><ellipse cx="0" cy="4" rx="46" ry="10" fill="#3f6b25" opacity=".2"/>
       <rect x="-34" y="-50" width="5" height="54" fill="#8a5a37"/><rect x="29" y="-50" width="5" height="54" fill="#8a5a37"/>
       <path d="M-46 -48 Q0 -76 46 -48 L40 -40 Q0 -64 -40 -40Z" fill="url(#fmRoofG)" stroke="#3f7a32" stroke-width="1.5"/></g>
@@ -3192,6 +3238,7 @@ const FARM_JS_VERSION = "2026-10-17 v5";
     const cols = 4;
     const tw = 34, th = 17;
     let fence = `<g pointer-events="none">${pad(x, y - 40, 150, 72, "#b9dc8a")}</g>`;
+    if (BLD.orchardfence) fence += `<g pointer-events="none">${building("orchardfence", x - 150, y - 6, 92)}</g>`;
     items.push({ y: y - 120, svg: fence + nameplate(x - 120, y - 2, "果園") });
     for (let i = 0; i < n; i++) {
       const r = Math.floor(i / cols), c = i % cols;
@@ -3217,12 +3264,15 @@ const FARM_JS_VERSION = "2026-10-17 v5";
   function bambooSvg(x, y) {
     const n = bambooReady();
     let s = `<g class="tap" data-act="bamboo" role="button" tabindex="0" aria-label="竹林${n ? `，有 ${n} 批竹筍可以撿` : ""}">`;
+    if (BLD.bamboo) s += building("bamboo", x, y + 4, 170);
+    else {
     s += `<ellipse cx="${x}" cy="${y - 4}" rx="80" ry="20" fill="#3f6b25" opacity=".2"/>`;
     const stalks = [[-50, 110], [-30, 140], [-8, 125], [14, 150], [36, 118], [56, 100]];
     for (const [dx, h] of stalks) {
       s += `<rect x="${x + dx - 5}" y="${y - h}" width="10" height="${h}" rx="4" fill="#7ec25a" stroke="#4f9334" stroke-width="1.5"/>`;
       for (let k = 1; k < h / 28; k++) s += `<rect x="${x + dx - 6}" y="${y - k * 28}" width="12" height="3" rx="1.5" fill="#4f9334"/>`;
       s += `<path d="M${x + dx} ${y - h + 10} q16 -6 26 4 q-14 0 -26 -4Z M${x + dx} ${y - h + 22} q-16 -6 -26 4 q14 0 26 -4Z" fill="url(#fmLeaf)"/>`;
+    }
     }
     for (let i = 0; i < n; i++) {
       s += `<g pointer-events="none">${cropArt("bamboo", 3, x - 36 + i * 24, y + 6, 26)}</g>`;
@@ -3235,6 +3285,7 @@ const FARM_JS_VERSION = "2026-10-17 v5";
   function herbSvg(items, x, y) {
     const z = plotZone("herb");
     let frame = `<g pointer-events="none"><polygon points="${tilePoly(x, y - 30, 100, 50)}" fill="#a77546" stroke="#8a5a33" stroke-width="2"/></g>`;
+    if (BLD.herbgarden) items.push({ y: y - 82, svg: `<g pointer-events="none">${building("herbgarden", x + 128, y - 26, 96)}</g>` });
     items.push({ y: y - 80, svg: frame + nameplate(x, y + 34, "香草園") });
     z.keys.forEach((key, i) => {
       const r = Math.floor(i / 3), c = i % 3;
@@ -3264,6 +3315,7 @@ const FARM_JS_VERSION = "2026-10-17 v5";
       }
       items.push({ y: by, svg: s + "</g>" });
     }
+    if (BLD.teagarden) items.push({ y: y - 70, svg: `<g pointer-events="none">${building("teagarden", x + 6, y - 66, 96)}</g>` });
     items.push({ y: y + 10, svg: nameplate(x, y + 26, "茶園") });
   }
 
@@ -3915,15 +3967,15 @@ const FARM_JS_VERSION = "2026-10-17 v5";
       if (st === "sprinkler") {
         title = "灑水器";
         sub = "旁邊 8 格種下去不用澆水";
-        opts = popOpt("remove", "🧰", "收起來");
+        opts = popOpt("remove", uiIcon("pack"), "收起來");
       } else {
         const c = D.crops[p.c];
         title = c.name;
         sub = st === "thirsty" ? "口渴了，澆水才會開始長" : `還要 <span data-until="${p.t1}">${dur(p.t1 - now())}</span>`;
         opts = popOpt("water", ICON.drop, `澆水`, st !== "thirsty" || !hasWater()) +
-          popOpt("waterall", "🚿", "全部澆水", !hasWater() || !anyThirsty()) +
+          popOpt("waterall", uiIcon("waterall"), "全部澆水", !hasWater() || !anyThirsty()) +
           popOpt("fert", "🧪", `施肥 ${have("fert")}`, st !== "growing" || p.f || have("fert") <= 0) +
-          popOpt("remove", "🧹", "剷掉");
+          popOpt("remove", uiIcon("shovel"), "剷掉");
       }
     } else if (info.type === "tree") {
       const tr = S.orchard.trees[info.key];
@@ -3931,20 +3983,20 @@ const FARM_JS_VERSION = "2026-10-17 v5";
       const st = treeState(tr);
       title = `${D.crops[tr.c].name}樹`;
       sub = st === "growing" ? `樹苗長大還要 <span data-until="${tr.grown}">${dur(tr.grown - now())}</span>` : `下次結果 <span data-until="${tr.next}">${dur(tr.next - now())}</span>`;
-      opts = popOpt("removetree", "🪓", "砍掉");
+      opts = popOpt("removetree", uiIcon("chop"), "砍掉");
     } else if (info.type === "log") {
       const l = S.logs.slots[info.key];
       if (!l) { closePop(); return; }
       title = `${D.crops[l.c].name}菇木`;
       sub = `下次可採 <span data-until="${l.next}">${dur(l.next - now())}</span>・還能採 ${l.left} 次`;
-      opts = popOpt("removelog", "🧹", "移走");
+      opts = popOpt("removelog", uiIcon("shovel"), "移走");
     } else if (info.type === "tea") {
       const b = S.tea.bushes[info.key];
       if (!b) { closePop(); return; }
       const st = teaState(b);
       title = "茶樹";
       sub = st === "growing" ? `茶苗長大還要 <span data-until="${b.grown}">${dur(b.grown - now())}</span>` : `下次採茶 <span data-until="${b.next}">${dur(b.next - now())}</span>`;
-      opts = popOpt("removetea", "🪓", "移走");
+      opts = popOpt("removetea", uiIcon("chop"), "移走");
     }
 
     pop.innerHTML = `<div class="fm-pop-title">${esc(title)}</div><div class="fm-pop-sub">${sub}</div><div class="fm-pop-opts">${opts}</div>`;
@@ -4083,7 +4135,7 @@ const FARM_JS_VERSION = "2026-10-17 v5";
 
   function tagHtml(rarity) {
     if (!rarity || rarity === "c") return "";
-    return `<span class="fm-tag ${rarity}">${RARITY_NAME[rarity]}</span>`;
+    return `<span class="fm-tag ${rarity}">${RARITY_BADGE[rarity] ? uiIcon(RARITY_BADGE[rarity], "fm-badge") : ""}${RARITY_NAME[rarity]}</span>`;
   }
 
   /* 料理的廚房分級（家常／拿手／招牌／傳說），跟品階顏色分開 */
@@ -4144,7 +4196,7 @@ const FARM_JS_VERSION = "2026-10-17 v5";
       if (zone === "field") {
         const placed = Object.values(S.field.plots).filter(p => p.s).length;
         const cap = sprinklerCap();
-        if (cap > placed) extra = `<div class="fm-row r-r"><div class="fm-row-art">💦</div><div><div class="fm-row-name">灑水器</div><div class="fm-row-sub">放在這格，旁邊 8 格種下去不用澆水（還能放 ${cap - placed} 台）</div></div><div class="fm-row-btns"><button type="button" class="fm-btn small blue" data-act="sprinkler">放這裡</button></div></div>`;
+        if (cap > placed) extra = `<div class="fm-row r-r"><div class="fm-row-art">${BLD.sprinkler ? `<img src="${IMG}bld/sprinkler.webp" alt="">` : "💦"}</div><div><div class="fm-row-name">灑水器</div><div class="fm-row-sub">放在這格，旁邊 8 格種下去不用澆水（還能放 ${cap - placed} 台）</div></div><div class="fm-row-btns"><button type="button" class="fm-btn small blue" data-act="sprinkler">放這裡</button></div></div>`;
       }
 
       const water = (zone === "field" || zone === "herb")
@@ -4316,8 +4368,8 @@ const FARM_JS_VERSION = "2026-10-17 v5";
     ranch() {
 
       const feedRow = `<div class="fm-pen"><div class="fm-pen-head"><h3 class="ol" style="--olc:#4f8f35">${miniIcon("feed", "🌾")} 飼料 ${have("feed")}</h3>
-        <button type="button" class="fm-btn small green" data-act="feedall">全部餵食</button>
-        <button type="button" class="fm-btn small" data-act="collectall">全部收成</button></div>
+        <button type="button" class="fm-btn small green" data-act="feedall">${uiIcon("feedbowl", "fm-btn-ic")}全部餵食</button>
+        <button type="button" class="fm-btn small" data-act="collectall">${uiIcon("harvest", "fm-btn-ic")}全部收成</button></div>
         <p class="fm-note" style="margin:0">動物每次產出前要吃飼料；幼崽吃飽才會長大。${S.lv >= D.caps.autoFeed ? "自動餵食器運作中。" : `Lv${D.caps.autoFeed} 開自動餵食器。`}</p></div>`;
 
       const mill = machineHtml("feedmill", true);
@@ -4327,14 +4379,14 @@ const FARM_JS_VERSION = "2026-10-17 v5";
         const slots = [];
         for (let i = 0; i < D.caps.incubator; i++) {
           const slot = S.ranch.inc[i];
-          if (!slot) { slots.push(`<div class="fm-stove free"><span class="fm-emo">🪺</span><span>空的</span></div>`); continue; }
+          if (!slot) { slots.push(`<div class="fm-stove free">${uiIcon("nest", "fm-emo-img")}<span>空的</span></div>`); continue; }
           const sp = EGG_SPECIES[slot.egg];
           const done = now() >= slot.t1;
           slots.push(`<div class="fm-stove">${itemIcon(slot.egg)}<span>${esc(D.animals[sp].baby)}</span><span class="t">${done ? "住處滿了，空出位子就孵出來" : `<span data-until="${slot.t1}">${dur(slot.t1 - now())}</span>`}</span></div>`);
         }
         const eggs = Object.keys(EGG_SPECIES).filter(e => S.lv >= D.animals[EGG_SPECIES[e]].lv);
         const btns = eggs.map(e => `<button type="button" class="fm-btn small" data-act="incubate" data-egg="${e}" ${have(e) && S.ranch.inc.length < D.caps.incubator ? "" : "disabled"}>放${esc(itemName(e))}（${have(e)}）</button>`).join(" ");
-        inc = `<div class="fm-pen"><div class="fm-pen-head"><h3 class="ol" style="--olc:#a8641e">🥚 孵蛋器</h3></div>
+        inc = `<div class="fm-pen"><div class="fm-pen-head"><h3 class="ol" style="--olc:#a8641e"><img class="fm-house" src="${IMG}bld/incubator.webp" alt=""> 孵蛋器</h3></div>
           <div class="fm-stoves" style="grid-template-columns:repeat(2,minmax(0,1fr))">${slots.join("")}</div><div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">${btns}</div></div>`;
       }
 
@@ -4348,7 +4400,7 @@ const FARM_JS_VERSION = "2026-10-17 v5";
         const breedTxt = info.breed === "pair"
           ? (S.ranch.breed[sp] ? `下一隻寶寶 <span data-until="${S.ranch.breed[sp]}">${dur(S.ranch.breed[sp] - now())}</span>` : "2 隻成年的放一起會生寶寶")
           : info.breed === "egg" ? "蛋放進孵蛋器會孵出寶寶" : "";
-        return `<div class="fm-pen"><div class="fm-pen-head"><h3 class="ol" style="--olc:#6a4220">${info.emoji} ${esc(info.house)}</h3><span class="fm-note">${list.length}/${cap}</span></div>
+        return `<div class="fm-pen"><div class="fm-pen-head"><h3 class="ol" style="--olc:#6a4220">${houseIcon(sp)} ${esc(info.house)}</h3><span class="fm-note">${list.length}/${cap}</span></div>
           <div class="fm-animals">${tiles}${empty}</div>${breedTxt ? `<p class="fm-note" style="margin:6px 0 0">${breedTxt}</p>` : ""}</div>`;
       }).filter(Boolean).join("");
 
@@ -4418,7 +4470,7 @@ const FARM_JS_VERSION = "2026-10-17 v5";
       const rows = (S.goals ? S.goals.list : []).map((g, i) => {
         const t = GOAL_TYPES.find(x => x.k === g.k);
         const done = g.got >= g.n;
-        return `<div class="fm-row"><div class="fm-row-art r-l">${t.icon}</div>
+        return `<div class="fm-row"><div class="fm-row-art r-l">${t.ui ? uiIcon(t.ui) : t.icon}</div>
           <div><div class="fm-row-name">${t.name} ${g.n} 次</div><div class="fm-bar" style="margin-top:4px"><i style="width:${(g.got / g.n) * 100}%"></i></div><div class="fm-row-sub">${g.got} / ${g.n}・獎勵 ${GOAL_EXP} EXP、${GOAL_DEW} 星露</div></div>
           <div class="fm-row-btns">${g.claimed ? "✅" : `<button type="button" class="fm-btn small green" data-act="claimgoal" data-i="${i}" ${done ? "" : "disabled"}>領取</button>`}</div></div>`;
       }).join("");
@@ -4570,7 +4622,7 @@ const FARM_JS_VERSION = "2026-10-17 v5";
       html += `<div class="fm-panel"><div class="fm-sec ol">稱號與頭像框</div><div class="fm-list">${titles.map(k => {
         const ti = D.titles[k];
         const on = S.titleKey === k;
-        return `<div class="fm-row"><div class="fm-row-art"><span class="fm-frame" style="--frame:${ti.color || "#d8c6a6"}"></span></div>
+        return `<div class="fm-row"><div class="fm-row-art">${ti.frameImg ? `<img src="${IMG}${ti.frameImg}" alt="">` : uiIcon("villager")}</div>
           <div><div class="fm-row-name">${esc(ti.name)}${on ? `<span class="fm-tag">使用中</span>` : ""}</div><div class="fm-row-sub">${ti.frame ? esc(ti.frame) : "只有稱號"}</div></div>
           <div class="fm-row-btns"><button type="button" class="fm-btn small ${on ? "" : "green"}" data-act="title" data-title="${on ? "" : k}">${on ? "取下" : "換上"}</button></div></div>`;
       }).join("") || `<div class="fm-empty">還沒有稱號：普品以上有機會抽到，連續簽到 30 天、100 天也會送</div>`}</div></div>`;
@@ -5212,6 +5264,7 @@ const FARM_JS_VERSION = "2026-10-17 v5";
     creditText: got => creditText(got),
     start: startFarm,
     render: renderAll,
+    restyle: () => { rebuildStatic(); renderAll(); },
     save: saveNow,
     addExp: n => { addExp(n); after(true); },
     addDew: n => { addDew(n); after(); },
