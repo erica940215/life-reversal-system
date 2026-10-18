@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-18 v2";
+const FARM_JS_VERSION = "2026-10-18 v3";
 
 (function () {
 
@@ -502,6 +502,7 @@ const FARM_JS_VERSION = "2026-10-18 v2";
   let pendingLevelClaim = false;
 
   function addDew(n) {
+    if (n > 0) { if (!S.stats) S.stats = {}; S.stats.dewEarned = (S.stats.dewEarned || 0) + Math.round(n); }
     S.dew = Math.max(0, Math.round(S.dew + n));
   }
 
@@ -558,6 +559,143 @@ const FARM_JS_VERSION = "2026-10-18 v2";
      6. 每日：小目標、餐廳點餐、水車每日一桶
   ========================================================= */
 
+  /* =========================================================
+     成就：達成送星屑（資料庫 farm_achieve_*，網站上的數字由資料庫自己數）
+  ========================================================= */
+
+  /* key, 名稱, 說明, 星屑, 看哪個數字, 門檻 */
+  const ACH = [
+    ["plant1", "第一顆種子", "第一次種下作物", 5, "plant", 1],
+    ["harvest1", "第一次收成", "收成 1 次", 5, "harvest", 1],
+    ["cook1", "小小廚師", "做出第一道料理", 5, "cook", 1],
+    ["feed1", "動物的朋友", "第一次餵動物", 5, "feed", 1],
+    ["animal1", "第一顆蛋", "第一次收畜產品", 5, "animal", 1],
+    ["sell1", "第一筆生意", "第一次在市集賣東西", 5, "sell", 1],
+    ["process1", "加工入門", "第一次用加工機器", 10, "process", 1],
+    ["habit1", "好的開始", "第一次習慣打卡", 5, "s:habit", 1],
+    ["task1", "完成一件事", "第一次完成任務", 5, "s:task", 1],
+    ["lv5", "小島成長中", "島嶼升到 Lv5", 10, "lv", 5],
+    ["harvest50", "勤勞的農夫", "收成 50 次", 15, "harvest", 50],
+    ["plant100", "播種達人", "種下 100 次", 20, "plant", 100],
+    ["cook10", "家常菜", "做 10 道料理", 15, "cook", 10],
+    ["feed50", "飼養員", "餵動物 50 次", 20, "feed", 50],
+    ["sell100", "市集常客", "在市集賣出 100 個東西", 20, "sell", 100],
+    ["lv10", "像樣的小島", "島嶼升到 Lv10", 20, "lv", 10],
+    ["field5", "開墾", "菜田擴建到 5×5", 20, "field", 5],
+    ["zones3", "小島探索", "開啟 3 個區域（菇棚、果園、香草園、茶園、溫室、加工坊）", 20, "zones", 3],
+    ["crops20", "作物圖鑑 I", "收成過 20 種作物", 20, "crops", 20],
+    ["deco5", "布置小島", "島上擺 5 件家具", 20, "deco", 5],
+    ["pet1", "第一個夥伴", "從星願池帶回一個夥伴", 20, "pet", 1],
+    ["wish10", "許願的人", "抽星願瓶 10 次", 20, "s:wish", 10],
+    ["focus1h", "專注一小時", "專注累計 1 小時", 10, "s:focus", 60],
+    ["checkin7", "一週簽到", "簽到累計 7 天", 15, "s:checkin", 7],
+    ["harvest200", "豐收", "收成 200 次", 30, "harvest", 200],
+    ["process30", "加工坊老闆", "加工 30 次", 30, "process", 30],
+    ["dishes20", "食譜收藏家", "做過 20 種料理", 30, "dishes", 20],
+    ["animals5", "小牧場", "養過 5 種動物", 30, "animals", 5],
+    ["habit50", "習慣養成", "習慣打卡 50 次", 30, "s:habit", 50],
+    ["task50", "行動派", "完成 50 個任務", 30, "s:task", 50],
+    ["morning30", "早起的人", "晨間打卡 30 天", 40, "s:morning", 30],
+    ["cook50", "拿手好菜", "做 50 道料理", 40, "cook", 50],
+    ["animal100", "牧場豐收", "收畜產品 100 次", 40, "animal", 100],
+    ["lv20", "熱鬧的小島", "島嶼升到 Lv20", 40, "lv", 20],
+    ["dew10000", "小富翁", "累計賺到 10,000 星露", 40, "dew", 10000],
+    ["focus10h", "專注十小時", "專注累計 10 小時", 40, "s:focus", 600],
+    ["checkin30", "一個月的堅持", "簽到累計 30 天", 50, "s:checkin", 30],
+    ["crops50", "作物圖鑑 II", "收成過 50 種作物", 60, "crops", 50],
+    ["zones6", "全島開放", "6 個區域全部開啟", 80, "zones", 6],
+    ["lv30", "繁榮的小島", "島嶼升到 Lv30", 80, "lv", 30],
+    ["wish100", "星願收藏家", "抽星願瓶 100 次", 80, "s:wish", 100],
+    ["harvest1000", "千次豐收", "收成 1,000 次", 100, "harvest", 1000],
+    ["field8", "大農場", "菜田擴建到 8×8", 100, "field", 8],
+    ["habit300", "習慣大師", "習慣打卡 300 次", 100, "s:habit", 300],
+    ["task300", "實踐家", "完成 300 個任務", 100, "s:task", 300],
+    ["cook200", "星露名廚", "做 200 道料理", 120, "cook", 200],
+    ["lv40", "傳說中的小島", "島嶼升到 Lv40", 120, "lv", 40],
+    ["focus100h", "心流", "專注累計 100 小時", 150, "s:focus", 6000],
+    ["checkin100", "百日", "簽到累計 100 天", 150, "s:checkin", 100],
+    ["lv50", "星露島主", "島嶼升到 Lv50", 300, "lv", 50]
+  ];
+
+  function statOf(k) {
+    const st = S.stats || {};
+    return Math.max(st[k] || 0, st["g_" + k] || 0);
+  }
+
+  function achValue(kind) {
+    if (kind.startsWith("s:")) return Number(net.ach.counts[kind.slice(2)] || 0);
+    switch (kind) {
+      case "lv": return S.lv;
+      case "field": return S.field.size;
+      case "zones": return ["logs", "orchard", "herb", "tea", "green", "workshop"].filter(z => S[z] && S[z].open).length;
+      case "crops": return Object.values(S.known.crops || {}).filter(Boolean).length;
+      case "dishes": return Object.values(S.known.dishes || {}).filter(Boolean).length;
+      case "animals": return Object.values(S.known.animals || {}).filter(Boolean).length;
+      case "deco": return (S.deco && S.deco.slots || []).filter(Boolean).length;
+      case "pet": return Object.keys(D.pets || {}).filter(k => own("p_" + k)).length;
+      case "dew": return (S.stats && S.stats.dewEarned) || 0;
+      default: return statOf(kind);
+    }
+  }
+
+  function achState(a) {
+    const [k, , , , kind, n] = a;
+    const cur = achValue(kind);
+    const claimed = net.ach.claimed.has(k);
+    return { cur: Math.min(cur, n), n, done: cur >= n, claimed };
+  }
+
+  function achClaimable() {
+    if (!net.ach.ready) return 0;
+    return ACH.filter(a => { const st = achState(a); return st.done && !st.claimed; }).length;
+  }
+
+  async function loadAchStatus() {
+    if (net.mode !== "server") return;
+    try {
+      const { data, error } = await db.rpc("farm_achieve_status");
+      if (error) throw error;
+      net.ach.ready = true;
+      net.ach.claimed = new Set(data.claimed || []);
+      net.ach.counts = data.counts || {};
+    } catch (error) {
+      net.ach.ready = false;
+      if (!isMissingTable(error) && !/farm_achieve/.test(String(error.message || ""))) console.warn("成就狀態載入失敗：", error);
+    }
+  }
+
+  let achBusy = false;
+
+  async function claimAch(keys) {
+    if (net.mode !== "server" || !net.ach.ready) return toast("成就還沒設定好：要先在 Supabase 執行成就的 SQL");
+    if (achBusy) return;
+    achBusy = true;
+    let total = 0;
+    const names = [];
+    try {
+      for (const k of keys) {
+        const { data, error } = await db.rpc("farm_achieve_claim", { p_key: k });
+        if (error) throw error;
+        if (data && data.ok) {
+          net.ach.claimed.add(k);
+          total += data.dust;
+          names.push(ACH.find(a => a[0] === k)[1]);
+        } else if (data && data.reason === "claimed") {
+          net.ach.claimed.add(k);
+        }
+      }
+    } catch (error) {
+      console.warn("領成就失敗：", error);
+      toast("領取失敗，等一下再試");
+    } finally {
+      achBusy = false;
+    }
+    if (total) toast(`🏆 ${names.length > 2 ? `${names.length} 個成就` : names.join("、")}：星屑 +${total}`);
+    await loadWishStatus();
+    renderAll();
+    if (UI.sheet) renderSheet();
+  }
+
   const GOAL_TYPES = [
     { k: "harvest", name: "收成作物", icon: "🌾", ui: "harvest", lv: 1, n: lv => 5 + Math.floor(lv / 4) },
     { k: "plant", name: "種下作物", icon: "🌱", ui: "plant", lv: 1, n: lv => 6 + Math.floor(lv / 4) },
@@ -585,6 +723,9 @@ const FARM_JS_VERSION = "2026-10-18 v2";
   }
 
   function goalAdd(k, amount = 1) {
+    /* 成就用的累計次數 */
+    if (!S.stats) S.stats = {};
+    S.stats["g_" + k] = (S.stats["g_" + k] || 0) + amount;
     if (!S.goals) return;
     for (const g of S.goals.list) {
       if (g.k === k && !g.claimed) g.got = Math.min(g.n, g.got + amount);
@@ -1935,7 +2076,8 @@ const FARM_JS_VERSION = "2026-10-18 v2";
     dirty: false,
     timer: null,
     error: null,
-    wish: {}                // 星願瓶數量
+    wish: {},               // 星願瓶數量
+    ach: { ready: null, claimed: new Set(), counts: {} }   // 成就
   };
 
   const localKey = () => "fm_save_" + (uid() || "guest");
@@ -2153,7 +2295,7 @@ const FARM_JS_VERSION = "2026-10-18 v2";
       const { data, error } = await db.from("habit_logs").select("habit_id, log_date, is_makeup")
         .eq("user_id", uid()).gte("log_date", yesterday).limit(500);
       if (error) throw error;
-      for (const row of data || []) if (!row.is_makeup) credits.push([row.log_date, row.habit_id, "bucket"]);
+      for (const row of data || []) if (!row.is_makeup) credits.push([row.log_date, row.habit_id, "hbucket"]);
     });
 
     await read("晨間打卡", async () => {
@@ -2240,7 +2382,8 @@ const FARM_JS_VERSION = "2026-10-18 v2";
       const list = S.wcred[date] || (S.wcred[date] = []);
       if (list.includes(id)) continue;
       list.push(id);
-      if (kind === "bucket") { if (pour(cap.per, true)) got.buckets++; }
+      if (kind === "hbucket") { if (pour(cap.per, true)) got.buckets++; }
+      else if (kind === "bucket") { if (pour(cap.per)) got.buckets++; }
       else if (kind === "drop") { if (pour(1)) got.drops++; }
       else if (kind === "glass") { addItem("speedglass", 1); got.glass++; }
       else if (kind === "dew") { addDew(100); got.dew += 100; }
@@ -2444,6 +2587,7 @@ const FARM_JS_VERSION = "2026-10-18 v2";
     UI.root.querySelector("#fm-hud").innerHTML = `
       <button type="button" class="fm-cap" data-act="water" aria-label="水 ${S.water} / ${cap.max} 滴">
         <span class="fm-cap-ic">${ICON.drop}</span>${S.water}<small>/${cap.max}</small><span class="fm-plus">+</span>
+        <span class="fm-cap-sub">${S.water >= cap.max ? "水車滿了" : `下一滴 <span data-until="${(S.drip || now()) + 30 * MIN}">${dur((S.drip || now()) + 30 * MIN - now())}</span>`}</span>
       </button>
       <button type="button" class="fm-cap" data-act="market" aria-label="星露 ${S.dew}">
         <span class="fm-cap-ic">${ICON.dew}</span>${num(S.dew)}<span class="fm-plus">+</span>
@@ -2534,7 +2678,7 @@ const FARM_JS_VERSION = "2026-10-18 v2";
       <button type="button" data-act="storage"><span class="fm-dk-ic">${uiIcon("warehouse")}</span><span>倉庫</span></button>
       <button type="button" data-act="kitchen"><span class="fm-dk-ic">${uiIcon("cook")}</span><span>料理</span>${kitchenDone ? `<i class="fm-dot">${kitchenDone}</i>` : (cookable ? `<i class="fm-dot"></i>` : "")}</button>
       <button type="button" data-act="harvestall"><span class="fm-dk-ic">${uiIcon("harvest")}</span><span>一鍵收成</span>${ripe ? `<i class="fm-dot">${ripe}</i>` : ""}</button>
-      <button type="button" data-act="book"><span class="fm-dk-ic">${uiIcon("codex")}</span><span>圖鑑</span></button>`;
+      <button type="button" data-act="book"><span class="fm-dk-ic">${uiIcon("codex")}</span><span>圖鑑</span>${achClaimable() ? `<i class="fm-dot">${achClaimable()}</i>` : ""}</button>`;
 
   }
 
@@ -3563,7 +3707,9 @@ const FARM_JS_VERSION = "2026-10-18 v2";
     goals: () => openSheet("goals"),
     storage: () => openSheet("storage"),
     kitchen: () => openSheet("kitchen"),
-    book: () => openSheet("book"),
+    book: () => openSheet("book", achClaimable() ? { tab: "ach" } : {}),
+    achclaim: el => claimAch([el.dataset.k]),
+    achall: () => claimAch(ACH.filter(a => { const st = achState(a); return st.done && !st.claimed; }).map(a => a[0])),
     wish: () => openSheet("wish"),
     ranch: () => openSheet("ranch"),
     green: () => openSheet("green"),
@@ -4445,6 +4591,27 @@ const FARM_JS_VERSION = "2026-10-18 v2";
       const tab = t.tab || "crop";
       let cards = "", got = 0, total = 0;
 
+      if (tab === "ach") {
+        const done = ACH.filter(a => net.ach.claimed.has(a[0])).length;
+        const ready = ACH.filter(a => { const st = achState(a); return st.done && !st.claimed; });
+        let note = "";
+        if (net.mode !== "server") note = `<p class="fm-note">成就要登入、連上資料庫才能領。</p>`;
+        else if (net.ach.ready === false) note = `<p class="fm-note">⚠️ 成就的資料庫設定還沒完成：到 Supabase 的 SQL Editor 執行 <b>sql/2026-10-18_成就.sql</b>，重新整理網頁之後就能領。</p>`;
+        const rank = a => { const st = achState(a); return st.claimed ? 2 : st.done ? 0 : 1; };
+        const rows = ACH.slice().sort((x, y) => rank(x) - rank(y)).map(a => {
+          const [k, name, desc, dust] = a;
+          const st = achState(a);
+          const btn = st.claimed ? `<span class="fm-ach-ok">已領</span>`
+            : `<button type="button" class="fm-btn small ${st.done ? "green" : ""}" data-act="achclaim" data-k="${k}" ${st.done && net.ach.ready ? "" : "disabled"}><img src="${IMG}item/stardust.webp" alt="">${dust}</button>`;
+          return `<div class="fm-row fm-ach ${st.claimed ? "claimed" : st.done ? "ready" : ""}"><div class="fm-row-art">${uiIcon(st.claimed || st.done ? "complete" : "codex")}</div>
+            <div style="min-width:0"><div class="fm-row-name">${esc(name)}</div><div class="fm-row-sub">${esc(desc)}</div>
+            <div class="fm-ach-bar"><i style="width:${(st.cur / st.n) * 100}%"></i><span>${num(st.cur)} / ${num(st.n)}</span></div></div>
+            <div class="fm-row-btns">${btn}</div></div>`;
+        }).join("");
+        return sheetTop("圖鑑", `🏆 ${done} / ${ACH.length}`) + tabs([["crop", "作物"], ["dish", "料理"], ["animal", "動物"], ["ach", "成就"]], tab) +
+          `<div class="fm-panel">${note}${ready.length > 1 && net.ach.ready ? `<button type="button" class="fm-btn green" style="width:100%;margin-bottom:10px" data-act="achall">全部領取（${ready.length} 個，星屑 ${ready.reduce((s, a) => s + a[3], 0)}）</button>` : ""}<div class="fm-list">${rows}</div></div>`;
+      }
+
       if (tab === "crop") {
         for (const [k, c] of Object.entries(D.crops)) {
           total++;
@@ -4471,7 +4638,7 @@ const FARM_JS_VERSION = "2026-10-18 v2";
         }
       }
 
-      return sheetTop("圖鑑", `${got} / ${total}`) + tabs([["crop", "作物"], ["dish", "料理"], ["animal", "動物"]], tab) +
+      return sheetTop("圖鑑", `${got} / ${total}`) + tabs([["crop", "作物"], ["dish", "料理"], ["animal", "動物"], ["ach", "成就"]], tab) +
         `<div class="fm-panel"><div class="fm-bar" style="margin-bottom:10px"><i style="width:${(got / total) * 100}%"></i></div><div class="fm-grid">${cards}</div></div>`;
 
     },
@@ -5138,6 +5305,7 @@ const FARM_JS_VERSION = "2026-10-18 v2";
     try {
       await loadSave();
       await loadWishStatus();
+      await loadAchStatus();
       replayPending();
     } catch (error) {
       console.error("星露島載入失敗：", error);
@@ -5170,7 +5338,7 @@ const FARM_JS_VERSION = "2026-10-18 v2";
     calicoHelp();
     renderAll();
     creditWater(true);
-    loadWishStatus().then(() => { calicoHelp(); renderAll(); });
+    Promise.all([loadWishStatus(), loadAchStatus()]).then(() => { calicoHelp(); renderAll(); });
   }
 
   function syncVisibility() {

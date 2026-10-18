@@ -713,3 +713,24 @@ body.fm-page #idea-fab { display: none !important; }
 @keyframes fmHeart { 0% { opacity: 0; transform: translateY(10px) scale(.5); } 25% { opacity: 1; transform: translateY(0) scale(1.15); } 70% { opacity: 1; transform: translateY(-10px) scale(1); } 100% { opacity: 0; transform: translateY(-22px) scale(.9); } }
 @media (prefers-reduced-motion: reduce) { .fm-ava-frame.meteor, .fm-heart-pop { animation: none !important; } }
 .fm-ava-wrap:has(.fm-ava-frame) { margin: 0 calc(var(--u) * 14) 0 calc(var(--u) * 8); }
+
+/* ---------- 水車倒數、成就（2026-10-18） ---------- */
+.fm-cap-sub {
+  position: absolute; right: calc(var(--u) * 8); top: calc(100% + var(--u) * 3);
+  padding: 0 calc(var(--u) * 7);
+  border-radius: 999px;
+  background: rgba(255, 250, 238, .92);
+  color: #2b86cc; font-size: calc(var(--u) * 11); line-height: calc(var(--u) * 17);
+  box-shadow: 0 calc(var(--u) * 1.5) 0 rgba(30, 80, 110, .18);
+  pointer-events: none;
+}
+.fm-prof { top: calc(var(--u) * 66); }
+.fm-ach .fm-row-art { background: linear-gradient(#f6efe0, #e8dcc2); }
+.fm-ach.ready .fm-row-art { background: linear-gradient(#fff3c4, #ffd76a); }
+.fm-ach.claimed { opacity: .62; }
+.fm-ach-bar { position: relative; height: 14px; margin-top: 5px; border-radius: 999px; background: #eadfc8; overflow: hidden; }
+.fm-ach-bar i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(#ffe27a, #f2b43a); border-radius: 999px; }
+.fm-ach.claimed .fm-ach-bar i { background: linear-gradient(#b9e597, #79c15a); }
+.fm-ach-bar span { position: relative; display: block; text-align: center; font-size: 10.5px; line-height: 14px; color: #6a4a24; font-variant-numeric: tabular-nums; }
+.fm-ach .fm-btn img { width: 16px; height: 16px; vertical-align: -3px; margin-right: 3px; }
+.fm-ach-ok { font-size: 13px; color: #5a9a3e; font-weight: 700; padding: 0 6px; }
