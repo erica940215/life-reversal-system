@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-18 v3";
+const FARM_JS_VERSION = "2026-10-19 v1";
 
 (function () {
 
@@ -448,7 +448,7 @@ const FARM_JS_VERSION = "2026-10-18 v3";
   ========================================================= */
 
   /* 肥料、種子、水桶這類道具不佔倉庫 */
-  const NOT_STORED = key => key === "fert" || key.startsWith("seed_") || D.items[key]?.kind === "use";
+  const NOT_STORED = key => key === "fert" || key === "feed" || key.startsWith("seed_") || D.items[key]?.kind === "use";
 
   function invUsed() {
     let n = 0;
@@ -1202,7 +1202,7 @@ const FARM_JS_VERSION = "2026-10-18 v3";
     const out = [];
     while (q.length && now() >= q[0].t1) {
       const r = D.recipes[q[0].r];
-      if (invSpace() < r.qty) break;
+      if (!NOT_STORED(r.out) && invSpace() < r.qty) break;
       addItem(r.out, r.qty);
       addExp(3);
       goalAdd("process");
@@ -3885,8 +3885,13 @@ const FARM_JS_VERSION = "2026-10-18 v3";
     },
 
     collectmach: el => {
-      const out = collectMachine(el.dataset.m);
-      if (!out) return toast(invSpace() < 1 ? "倉庫滿了" : "還沒做好");
+      const m = el.dataset.m;
+      const out = collectMachine(m);
+      if (!out) {
+        const q = machineQueue(m);
+        if (q.length && now() >= q[0].t1) return toast(`倉庫快滿了（${invUsed()}/${storageCap()}），先賣掉或用掉一些東西再收`);
+        return toast("還沒做好");
+      }
       toast(`⚙️ 拿到 ${out.map(itemName).join("、")}`);
       after();
     },
@@ -3910,9 +3915,11 @@ const FARM_JS_VERSION = "2026-10-18 v3";
         const res = collectAnimal(a);
         if (res) { n++; exp += res.exp; if (res.item === "goldegg") gold++; }
       }
+      const feedOut = collectMachine("feedmill");
+      const feedN = feedOut ? feedOut.length : 0;
       if (gold) toast(`🥚✨ 金雞生了 ${gold} 顆金蛋！`);
-      if (!n) return toast(invSpace() < 1 ? "倉庫滿了" : "現在沒有可以收的");
-      toast(`🧺 收了 ${n} 個畜產品，+${exp} EXP`);
+      if (!n && !feedN) return toast(invSpace() < 1 ? "倉庫滿了" : "現在沒有可以收的");
+      toast([n ? `🧺 收了 ${n} 個畜產品，+${exp} EXP` : "", feedN ? `飼料機收了 ${feedN} 批` : ""].filter(Boolean).join("・"));
       after();
     },
 
