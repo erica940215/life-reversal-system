@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-18 v1";
+const FARM_JS_VERSION = "2026-10-18 v2";
 
 (function () {
 
@@ -345,6 +345,7 @@ const FARM_JS_VERSION = "2026-10-18 v1";
       orders: null,
       day: null,
       wcred: {},
+      drip: now(),
       seenLv: 1,
       title: null,
       stats: { harvest: 0, cook: 0, plant: 0 },
@@ -612,6 +613,12 @@ const FARM_JS_VERSION = "2026-10-18 v1";
     S.day = day;
     S.goals = makeGoals(day);
     S.orders = kitchenTier()[1] === "restaurant" || kitchenTier()[1] === "bistro" ? makeOrders(day) : null;
+
+    /* 每天開始補滿水車（習慣打卡多出來的水會保留） */
+    if (!firstEver) {
+      const cap = waterCap();
+      S.water = Math.max(S.water, cap.max);
+    }
 
     /* Lv45：水車每天自己送 1 桶；星靈再送 1 桶 */
     if (!firstEver && S.lv >= D.caps.dailyBucket) {
@@ -1186,6 +1193,19 @@ const FARM_JS_VERSION = "2026-10-18 v1";
 
     let changed = newDayCheck();
     const t = now();
+
+    /* 自動滴水：每 30 分鐘 +1 滴，只會補到上限 */
+    const DRIP = 30 * MIN;
+    if (!S.drip) S.drip = t;
+    const ticks = Math.floor((t - S.drip) / DRIP);
+    if (ticks > 0) {
+      const cap = waterCap();
+      if (S.water < cap.max) {
+        S.water = Math.min(cap.max, S.water + ticks);
+        changed = true;
+      }
+      S.drip += ticks * DRIP;
+    }
 
     for (const a of S.ranch.animals) {
       if (!a.adult && a.fed && a.t1 && t >= a.t1) {
@@ -2136,6 +2156,13 @@ const FARM_JS_VERSION = "2026-10-18 v1";
       for (const row of data || []) if (!row.is_makeup) credits.push([row.log_date, row.habit_id, "bucket"]);
     });
 
+    await read("晨間打卡", async () => {
+      const { data, error } = await db.from("morning_checkins").select("check_date")
+        .eq("user_id", uid()).gte("check_date", day).limit(10);
+      if (error) throw error;
+      if ((data || []).length) credits.push([day, "M", "drop"]);
+    });
+
     await read("任務", async () => {
       /* 今天（凌晨 2 點之後）完成的任務 */
       const start = new Date(day + "T02:00:00");
@@ -2202,9 +2229,10 @@ const FARM_JS_VERSION = "2026-10-18 v1";
     });
 
     const cap = waterCap();
-    const pour = n => {
-      if (S.water >= cap.max) { got.wasted++; return false; }
-      S.water = Math.min(cap.max, S.water + n);
+    /* 習慣打卡的水桶可以超過上限保留；其他水滴仍然受上限限制 */
+    const pour = (n, overflow = false) => {
+      if (!overflow && S.water >= cap.max) { got.wasted++; return false; }
+      S.water = overflow ? S.water + n : Math.min(cap.max, S.water + n);
       return true;
     };
 
@@ -2212,7 +2240,7 @@ const FARM_JS_VERSION = "2026-10-18 v1";
       const list = S.wcred[date] || (S.wcred[date] = []);
       if (list.includes(id)) continue;
       list.push(id);
-      if (kind === "bucket") { if (pour(cap.per)) got.buckets++; }
+      if (kind === "bucket") { if (pour(cap.per, true)) got.buckets++; }
       else if (kind === "drop") { if (pour(1)) got.drops++; }
       else if (kind === "glass") { addItem("speedglass", 1); got.glass++; }
       else if (kind === "dew") { addDew(100); got.dew += 100; }
