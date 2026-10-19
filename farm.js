@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-20 v1";
+const FARM_JS_VERSION = "2026-10-20 v2";
 
 (function () {
 
@@ -4774,9 +4774,10 @@ const FARM_JS_VERSION = "2026-10-20 v1";
 
       return sheetTop(tier[2], up) +
         `<div class="fm-panel"><div class="fm-stoves" style="grid-template-columns:repeat(${Math.max(2, n)},minmax(0,1fr))">${stoves}</div></div>
-        ${feature}${orders}${orderPanel}
+        ${feature}${orders}
         <div class="fm-panel"><div class="fm-sec ol">食譜 ${known.length}</div><div class="fm-grid">${cards}</div>
-        ${upcoming ? `<p class="fm-note" style="margin-top:10px">之後會學到：${upcoming}</p>` : ""}</div>`;
+        ${upcoming ? `<p class="fm-note" style="margin-top:10px">之後會學到：${upcoming}</p>` : ""}</div>
+        ${orderPanel}`;
 
     },
 
