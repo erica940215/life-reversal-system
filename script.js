@@ -916,6 +916,25 @@ function getTaskReward(difficulty) {
   舊資料沒有這兩欄時才退回用難度計算
 */
 
+/*
+  任務完成發的星屑（⭐）：依難度，與 complete_task 一致
+  easy 1、normal 2、hard 3、epic 5
+*/
+
+function getTaskDust(difficulty) {
+
+  const dust = {
+    easy: 1,
+    normal: 2,
+    hard: 3,
+    epic: 5
+  };
+
+  return dust[difficulty] ?? 2;
+
+}
+
+
 function getActualReward(task) {
 
   const fallback =
@@ -928,7 +947,10 @@ function getActualReward(task) {
       task.exp_reward ?? fallback.exp,
 
     gold:
-      task.gold_reward ?? fallback.gold
+      task.gold_reward ?? fallback.gold,
+
+    dust:
+      getTaskDust(task.difficulty)
 
   };
 
@@ -1252,7 +1274,7 @@ function renderYesterdayTasks() {
           onchange="toggleTask(${Number(task.id)}, this.checked, this)"
         >
         <span class="yesterday-title">${escapeHtml(task.title)}</span>
-        <span class="yesterday-reward">+${reward.exp} EXP / +${reward.gold} 金幣</span>
+        <span class="yesterday-reward">+${reward.exp} EXP / +${reward.dust} 星屑</span>
       </label>`;
 
   }).join("");
@@ -1953,7 +1975,7 @@ function renderTasks() {
                 </span>
 
                 <span>
-                  +${reward.gold} 金幣
+                  +${reward.dust} 星屑
                 </span>
 
               </div>
@@ -3028,7 +3050,7 @@ function difficultyOptionsHtml(selected) {
 
       return `
         <option value="${key}" ${key === selected ? "selected" : ""}>
-          ${getDifficultyLabel(key)}（+${reward.exp} EXP / +${reward.gold} 金幣）
+          ${getDifficultyLabel(key)}（+${reward.exp} EXP / +${getTaskDust(key)} 星屑）
         </option>
       `;
 
@@ -3187,7 +3209,7 @@ function updateSummary() {
 
       todayExp += reward.exp;
 
-      todayGold += reward.gold;
+      /* 任務不再給金幣（改發星屑） */
 
     }
 
@@ -4073,7 +4095,7 @@ function buildDailyReport(selfRating) {
 
     exp += reward.exp;
 
-    gold += reward.gold;
+    /* 任務不再給金幣（改發星屑） */
 
   });
 
