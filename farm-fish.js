@@ -108,17 +108,9 @@
     mirror: { name: "鏡湖竿", price: null, lv: 15, rate: [45, 25, 18, 9, 3], emoji: "🪞", cond: "圖鑑完成 20 種魚", effect: "mirror" },
     double: { name: "雙鉤竿", price: null, lv: 15, rate: [45, 25, 18, 9, 3], emoji: "🪝", cond: "釣魚累計 300 次", effect: "double" },
     pity: { name: "保底竿", price: null, lv: 15, rate: [45, 25, 18, 9, 3], emoji: "🛡️", cond: "達成「釣魚愛好者」成就", effect: "pity" },
-    dragon: { name: "龍鱗竿", price: null, lv: 15, rate: [45, 25, 18, 9, 3], emoji: "🐉", cond: "釣到一條傳說魚", effect: "dragon" },
-    season: { name: "季節竿", price: null, lv: 15, rate: [45, 25, 18, 9, 3], emoji: "🌸", cond: "四季都釣到過當季的魚", effect: "season" }
+    dragon: { name: "龍鱗竿", price: null, lv: 15, rate: [45, 25, 18, 9, 3], emoji: "🐉", cond: "釣到一條傳說魚", effect: "dragon" }
   };
 
-  /* 季節竿：每個季節的代表魚（3 月到 5 月春、6 到 8 月夏、9 到 11 月秋、12 到 2 月冬） */
-  D.seasonFish = {
-    spring: ["sakura_trout", "dew_carp", "wind_chime_perch"],
-    summer: ["strawberry_snapper", "cloud_guppy", "bell_eel"],
-    autumn: ["maple_carp", "honey_pomelo_snapper", "carpenter_fish"],
-    winter: ["snail_catfish", "glass_mackerel", "spruce_salmon"]
-  };
   for (const k of Object.keys(D.rods)) if (!D.rods[k].cond) D.rods[k].img = `../ui/rod_${k}.webp`;
 
   /* 魚餌：飼料機旁邊的第二條生產線，10 分鐘做 5 個，最多排 5 輪，做好自動收 */

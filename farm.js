@@ -1283,11 +1283,6 @@ const FARM_JS_VERSION = "2026-10-19 v3";
     return h >= 18 || h < 6;
   }
 
-  function seasonKey() {
-    const m = new Date(now()).getMonth() + 1;
-    return m >= 3 && m <= 5 ? "spring" : m >= 6 && m <= 8 ? "summer" : m >= 9 && m <= 11 ? "autumn" : "winter";
-  }
-
   /* 這一竿的機率：基本機率加上特殊竿的效果，每一組加起來都是 100 */
   function rodRates() {
     const rod = rodNow();
@@ -1322,11 +1317,6 @@ const FARM_JS_VERSION = "2026-10-19 v3";
       const i = pickTier([hi[0], hi[1], hi[2]].map(x => x / hi.reduce((a, b) => a + b, 0) * 100));
       return pickFish(2 + i);
     }
-    /* 季節竿：三成機率釣到當季的魚 */
-    if (rod.effect === "season" && Math.random() < 0.3) {
-      const list = D.seasonFish[seasonKey()];
-      return list[Math.floor(Math.random() * list.length)];
-    }
     return pickFish(pickTier(rates));
   }
 
@@ -1342,8 +1332,6 @@ const FARM_JS_VERSION = "2026-10-19 v3";
     if (f.legends > 0) got.dragon = true;
     const pity = ACH.find(a => a[0] === "fish50");
     if (pity && achState(pity).claimed) got.pity = true;
-    const seasons = f.seasons || {};
-    if (["spring", "summer", "autumn", "winter"].every(k => seasons[k])) got.season = true;
     let added = false;
     for (const k of Object.keys(got)) if (!f.rods[k]) { f.rods[k] = 1; added = true; }
     return added;
@@ -1380,8 +1368,6 @@ const FARM_JS_VERSION = "2026-10-19 v3";
         if (tier === "l" || tier === "x" || tier === "s") hitRare = true;
         if (isNightNow()) S.fish.nightFish = (S.fish.nightFish || 0) + 1;
         if (isRainDay()) S.fish.rainFish = (S.fish.rainFish || 0) + 1;
-        const sk = seasonKey();
-        if ((D.seasonFish[sk] || []).includes(k)) { S.fish.seasons = S.fish.seasons || {}; S.fish.seasons[sk] = 1; }
         got.push({ k, isNew });
       }
       S.fish.miss = hitRare ? 0 : (S.fish.miss || 0) + 1;
@@ -4801,7 +4787,7 @@ const FARM_JS_VERSION = "2026-10-19 v3";
           <p class="fm-note" style="margin:0 0 6px">已經釣過 ${n} / 50 種，一共釣了 ${num(S.fish.total || 0)} 次。釣到新的魚，廚房就會多一道魚料理。</p>${groups}</div>`;
       } else {
         checkRodUnlocks();
-        const effectText = { rain: "雨天時稀有魚機率提高", night: "晚上釣魚有機會多一條", mirror: "史詩魚機率明顯提高", double: "一次拉兩條魚（扣兩個魚餌）", pity: "連續 30 次沒有稀有魚，下一次一定是稀有以上", dragon: "傳說魚機率提高", season: "當季的魚機率提高" };
+        const effectText = { rain: "雨天時稀有魚機率提高", night: "晚上釣魚有機會多一條", mirror: "史詩魚機率明顯提高", double: "一次拉兩條魚（扣兩個魚餌）", pity: "連續 30 次沒有稀有魚，下一次一定是稀有以上", dragon: "傳說魚機率提高" };
         const rows = Object.entries(D.rods).map(([k, r]) => {
           const mine = !!S.fish.rods[k], using = S.fish.rod === k;
           let btn;
