@@ -1278,40 +1278,125 @@ const FARM_JS_VERSION = "2026-10-19 v3";
     return D.rods[S.fish.rod] || D.rods.bamboo;
   }
 
-  function rollFish() {
-    const rate = rodNow().rate;
-    let r = Math.random() * 100, t = 0;
-    for (let i = 0; i < rate.length; i++) { r -= rate[i]; if (r < 0) { t = i; break; } t = i; }
-    const tier = FISH_TIERS[t];
+  function isNightNow() {
+    const h = new Date(now()).getHours();
+    return h >= 18 || h < 6;
+  }
+
+  function seasonKey() {
+    const m = new Date(now()).getMonth() + 1;
+    return m >= 3 && m <= 5 ? "spring" : m >= 6 && m <= 8 ? "summer" : m >= 9 && m <= 11 ? "autumn" : "winter";
+  }
+
+  /* 這一竿的機率：基本機率加上特殊竿的效果，每一組加起來都是 100 */
+  function rodRates() {
+    const rod = rodNow();
+    const r = rod.rate.slice();
+    const shift = (from, to, n) => { r[from] -= n; r[to] += n; };
+    if (rod.effect === "rain" && isRainDay()) { shift(0, 1, 6); shift(0, 2, 3); shift(0, 3, 1); }
+    if (rod.effect === "mirror") shift(0, 3, 11);
+    if (rod.effect === "dragon") shift(0, 4, 5);
+    return r;
+  }
+
+  function pickTier(rates) {
+    let x = Math.random() * 100;
+    for (let i = 0; i < rates.length; i++) { x -= rates[i]; if (x < 0) return i; }
+    return rates.length - 1;
+  }
+
+  function pickFish(tierIdx) {
+    const tier = FISH_TIERS[tierIdx];
     const list = Object.keys(D.fish).filter(k => D.fish[k].tier === tier);
     return list[Math.floor(Math.random() * list.length)];
   }
 
-  /* 釣 n 次；回傳釣到的魚（新魚會標 isNew） */
+  /* 釣一條魚：回傳魚的 key */
+  function rollFish() {
+    const rod = rodNow();
+    const rates = rodRates();
+    const miss = S.fish.miss || 0;
+    /* 保底竿：連續 30 次沒有稀有以上，下一次一定是稀有以上 */
+    if (rod.effect === "pity" && miss >= 29) {
+      const hi = [rates[2], rates[3], rates[4]];
+      const i = pickTier([hi[0], hi[1], hi[2]].map(x => x / hi.reduce((a, b) => a + b, 0) * 100));
+      return pickFish(2 + i);
+    }
+    /* 季節竿：三成機率釣到當季的魚 */
+    if (rod.effect === "season" && Math.random() < 0.3) {
+      const list = D.seasonFish[seasonKey()];
+      return list[Math.floor(Math.random() * list.length)];
+    }
+    return pickFish(pickTier(rates));
+  }
+
+  /* 特殊竿的解鎖條件 */
+  function checkRodUnlocks() {
+    const f = S.fish;
+    const caughtN = Object.keys(f.caught || {}).filter(k => D.fish[k]).length;
+    const got = {};
+    if (isRainDay() && (f.rainFish || 0) > 0) got.rain = true;
+    if (isNightNow() && (f.nightFish || 0) > 0) got.firefly = true;
+    if (caughtN >= 20) got.mirror = true;
+    if ((f.total || 0) >= 300) got.double = true;
+    if (f.legends > 0) got.dragon = true;
+    const pity = ACH.find(a => a[0] === "fish50");
+    if (pity && achState(pity).claimed) got.pity = true;
+    const seasons = f.seasons || {};
+    if (["spring", "summer", "autumn", "winter"].every(k => seasons[k])) got.season = true;
+    let added = false;
+    for (const k of Object.keys(got)) if (!f.rods[k]) { f.rods[k] = 1; added = true; }
+    return added;
+  }
+
+  /* 釣魚：一次按鈕；雙鉤竿一次拉兩條（扣兩個魚餌） */
   function fishCast(n = 1) {
     if (!zoneUnlocked("碼頭")) return toast(`碼頭 Lv${zoneLv("碼頭")} 開放`);
-    n = Math.min(n, have("bait"));
-    if (n <= 0) return toast("沒有魚餌了，去牧場的魚餌線做");
-    n = Math.min(n, invSpace());
-    if (n <= 0) return toast(`倉庫滿了（${invUsed()}/${storageCap()}），先賣掉或做成料理`);
+    const per = rodNow().effect === "double" ? 2 : 1;
+    n = Math.min(n, Math.floor(have("bait") / per));
+    if (n <= 0) return toast(per > 1 ? "魚餌不夠（雙鉤竿一次要 2 個）" : "沒有魚餌了，去牧場的魚餌線做");
+    const rod = rodNow();
+    const cnt = n * per;
+    const room = invSpace();
+    if (room <= 0) return toast(`倉庫滿了（${invUsed()}/${storageCap()}），先賣掉或做成料理`);
     const got = [];
+    let casts = 0;
     for (let i = 0; i < n; i++) {
-      takeItem("bait", 1);
-      const k = rollFish();
-      const isNew = !S.fish.caught[k];
-      S.fish.caught[k] = (S.fish.caught[k] || 0) + 1;
-      S.fish.total = (S.fish.total || 0) + 1;
-      addItem(k, 1);
-      addExp(D.fish[k].exp);
-      got.push({ k, isNew });
+      if (invSpace() < per) break;
+      takeItem("bait", per);
+      casts++;
+      const bonus = rod.effect === "night" && isNightNow() && Math.random() < 0.2;
+      const catches = per + (bonus ? 1 : 0);
+      let hitRare = false;
+      for (let j = 0; j < catches && invSpace() >= 1; j++) {
+        const k = rollFish();
+        const isNew = !S.fish.caught[k];
+        S.fish.caught[k] = (S.fish.caught[k] || 0) + 1;
+        S.fish.total = (S.fish.total || 0) + 1;
+        addItem(k, 1);
+        addExp(D.fish[k].exp);
+        const tier = D.fish[k].tier;
+        if (tier === "s") { S.fish.legends = (S.fish.legends || 0) + 1; }
+        if (tier === "l" || tier === "x" || tier === "s") hitRare = true;
+        if (isNightNow()) S.fish.nightFish = (S.fish.nightFish || 0) + 1;
+        if (isRainDay()) S.fish.rainFish = (S.fish.rainFish || 0) + 1;
+        const sk = seasonKey();
+        if ((D.seasonFish[sk] || []).includes(k)) { S.fish.seasons = S.fish.seasons || {}; S.fish.seasons[sk] = 1; }
+        got.push({ k, isNew });
+      }
+      S.fish.miss = hitRare ? 0 : (S.fish.miss || 0) + 1;
     }
+    checkRodUnlocks();
+    if (!got.length) return toast("背包滿了");
     UI.fishResult = got;
+    if (casts < n) toast("倉庫快滿了，只釣了一部分");
     after();
   }
 
   function buyRod(k) {
     const rod = D.rods[k];
     if (!rod) return "沒有這支釣竿";
+    if (rod.cond) return "還沒解鎖";
     if (S.fish.rods[k]) return "已經有了";
     if (S.lv < rod.lv) return `Lv${rod.lv} 才能買`;
     if (!spend(rod.price)) return "星露不夠";
@@ -4693,7 +4778,7 @@ const FARM_JS_VERSION = "2026-10-19 v3";
           return `<div class="fm-card r-${f.tier}"><div class="fm-card-art">${itemIcon(k)}</div><div class="fm-card-name ol">${esc(f.name)}</div>
             <div class="fm-fish-tier">${tierName(f.tier)}${isNew ? "・新！" : ""}</div></div>`;
         }).join("")}</div>${res.length === 1 ? `<p class="fm-note" style="text-align:center;margin:6px 0 0">${esc(D.fish[res[0].k].desc)}・賣 ${D.items[res[0].k].sell} 星露</p>` : ""}` : `<div class="fm-empty">點下面的按鈕，用 1 個魚餌釣一次</div>`;
-        const rates = rod.rate.map((r, i) => `<span class="fm-tag r-${FISH_TIERS[i]}">${tierName(FISH_TIERS[i])} ${r}%</span>`).join(" ");
+        const rates = rodRates().map((r, i) => `<span class="fm-tag r-${FISH_TIERS[i]}">${tierName(FISH_TIERS[i])} ${r}%</span>`).join(" ");
         body = `<div class="fm-panel">${resHtml}
           <div class="fm-fish-btns">
             <button type="button" class="fm-btn green" data-act="fish" data-n="1" ${bait ? "" : "disabled"}>${uiIcon("fish_cast", "fm-btn-ic")}釣一次</button>
@@ -4715,16 +4800,23 @@ const FARM_JS_VERSION = "2026-10-19 v3";
         body = `<div class="fm-panel"><div class="fm-bar" style="margin-bottom:6px"><i style="width:${n * 2}%"></i></div>
           <p class="fm-note" style="margin:0 0 6px">已經釣過 ${n} / 50 種，一共釣了 ${num(S.fish.total || 0)} 次。釣到新的魚，廚房就會多一道魚料理。</p>${groups}</div>`;
       } else {
+        checkRodUnlocks();
+        const effectText = { rain: "雨天時稀有魚機率提高", night: "晚上釣魚有機會多一條", mirror: "史詩魚機率明顯提高", double: "一次拉兩條魚（扣兩個魚餌）", pity: "連續 30 次沒有稀有魚，下一次一定是稀有以上", dragon: "傳說魚機率提高", season: "當季的魚機率提高" };
         const rows = Object.entries(D.rods).map(([k, r]) => {
           const mine = !!S.fish.rods[k], using = S.fish.rod === k;
-          const btn = using ? `<span class="fm-tag">使用中</span>`
-            : mine ? `<button type="button" class="fm-btn small" data-act="rodset" data-k="${k}">換上</button>`
-            : `<button type="button" class="fm-btn small green" data-act="rodbuy" data-k="${k}" ${S.lv >= r.lv && S.dew >= r.price ? "" : "disabled"}>${S.lv >= r.lv ? `🌟 ${num(r.price)}` : `Lv${r.lv}`}</button>`;
-          return `<div class="fm-row"><div class="fm-row-art">${r.img ? `<img src="${IMG}${r.img}" alt="">` : `<span class="fm-emo">${r.emoji}</span>`}</div>
-            <div><div class="fm-row-name">${esc(r.name)}</div><div class="fm-row-sub">${r.rate.map((x, i) => `${tierName(FISH_TIERS[i])} ${x}%`).join("・")}</div></div>
+          let btn;
+          if (using) btn = `<span class="fm-tag">使用中</span>`;
+          else if (mine) btn = `<button type="button" class="fm-btn small" data-act="rodset" data-k="${k}">換上</button>`;
+          else if (r.cond) btn = `<span class="fm-tag gray">未解鎖</span>`;
+          else btn = `<button type="button" class="fm-btn small green" data-act="rodbuy" data-k="${k}" ${S.lv >= r.lv && S.dew >= r.price ? "" : "disabled"}>${S.lv >= r.lv ? `🌟 ${num(r.price)}` : `Lv${r.lv}`}</button>`;
+          const sub = r.cond
+            ? `<div class="fm-row-sub">${effectText[r.effect]}</div><div class="fm-row-sub">解鎖：${esc(r.cond)}</div>`
+            : `<div class="fm-row-sub">${r.rate.map((x, i) => `${tierName(FISH_TIERS[i])} ${x}%`).join("・")}</div>`;
+          return `<div class="fm-row ${mine || !r.cond ? "" : "fm-locked"}"><div class="fm-row-art">${r.img ? `<img src="${IMG}${r.img}" alt="">` : `<span class="fm-emo">${r.emoji}</span>`}</div>
+            <div><div class="fm-row-name">${esc(r.name)}</div>${sub}</div>
             <div class="fm-row-btns">${btn}</div></div>`;
         }).join("");
-        body = `<div class="fm-panel"><p class="fm-note" style="margin:0 0 8px">好的釣竿比較容易釣到稀有的魚。買過的釣竿可以隨時換。</p><div class="fm-list">${rows}</div></div>`;
+        body = `<div class="fm-panel"><p class="fm-note" style="margin:0 0 8px">基本釣竿可以買，特殊釣竿要靠條件解鎖。買過或解鎖過的釣竿可以隨時換。傳說紀錄：${S.fish.legends || 0} 次</p><div class="fm-list">${rows}</div></div>`;
       }
 
       return sheetTop("碼頭", `${miniIcon("bait", "🪱")} ${bait}`) + tabs([["fish", "釣魚"], ["dex", "魚類圖鑑"], ["rod", "釣竿"]], tab) + body;
