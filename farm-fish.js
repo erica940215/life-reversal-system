@@ -81,7 +81,8 @@
     "honey_pomelo_snapper","porcelain_carp","paper_lantern_loach","cloud_guppy",
     "nebula_anglerfish","bronze_bell_whale","coral_armor_shark",
     "frost_dragon_carp","backlight_whale","wing_mackerel",
-    "sky_mirror_whale","nameless_white_carp","cloud_peak_shark"
+    "sky_mirror_whale","nameless_white_carp","cloud_peak_shark",
+    "dew_carp","wind_chime_perch","crystal_shrimp","amber_perch"
   ]);
 
   D.fishTiers = TIER;
@@ -111,7 +112,7 @@
     dragon: { name: "龍鱗竿", price: null, lv: 15, rate: [45, 25, 18, 9, 3], emoji: "🐉", cond: "釣到一條傳說魚", effect: "dragon" }
   };
 
-  for (const k of Object.keys(D.rods)) if (!D.rods[k].cond) D.rods[k].img = `../ui/rod_${k}.webp`;
+  for (const k of Object.keys(D.rods)) D.rods[k].img = `../ui/rod_${k}.webp`;
 
   /* 魚餌：飼料機旁邊的第二條生產線，10 分鐘做 5 個，最多排 5 輪，做好自動收 */
   D.items.bait = { name: "魚餌", emoji: "🪱", kind: "goods", tier: "c", desc: "釣一次魚用 1 個" };
