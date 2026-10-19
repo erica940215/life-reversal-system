@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-20 v3";
+const FARM_JS_VERSION = "2026-10-20 v4";
 
 (function () {
 
@@ -4734,7 +4734,8 @@ const FARM_JS_VERSION = "2026-10-20 v3";
 
       const known = Object.keys(D.dishes).filter(dishKnown);
       const order = known.slice().sort((a, b) => (D.dishes[b].sell || 0) - (D.dishes[a].sell || 0));
-      const pick = UI.kitchenPick && dishKnown(UI.kitchenPick) ? UI.kitchenPick : (can[0] || known[known.length - 1]);
+      const canNow = known.filter(k => hasAll(D.dishes[k].need));
+      const pick = UI.kitchenPick && dishKnown(UI.kitchenPick) ? UI.kitchenPick : (canNow[0] || known[known.length - 1]);
 
       let feature = "";
       if (pick) {
