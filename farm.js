@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-19 v3";
+const FARM_JS_VERSION = "2026-10-20 v1";
 
 (function () {
 
@@ -344,6 +344,7 @@ const FARM_JS_VERSION = "2026-10-19 v3";
       known: { crops: {}, dishes: {}, recipes: {}, animals: { chicken: 1 }, items: {} },
       goals: null,
       orders: null,
+      ord: null,
       day: null,
       wcred: {},
       drip: now(),
@@ -1197,6 +1198,59 @@ const FARM_JS_VERSION = "2026-10-19 v3";
   /* 有料理做好了，但倉庫滿了放不進去 */
   function kitchenStuck() {
     return S.kitchen.jobs.some(j => { const f = jobInfo(j); return f.ready > f.got; });
+  }
+
+  /* =========================================================
+     訂單任務：每天 2 張，點的料理一定是「現在食材就做得出來」的
+     繳交時要有那道料理在倉庫，獎勵由伺服器隨機發（每張只能領一次）
+  ========================================================= */
+
+  const ORDER_SLOTS = 2;
+
+  function ordState() {
+    const day = todayKey();
+    if (!S.ord || S.ord.day !== day) {
+      S.ord = { day, slots: Array.from({ length: ORDER_SLOTS }, () => ({ d: null, done: false })) };
+    }
+    return S.ord;
+  }
+
+  /* 空的欄位從「現在食材做得出來」的料理裡挑；已經排給其他欄的不重複 */
+  function fillOrders() {
+    const o = ordState();
+    const taken = new Set(o.slots.map(s => s.d).filter(Boolean));
+    o.slots.forEach((slot, i) => {
+      if (slot.d || slot.done) return;
+      const cands = Object.keys(D.dishes).filter(k =>
+        dishKnown(k) && !D.dishes[k].gacha && !taken.has(k) && cookableCount(k) > 0);
+      if (!cands.length) return;
+      const pick = cands[hash(o.day + ":ord:" + i + ":" + S.day) % cands.length];
+      slot.d = pick;
+      taken.add(pick);
+    });
+    return o;
+  }
+
+  async function submitOrder(i) {
+    const o = ordState();
+    const slot = o.slots[i];
+    if (!slot || slot.done || !slot.d) return toast("這張訂單現在不能交");
+    if (!have(slot.d)) return toast("倉庫裡沒有這道菜");
+    if (net.mode !== "server") return toast("資料庫設定好之後才能交訂單");
+
+    const key = o.day + ":" + i;
+    const { data, error } = await db.rpc("farm_order_claim", { p_key: key });
+    if (error) return toast("交單失敗：" + error.message);
+
+    takeItem(slot.d, 1);
+    slot.done = true;
+    addExp(10);
+
+    const r = data || {};
+    const names = { stardust: "⭐ 星屑", wish_normal: "🎫 普通星願券", ticket_normal: "🎟️ 普通召喚券" };
+    if (r.already) toast("這張訂單的獎勵已經領過了");
+    else toast(`📋 訂單完成！獲得 ${names[r.item] || r.item} ×${r.qty}`);
+    after();
   }
 
   function serveOrder(i) {
@@ -4075,6 +4129,8 @@ const FARM_JS_VERSION = "2026-10-19 v3";
       renderSheet();
     },
 
+    ordersubmit: el => { submitOrder(Number(el.dataset.i)); },
+
     serve: el => {
       if (!serveOrder(Number(el.dataset.i))) return toast("倉庫裡沒有這道菜");
       toast("😋 客人很滿意！");
@@ -4701,13 +4757,24 @@ const FARM_JS_VERSION = "2026-10-19 v3";
         }).join("")}</div></div>`;
       }
 
+      const ord = fillOrders();
+      const ordRows = ord.slots.map((slot, i) => {
+        if (slot.done) return `<div class="fm-row"><div class="fm-row-art">✅</div><div><div class="fm-row-name">訂單 ${i + 1} 已完成</div><div class="fm-row-sub">明天會有新訂單</div></div></div>`;
+        if (!slot.d) return `<div class="fm-row"><div class="fm-row-art">📋</div><div><div class="fm-row-name">訂單 ${i + 1}</div><div class="fm-row-sub">現有食材做不出可以接的料理，先去備料吧</div></div></div>`;
+        const d = D.dishes[slot.d];
+        return `<div class="fm-row ${rarityClass(slot.d)}"><div class="fm-row-art">${itemIcon(slot.d)}</div><div><div class="fm-row-name">${esc(d.name)}</div>
+          <div class="fm-row-sub">交單隨機獲得星屑、星願券或召喚券・+10 EXP・倉庫有 ${have(slot.d)} 份</div></div>
+          <div class="fm-row-btns"><button type="button" class="fm-btn small" data-act="ordersubmit" data-i="${i}" ${have(slot.d) ? "" : "disabled"}>繳交</button></div></div>`;
+      }).join("");
+      const orderPanel = `<div class="fm-panel"><div class="fm-sec ol">📋 訂單任務</div><div class="fm-list">${ordRows}</div></div>`;
+
       const up = next ? (S.lv >= next[0]
         ? `<button type="button" class="fm-btn small" data-act="upgradekitchen">⬆ 升級成${next[2]}</button>`
         : `<span class="fm-note">Lv${next[0]} 可以升級成${next[2]}</span>`) : "";
 
       return sheetTop(tier[2], up) +
         `<div class="fm-panel"><div class="fm-stoves" style="grid-template-columns:repeat(${Math.max(2, n)},minmax(0,1fr))">${stoves}</div></div>
-        ${feature}${orders}
+        ${feature}${orders}${orderPanel}
         <div class="fm-panel"><div class="fm-sec ol">食譜 ${known.length}</div><div class="fm-grid">${cards}</div>
         ${upcoming ? `<p class="fm-note" style="margin-top:10px">之後會學到：${upcoming}</p>` : ""}</div>`;
 
