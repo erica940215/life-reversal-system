@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-20 v4";
+const FARM_JS_VERSION = "2026-10-20 v5";
 
 (function () {
 
@@ -1309,14 +1309,21 @@ const FARM_JS_VERSION = "2026-10-20 v4";
     return S.mach[m];
   }
 
+  /* 排隊的「欄」：飼料機每種配方一欄（各自排隊、各自計時），其他機器共用一欄 */
+  const laneOf = rk => {
+    const r = D.recipes[rk];
+    return r && r.machine === "feedmill" ? rk : (r ? r.machine : "");
+  };
+
   function startRecipe(rk) {
     const r = D.recipes[rk];
     if (!r || S.lv < r.lv) return "還沒解鎖";
     if (!machineOpen(r.machine)) return "機器還沒開";
     const q = machineQueue(r.machine);
-    if (q.length >= queueMax(r.machine)) return "排隊滿了";
+    const lane = q.filter(j => laneOf(j.r) === laneOf(rk));
+    if (lane.length >= queueMax(r.machine)) return "排隊滿了";
     if (!takeAll(r.need)) return "材料不夠";
-    const start = q.length ? Math.max(now(), q[q.length - 1].t1) : now();
+    const start = lane.length ? Math.max(now(), lane[lane.length - 1].t1) : now();
     q.push({ r: rk, t1: start + machineMinutes(r) * MIN });
     return "ok";
   }
@@ -1325,14 +1332,16 @@ const FARM_JS_VERSION = "2026-10-20 v4";
     const q = machineQueue(m);
     let got = 0;
     const out = [];
-    while (q.length && now() >= q[0].t1) {
-      const r = D.recipes[q[0].r];
-      if (!NOT_STORED(r.out) && invSpace() < r.qty) break;
+    for (let i = 0; i < q.length;) {
+      const j = q[i];
+      if (now() < j.t1) { i++; continue; }
+      const r = D.recipes[j.r];
+      if (!NOT_STORED(r.out) && invSpace() < r.qty) { i++; continue; }
       addItem(r.out, r.qty);
       addExp(3);
       goalAdd("process");
       out.push(r.out);
-      q.shift();
+      q.splice(i, 1);
       got++;
     }
     return got ? out : null;
@@ -5288,11 +5297,11 @@ const FARM_JS_VERSION = "2026-10-20 v4";
       const ok = hasAll(r.need);
       return `<div class="fm-row ${rarityClass(r.out)}"><div class="fm-row-art">${itemIcon(r.out)}</div>
         <div><div class="fm-row-name">${esc(itemName(r.out))} ×${r.qty}</div>${ingsHtml(r.need)}<div class="fm-row-sub">⏱ ${machineMinutes(r)} 分鐘・+3 EXP</div></div>
-        <div class="fm-row-btns"><button type="button" class="fm-btn small green" data-act="startrecipe" data-r="${k}" ${ok && q.length < queueMax(m) ? "" : "disabled"}>做</button></div></div>`;
+        <div class="fm-row-btns"><button type="button" class="fm-btn small green" data-act="startrecipe" data-r="${k}" ${ok && q.filter(j => laneOf(j.r) === laneOf(k)).length < queueMax(m) ? "" : "disabled"}>做</button></div></div>`;
     }).join("");
 
     return `<div class="${inRanch ? "fm-pen" : "fm-panel"}"><div class="fm-pen-head"><h3 class="ol" style="--olc:#6a4220">${machineTag(info)} ${esc(info.name)}</h3>
-      <span class="fm-note">排隊 ${q.length}/${queueMax(m)}${info.auto ? "・做好自動收" : ""}</span>${ready && !info.auto ? `<button type="button" class="fm-btn small" data-act="collectmach" data-m="${m}">收取 ${ready}</button>` : ""}</div>
+      <span class="fm-note">${m === "feedmill" ? `每種飼料各排 ${queueMax(m)} 次` : `排隊 ${q.length}/${queueMax(m)}`}${info.auto ? "・做好自動收" : ""}</span>${ready && !info.auto ? `<button type="button" class="fm-btn small" data-act="collectmach" data-m="${m}">收取 ${ready}</button>` : ""}</div>
       ${queue ? `<div class="fm-ings" style="margin-bottom:8px">${queue}</div>` : ""}<div class="fm-list">${rows}</div></div>`;
 
   }

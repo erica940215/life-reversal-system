@@ -169,5 +169,8 @@
   D.items.bait.img = "../ui/bait.webp";
   D.machines.baitline = { name: "魚餌線", lv: 15, where: "ranch", emoji: "🪱", queue: 5, fixed: true, auto: true };
   D.machines.baitline.img = "../ui/bait.webp";
+  /* 飼料機：白米、玉米、小麥三欄各自排隊，每欄最多 10 次，做好自動收 */
+  D.machines.feedmill.queue = 10;
+  D.machines.feedmill.auto = true;
   D.recipes.bait = { out: "bait", qty: 5, need: { feed: 2, wheat: 1 }, minutes: 10, machine: "baitline", lv: 15 };
 })();
