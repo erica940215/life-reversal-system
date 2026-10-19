@@ -76,7 +76,11 @@
     "rain_snapper","maple_carp","bell_eel","mint_guppy","star_goby","carpenter_fish","sakura_trout","snail_catfish",
     "lantern_jelly","ink_shark","glass_mackerel","clay_gator","stalactite_whale","sugar_snapper","spruce_salmon",
     "clock_carp","aurora_ray","mirror_fish","starsea_turtle",
-    "xuguang_fish","dragon_bone_whale","counter_king"
+    "xuguang_fish","dragon_bone_whale","counter_king",
+    "bean_sprout_catfish","slipper_fish","strawberry_snapper",
+    "honey_pomelo_snapper","porcelain_carp","paper_lantern_loach","cloud_guppy",
+    "nebula_anglerfish","bronze_bell_whale","coral_armor_shark",
+    "frost_dragon_carp","backlight_whale","wing_mackerel"
   ]);
 
   D.fishTiers = TIER;
