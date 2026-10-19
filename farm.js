@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-20 v5";
+const FARM_JS_VERSION = "2026-10-20 v6";
 
 (function () {
 
@@ -4142,6 +4142,11 @@ const FARM_JS_VERSION = "2026-10-20 v5";
       after();
     },
 
+    recsort: el => {
+      UI.recipeSort = el.dataset.v === "quality" ? "quality" : "price";
+      renderSheet();
+    },
+
     pickdish: el => {
       UI.kitchenPick = el.dataset.dish;
       UI.cookQty = 1;
@@ -4742,7 +4747,12 @@ const FARM_JS_VERSION = "2026-10-20 v5";
       }
 
       const known = Object.keys(D.dishes).filter(dishKnown);
-      const order = known.slice().sort((a, b) => (D.dishes[b].sell || 0) - (D.dishes[a].sell || 0));
+      const recipeSort = UI.recipeSort === "quality" ? "quality" : "price";
+      const order = known.slice().sort((a, b) => {
+        const bySell = (D.dishes[b].sell || 0) - (D.dishes[a].sell || 0);
+        if (recipeSort === "price") return bySell;
+        return (TIERS.indexOf(tierOfKey(b)) - TIERS.indexOf(tierOfKey(a))) || bySell;
+      });
       const canNow = known.filter(k => hasAll(D.dishes[k].need));
       const pick = UI.kitchenPick && dishKnown(UI.kitchenPick) ? UI.kitchenPick : (canNow[0] || known[known.length - 1]);
 
@@ -4805,7 +4815,10 @@ const FARM_JS_VERSION = "2026-10-20 v5";
       return sheetTop(tier[2], up) +
         `<div class="fm-panel"><div class="fm-stoves" style="grid-template-columns:repeat(${Math.max(2, n)},minmax(0,1fr))">${stoves}</div></div>
         ${feature}${orders}
-        <div class="fm-panel"><div class="fm-sec ol">食譜 ${known.length}</div><div class="fm-grid">${cards}</div>
+        <div class="fm-panel"><div class="fm-sec ol">食譜 ${known.length}</div>
+          <div class="fm-tabs" role="tablist" style="margin-bottom:8px">${[["price", "依價錢"], ["quality", "依品質"]].map(([v, label]) =>
+            `<button type="button" class="fm-tab ol" role="tab" aria-selected="${v === recipeSort}" data-act="recsort" data-v="${v}">${label}</button>`).join("")}</div>
+          <div class="fm-grid">${cards}</div>
         ${upcoming ? `<p class="fm-note" style="margin-top:10px">之後會學到：${upcoming}</p>` : ""}</div>
         ${orderPanel}`;
 
@@ -4818,10 +4831,17 @@ const FARM_JS_VERSION = "2026-10-20 v5";
 
       if (tab === "sell") {
         const keys = Object.keys(S.inv).filter(k => have(k) > 0 && sellPrice(k) > 0);
-        const rows = tierGroups(keys.map(k => ({ t: tierOfKey(k), h: `<div class="fm-row ${rarityClass(k)}"><div class="fm-row-art">${itemIcon(k)}</div>
+        const cats = [["dish", "料理", ["dish"]], ["food", "食材", ["crop", "animal", "meat"]], ["fish", "魚類", ["fish"]], ["goods", "加工品", ["goods"]]];
+        const rowHtml = k => `<div class="fm-row ${rarityClass(k)}"><div class="fm-row-art">${itemIcon(k)}</div>
           <div><div class="fm-row-name">${esc(itemName(k))} ×${have(k)}</div><div class="fm-row-sub">一個 ${sellPrice(k)} 星露</div></div>
           <div class="fm-row-btns"><button type="button" class="fm-btn small" data-act="sell" data-item="${k}" data-qty="1">賣 1</button>
-          <button type="button" class="fm-btn small" data-act="sell" data-item="${k}" data-qty="all">全部 ${num(sellPrice(k) * have(k))}</button></div></div>` })), null);
+          <button type="button" class="fm-btn small" data-act="sell" data-item="${k}" data-qty="all">全部 ${num(sellPrice(k) * have(k))}</button></div></div>`;
+        const rows = cats.map(([, label, kinds]) => {
+          const ks = keys.filter(k => kinds.includes(D.items[k]?.kind))
+            .sort((a, b) => (TIERS.indexOf(tierOfKey(b)) - TIERS.indexOf(tierOfKey(a))) || (sellPrice(b) - sellPrice(a)));
+          if (!ks.length) return "";
+          return `<div class="fm-sec ol" style="margin:10px 0 6px">${label}</div>` + ks.map(rowHtml).join("");
+        }).join("");
         return sheetTop("市集", `🌟 ${num(S.dew)}`) + tabs([["buy", "買東西"], ["sell", "賣東西"]], tab) +
           `<div class="fm-panel"><p class="fm-note" style="margin:0 0 8px">作物和材料用原價 6 成收購，料理照原價。</p><div class="fm-list">${rows || `<div class="fm-empty">倉庫裡沒有可以賣的</div>`}</div></div>`;
       }
