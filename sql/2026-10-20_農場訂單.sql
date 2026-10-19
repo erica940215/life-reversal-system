@@ -22,7 +22,7 @@ declare
   v_qty integer;
 begin
   if v_user is null then raise exception '尚未登入'; end if;
-  if p_key is null or p_key !~ '^\d{4}-\d{2}-\d{2}:[01]$' then raise exception '訂單編號不對'; end if;
+  if p_key is null or p_key !~ '^\d{4}-\d{2}-\d{2}:[0-9]$' then raise exception '訂單編號不對'; end if;
 
   if exists (select 1 from public.item_events where user_id = v_user and source_key = 'farmorder:' || p_key) then
     return json_build_object('success', true, 'already', true);
