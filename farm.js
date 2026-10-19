@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-19 v1";
+const FARM_JS_VERSION = "2026-10-19 v2";
 
 (function () {
 
@@ -1121,33 +1121,70 @@ const FARM_JS_VERSION = "2026-10-19 v1";
     return stoveCount() - S.kitchen.jobs.length;
   }
 
-  function cookDish(k) {
+  const COOK_MAX = 20;      // 一個爐子一次最多做幾份
+
+  /* 食材夠做幾份 */
+  function cookableCount(k) {
     const d = D.dishes[k];
+    let n = COOK_MAX;
+    for (const [key, q] of Object.entries(d.need)) n = Math.min(n, Math.floor(have(key) / q));
+    return Math.max(0, n);
+  }
+
+  /* 一個爐子做同一道菜 n 份：一份一份輪流做好，做好自動放進倉庫 */
+  function cookDish(k, n = 1) {
+    const d = D.dishes[k];
+    n = Math.max(1, Math.min(COOK_MAX, Math.floor(n)));
     if (!dishKnown(k)) return "還沒學會這道菜";
     if (freeStoves() <= 0) return "爐子都在用";
-    if (!takeAll(d.need)) return "食材不夠";
-    S.kitchen.jobs.push({ d: k, t1: now() + dishMinutes(d) * MIN });
+    if (!hasAll(d.need, n)) return "食材不夠";
+    for (let i = 0; i < n; i++) takeAll(d.need);
+    const m = dishMinutes(d) * MIN;
+    const t0 = now();
+    S.kitchen.jobs.push({ d: k, n, got: 0, t0, m, t1: t0 + n * m });
     return "ok";
   }
 
-  function collectDish(i) {
-    const job = S.kitchen.jobs[i];
-    if (!job || now() < job.t1) return null;
-    if (invSpace() < 1) return null;
-    const d = D.dishes[job.d];
-    addItem(job.d, 1);
-    addExp(d.exp);
-    S.known.dishes[job.d] = (S.known.dishes[job.d] || 0) + 1;
-    S.stats.cook = (S.stats.cook || 0) + 1;
-    goalAdd("cook");
-    S.kitchen.jobs.splice(i, 1);
-    /* 鳳凰雛鳥：10% 完美料理，多賺一份錢 */
-    let perfect = false;
-    if (own("p_phoenix") && Math.random() < 0.1) {
-      perfect = true;
-      addDew(d.sell);
+  /* 舊存檔的爐子只有 { d, t1 }：當成 1 份 */
+  function jobInfo(job) {
+    const n = job.n || 1;
+    const m = job.m || dishMinutes(D.dishes[job.d]) * MIN;
+    const t0 = job.t0 || (job.t1 - n * m);
+    const ready = Math.min(n, Math.max(0, Math.floor((now() - t0) / m)));
+    return { n, m, t0, got: job.got || 0, ready, nextAt: t0 + Math.min(n, ready + 1) * m };
+  }
+
+  /* 做好的料理自動放進倉庫；回傳這次收了哪些 */
+  function autoCollectDishes() {
+    const out = [];
+    for (let i = S.kitchen.jobs.length - 1; i >= 0; i--) {
+      const job = S.kitchen.jobs[i];
+      if (!D.dishes[job.d]) { S.kitchen.jobs.splice(i, 1); continue; }
+      const info = jobInfo(job);
+      let got = info.got;
+      while (got < info.ready && invSpace() >= 1) {
+        const d = D.dishes[job.d];
+        addItem(job.d, 1);
+        addExp(d.exp);
+        S.known.dishes[job.d] = (S.known.dishes[job.d] || 0) + 1;
+        S.stats.cook = (S.stats.cook || 0) + 1;
+        goalAdd("cook");
+        /* 鳳凰雛鳥：10% 完美料理，多賺一份錢 */
+        const perfect = own("p_phoenix") && Math.random() < 0.1;
+        if (perfect) addDew(d.sell);
+        out.push({ dish: job.d, exp: d.exp, perfect });
+        got++;
+      }
+      job.got = got;
+      job.n = info.n; job.m = info.m; job.t0 = info.t0;
+      if (got >= info.n) S.kitchen.jobs.splice(i, 1);
     }
-    return { dish: job.d, exp: d.exp, perfect };
+    return out;
+  }
+
+  /* 有料理做好了，但倉庫滿了放不進去 */
+  function kitchenStuck() {
+    return S.kitchen.jobs.some(j => { const f = jobInfo(j); return f.ready > f.got; });
   }
 
   function serveOrder(i) {
@@ -1334,6 +1371,18 @@ const FARM_JS_VERSION = "2026-10-19 v1";
 
     let changed = newDayCheck();
     const t = now();
+
+    /* 料理做好自動放進倉庫 */
+    const cooked = autoCollectDishes();
+    if (cooked.length) {
+      changed = true;
+      if (UI.root && isFarmVisible()) {
+        const names = {};
+        for (const c of cooked) names[c.dish] = (names[c.dish] || 0) + 1;
+        const perfect = cooked.filter(c => c.perfect).length;
+        toast(`🍳 做好了：${Object.entries(names).map(([k, v]) => `${D.dishes[k].name} ×${v}`).join("、")}，+${cooked.reduce((a, c) => a + c.exp, 0)} EXP${perfect ? `（🐥 完美料理 ${perfect} 份）` : ""}`);
+      }
+    }
 
     /* 自動滴水：每 30 分鐘 +1 滴，只會補到上限 */
     const DRIP = 30 * MIN;
@@ -2671,12 +2720,12 @@ const FARM_JS_VERSION = "2026-10-19 v1";
   function renderDock() {
 
     const cookable = Object.keys(D.dishes).some(k => dishKnown(k) && hasAll(D.dishes[k].need));
-    const kitchenDone = S.kitchen.jobs.filter(j => now() >= j.t1).length;
+    const kitchenDone = kitchenStuck() ? 1 : 0;
     const ripe = countRipe();
 
     UI.root.querySelector("#fm-dock").innerHTML = `
       <button type="button" data-act="storage"><span class="fm-dk-ic">${uiIcon("warehouse")}</span><span>倉庫</span></button>
-      <button type="button" data-act="kitchen"><span class="fm-dk-ic">${uiIcon("cook")}</span><span>料理</span>${kitchenDone ? `<i class="fm-dot">${kitchenDone}</i>` : (cookable ? `<i class="fm-dot"></i>` : "")}</button>
+      <button type="button" data-act="kitchen"><span class="fm-dk-ic">${uiIcon("cook")}</span><span>料理</span>${kitchenDone ? `<i class="fm-dot">!</i>` : (cookable && freeStoves() > 0 ? `<i class="fm-dot"></i>` : "")}</button>
       <button type="button" data-act="harvestall"><span class="fm-dk-ic">${uiIcon("harvest")}</span><span>一鍵收成</span>${ripe ? `<i class="fm-dot">${ripe}</i>` : ""}</button>
       <button type="button" data-act="book"><span class="fm-dk-ic">${uiIcon("codex")}</span><span>圖鑑</span>${achClaimable() ? `<i class="fm-dot">${achClaimable()}</i>` : ""}</button>`;
 
@@ -3151,10 +3200,10 @@ const FARM_JS_VERSION = "2026-10-19 v1";
     {
       const [x, y, w] = POS.kitchen;
       const tier = kitchenTier();
-      const done = S.kitchen.jobs.some(j => t >= j.t1);
+      const done = kitchenStuck();
       const busy = S.kitchen.jobs.length > 0;
       const kKey = skinOn("gingerhouse") ? "gingerhouse" : tier[1];
-      let s = `<g class="tap" data-act="kitchen" role="button" tabindex="0" aria-label="${tier[2]}${done ? "，有料理做好了" : ""}">${building(kKey, x, y, kKey === "restaurant" ? w * 0.9 : kKey === "gingerhouse" ? w * 0.85 : w)}`;
+      let s = `<g class="tap" data-act="kitchen" role="button" tabindex="0" aria-label="${tier[2]}${done ? "，倉庫滿了，料理放不進去" : ""}">${building(kKey, x, y, kKey === "restaurant" ? w * 0.9 : kKey === "gingerhouse" ? w * 0.85 : w)}`;
       if (busy && !done) s += `<g fill="#fff" opacity=".8" pointer-events="none"><circle cx="${x + 40}" cy="${y - 200}" r="7"/><circle cx="${x + 46}" cy="${y - 214}" r="8"/><circle cx="${x + 38}" cy="${y - 228}" r="6"/></g>`;
       if (done) s += mark(x - 20, y - 205);
       else if (kitchenNext() && S.lv >= kitchenNext()[0]) s += mark(x - 20, y - 205, "⬆");
@@ -3531,7 +3580,7 @@ const FARM_JS_VERSION = "2026-10-19 v1";
     for (const l of Object.values(S.logs.slots)) consider(l.next);
     for (const b of Object.values(S.tea.bushes)) { consider(b.grown); consider(b.next); }
     if (zoneUnlocked("竹林") && bambooReady() < D.caps.bambooMax) consider(bambooNextAt());
-    for (const j of S.kitchen.jobs) consider(j.t1);
+    for (const j of S.kitchen.jobs) consider(jobInfo(j).nextAt);
     for (const q of Object.values(S.mach)) for (const j of q) consider(j.t1);
     for (const a of S.ranch.animals) consider(a.t1);
     for (const ts of Object.values(S.ranch.breed)) consider(ts);
@@ -3851,23 +3900,30 @@ const FARM_JS_VERSION = "2026-10-19 v1";
     },
 
     cook: el => {
-      const res = cookDish(el.dataset.dish);
+      const k = el.dataset.dish;
+      const n = Math.max(1, Math.min(UI.cookQty || 1, cookableCount(k)));
+      const res = cookDish(k, n);
       if (res !== "ok") return toast(res);
-      toast(`🍳 開始做「${D.dishes[el.dataset.dish].name}」`);
+      toast(`🍳 開始做「${D.dishes[k].name}」×${n}，做好會自動放進倉庫`);
+      UI.cookQty = 1;
       after();
     },
 
     pickdish: el => {
       UI.kitchenPick = el.dataset.dish;
+      UI.cookQty = 1;
       renderSheet();
     },
 
-    collectdish: el => {
-      const i = Number(el.dataset.i);
-      const res = collectDish(i);
-      if (!res) return toast(invSpace() < 1 ? "倉庫滿了" : "還沒做好");
-      toast(res.perfect ? `🐥 完美料理！${D.dishes[res.dish].name} 多賺 ${num(D.dishes[res.dish].sell)} 星露` : `✨ ${D.dishes[res.dish].name} 做好了！+${res.exp} EXP`);
-      after();
+    cookqty: el => {
+      const k = UI.kitchenPick;
+      const max = Math.max(1, k ? cookableCount(k) : 1);
+      const v = el.dataset.v;
+      let q = UI.cookQty || 1;
+      if (v === "max") q = max;
+      else q = q + Number(v);
+      UI.cookQty = Math.max(1, Math.min(max, q));
+      renderSheet();
     },
 
     serve: el => {
@@ -4441,9 +4497,11 @@ const FARM_JS_VERSION = "2026-10-19 v1";
         if (!job) {
           stoves += `<div class="fm-stove free"><span class="fm-emo">🍳</span><span>空爐子</span></div>`;
         } else {
-          const done = now() >= job.t1;
-          stoves += `<div class="fm-stove">${itemIcon(job.d)}<span>${esc(D.dishes[job.d].name)}</span>
-            ${done ? `<button type="button" class="fm-btn small green" data-act="collectdish" data-i="${i}">收取</button>` : `<span class="t" data-until="${job.t1}">${dur(job.t1 - now())}</span>`}</div>`;
+          const f = jobInfo(job);
+          const stuck = f.ready > f.got;
+          stoves += `<div class="fm-stove ${stuck ? "stuck" : ""}">${itemIcon(job.d)}<span>${esc(D.dishes[job.d].name)} ×${f.n}</span>
+            <span class="t">${stuck ? "倉庫滿了，空出位子就放進去" : `已做好 ${f.got}/${f.n}・下一份 <span data-until="${f.nextAt}">${dur(f.nextAt - now())}</span>`}</span>
+            <div class="fm-stove-bar"><i style="width:${(f.got / f.n) * 100}%"></i></div></div>`;
         }
       }
 
@@ -4456,13 +4514,21 @@ const FARM_JS_VERSION = "2026-10-19 v1";
       if (pick) {
         const d = D.dishes[pick];
         const ok = hasAll(d.need);
+        const maxQ = Math.max(1, cookableCount(pick));
+        const q = Math.max(1, Math.min(UI.cookQty || 1, maxQ));
+        const qtyRow = ok ? `<div class="fm-qty"><button type="button" class="fm-btn small" data-act="cookqty" data-v="-1" ${q <= 1 ? "disabled" : ""}>－</button>
+            <span class="fm-qty-n">${q} 份</span>
+            <button type="button" class="fm-btn small" data-act="cookqty" data-v="1" ${q >= maxQ ? "disabled" : ""}>＋</button>
+            <button type="button" class="fm-btn small" data-act="cookqty" data-v="max" ${q >= maxQ ? "disabled" : ""}>最多 ${maxQ}</button></div>
+            <div class="fm-row-sub" style="margin-top:4px">共 ${dur(q * dishMinutes(d) * MIN)}・做好一份就自動放進倉庫</div>` : "";
         feature = `<div class="fm-panel" style="text-align:center">
           <div style="display:flex;align-items:center;gap:12px;text-align:left">
             <div class="fm-row-art ${rarityClass(pick)}" style="width:96px;height:96px">${itemIcon(pick)}</div>
             <div style="flex:1;min-width:0"><div class="fm-row-name" style="font-size:19px">${esc(d.name)}${tagHtml(D.items[pick].tier)}${kitchenTag(d)}</div>
-            ${ingsHtml(d.need)}
-            <div class="fm-row-sub">⏱ ${dishMinutes(d)} 分鐘・賣 ${num(d.sell)} 星露・${d.exp} EXP</div></div></div>
-          <div style="margin-top:10px"><button type="button" class="fm-btn green" data-act="cook" data-dish="${pick}" ${ok && freeStoves() > 0 ? "" : "disabled"}>${freeStoves() > 0 ? (ok ? "開始做" : "食材不夠") : "爐子都在用"}</button></div></div>`;
+            ${ingsHtml(d.need, q)}
+            <div class="fm-row-sub">⏱ 每份 ${dishMinutes(d)} 分鐘・賣 ${num(d.sell)} 星露・${d.exp} EXP</div></div></div>
+          ${qtyRow}
+          <div style="margin-top:10px"><button type="button" class="fm-btn green" data-act="cook" data-dish="${pick}" ${ok && freeStoves() > 0 ? "" : "disabled"}>${freeStoves() > 0 ? (ok ? `開始做 ${q} 份` : "食材不夠") : "爐子都在用"}</button></div></div>`;
       }
 
       const cards = order.map(k => {
@@ -5008,7 +5074,7 @@ const FARM_JS_VERSION = "2026-10-19 v1";
 
     else if (m.name === "kitchenup") {
       const next = kitchenNext();
-      const perk = { kitchen: "2 個爐子，可以同時做 2 道菜。", restaurant: "客人每天點 3 道菜，付 1.5 倍價錢。", bistro: "3 個爐子，客人點餐照常。" }[next[1]];
+      const perk = { kitchen: "2 個爐子，可以同時做 2 種不同的菜。", restaurant: "3 個爐子；客人每天點 3 道菜，付 1.5 倍價錢。", bistro: "4 個爐子，客人點餐照常。" }[next[1]];
       html = modalBox(`升級成${next[2]}`,
         `<p class="fm-note">${perk}</p><p class="fm-note">需要 <b>${num(next[4])} 星露</b>（你有 ${num(S.dew)}）</p>`,
         `<button type="button" class="fm-btn green" data-act="confirm" data-v="yes" ${S.dew >= next[4] ? "" : "disabled"}>升級</button>${close}`);

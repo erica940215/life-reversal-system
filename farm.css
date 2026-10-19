@@ -734,3 +734,12 @@ body.fm-page #idea-fab { display: none !important; }
 .fm-ach-bar span { position: relative; display: block; text-align: center; font-size: 10.5px; line-height: 14px; color: #6a4a24; font-variant-numeric: tabular-nums; }
 .fm-ach .fm-btn img { width: 16px; height: 16px; vertical-align: -3px; margin-right: 3px; }
 .fm-ach-ok { font-size: 13px; color: #5a9a3e; font-weight: 700; padding: 0 6px; }
+
+/* ---------- 廚房：一次做好幾份（2026-10-19） ---------- */
+.fm-qty { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; }
+.fm-qty .fm-btn.small { min-width: 40px; }
+.fm-qty-n { min-width: 56px; text-align: center; font-size: 18px; font-weight: 700; color: #6a4220; font-variant-numeric: tabular-nums; }
+.fm-stove-bar { width: 100%; height: 6px; margin-top: 4px; border-radius: 999px; background: #eadfc8; overflow: hidden; }
+.fm-stove-bar i { display: block; height: 100%; background: linear-gradient(90deg, #ffd76a, #f29a3a); border-radius: 999px; }
+.fm-stove.stuck { box-shadow: 0 0 0 2px #e8644a inset; }
+.fm-stove.stuck .t { color: #d8402c; }
