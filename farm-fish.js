@@ -83,6 +83,7 @@
     "frost_dragon_carp","backlight_whale","wing_mackerel",
     "sky_mirror_whale","nameless_white_carp","cloud_peak_shark",
     "dew_carp","wind_chime_perch","crystal_shrimp","amber_perch",
+    "dish_corn_cloud",
     "dish_apple_maple",
     "dish_banana_mirror",
     "dish_bean_catfish",
