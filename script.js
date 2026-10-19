@@ -7155,6 +7155,48 @@ async function syncMorningReward() {
   silent = true：不自己顯示提示（例如結束專注時，和「已記錄」合成一則）
   回傳資料庫的結果，裡面有 delta_exp / delta_gold
 */
+/*
+  專注星屑與星願券：
+  每滿 30 分鐘 +1 星屑，每滿 1 小時 +1 張普通星願券（資料庫只發今天，且每個里程碑只發一次）
+*/
+
+async function claimFocusRewards(sessionDate) {
+
+  if (!currentUser) return null;
+
+  try {
+
+    const { data, error } = await db.rpc(
+      "claim_focus_rewards",
+      { p_date: sessionDate || getToday() }
+    );
+
+    if (error) {
+      console.warn("專注星屑領取失敗：", error);
+      return null;
+    }
+
+    const dust = data ? Number(data.dust || 0) : 0;
+    const tickets = data ? Number(data.tickets || 0) : 0;
+
+    /* 里程碑只發一次，有發才提示 */
+    if (dust > 0 || tickets > 0) {
+      const parts = [];
+      if (dust > 0) parts.push(`+${dust} ⭐ 星屑`);
+      if (tickets > 0) parts.push(`+${tickets} 🎫 星願券`);
+      showToast(`專注獎勵：${parts.join("、")}`);
+    }
+
+    return data;
+
+  } catch (err) {
+    console.warn("專注星屑領取失敗：", err);
+    return null;
+  }
+
+}
+
+
 async function syncFocusReward(sessionDate, silent = false) {
 
   if (!currentUser) return null;
@@ -7178,6 +7220,8 @@ async function syncFocusReward(sessionDate, silent = false) {
     silent ? null : `⏱️ 專注滿 25 分鐘！+${delta} EXP / +${goldDelta} 金幣`,
     silent ? null : `專注時間變少，收回 ${delta} EXP / ${goldDelta} 金幣`
   );
+
+  await claimFocusRewards(sessionDate);
 
   return data;
 
