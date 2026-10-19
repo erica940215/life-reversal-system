@@ -2,7 +2,7 @@
 -- 序光計畫：🏆 星露島成就（達成送星屑）
 -- 可以重複執行。要先執行過「簽到發券與背包」和「星願池」那兩份。
 --
---   farm_achieve_catalog()   50 個成就的星屑數量和門檻（網頁上的 farm.js 也有同一份）
+--   farm_achieve_catalog()   56 個成就（含 6 個釣魚成就）的星屑數量和門檻（網頁上的 farm.js 也有同一份）
 --   farm_achieve_status()    已經領過哪些、網站上的累計數字（習慣、任務、專注、簽到、晨間打卡、抽獎）
 --   farm_achieve_claim(key)  領成就：網站上的成就由資料庫自己檢查；星露島的成就照島上的存檔
 --
@@ -29,6 +29,8 @@ as $catalog$
     "zones6":{"dust":80,"src":"farm"},"crops20":{"dust":20,"src":"farm"},"crops50":{"dust":60,"src":"farm"},
     "dishes20":{"dust":30,"src":"farm"},"animals5":{"dust":30,"src":"farm"},"dew10000":{"dust":40,"src":"farm"},
     "deco5":{"dust":20,"src":"farm"},"pet1":{"dust":20,"src":"farm"},
+    "fish1":{"dust":5,"src":"farm"},"fishdex5":{"dust":20,"src":"farm"},"fish50":{"dust":30,"src":"farm"},
+    "fishlegend":{"dust":50,"src":"farm"},"fish300":{"dust":100,"src":"farm"},"fishdexall":{"dust":100,"src":"farm"},
     "wish10":{"dust":20,"src":"wish","n":10},"wish100":{"dust":80,"src":"wish","n":100},
     "habit1":{"dust":5,"src":"habit","n":1},"habit50":{"dust":30,"src":"habit","n":50},"habit300":{"dust":100,"src":"habit","n":300},
     "task1":{"dust":5,"src":"task","n":1},"task50":{"dust":30,"src":"task","n":50},"task300":{"dust":100,"src":"task","n":300},

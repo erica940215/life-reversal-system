@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-19 v2";
+const FARM_JS_VERSION = "2026-10-19 v3";
 
 (function () {
 
@@ -300,6 +300,7 @@ const FARM_JS_VERSION = "2026-10-19 v2";
   }
 
   function machineMinutes(rec) {
+    if (D.machines[rec.machine]?.fixed) return rec.minutes;
     return S.lv >= D.caps.workshopHalf ? Math.max(1, Math.round(rec.minutes / 2)) : rec.minutes;
   }
 
@@ -361,7 +362,8 @@ const FARM_JS_VERSION = "2026-10-19 v2";
       glassDay: null,               // 時光沙漏今天用過了沒
       wishApplied: [],              // 已經放進島上的抽獎紀錄（避免重複）
       ownedCache: {},
-      subjLv: {}                    // 各科等級（累積系統），升級送星露用
+      subjLv: {},                   // 各科等級（累積系統），升級送星露用
+      fish: { rod: "bamboo", rods: { bamboo: 1 }, caught: {}, total: 0 }   // 釣魚
     };
 
   }
@@ -420,7 +422,7 @@ const FARM_JS_VERSION = "2026-10-19 v2";
       if (st[key] === undefined) st[key] = base[key];
     }
 
-    for (const key of ["field", "herb", "green", "pond", "orchard", "logs", "tea", "bamboo", "workshop", "kitchen", "ranch", "known", "stats", "deco", "boost", "daily"]) {
+    for (const key of ["field", "herb", "green", "pond", "orchard", "logs", "tea", "bamboo", "workshop", "kitchen", "ranch", "known", "stats", "deco", "boost", "daily", "fish"]) {
       if (!st[key] || typeof st[key] !== "object") st[key] = base[key];
       for (const sub of Object.keys(base[key])) {
         if (st[key][sub] === undefined) st[key][sub] = base[key][sub];
@@ -448,7 +450,7 @@ const FARM_JS_VERSION = "2026-10-19 v2";
   ========================================================= */
 
   /* 肥料、種子、水桶這類道具不佔倉庫 */
-  const NOT_STORED = key => key === "fert" || key === "feed" || key.startsWith("seed_") || D.items[key]?.kind === "use";
+  const NOT_STORED = key => key === "fert" || key === "feed" || key === "bait" || key.startsWith("seed_") || D.items[key]?.kind === "use";
 
   function invUsed() {
     let n = 0;
@@ -614,7 +616,13 @@ const FARM_JS_VERSION = "2026-10-19 v2";
     ["lv40", "傳說中的小島", "島嶼升到 Lv40", 120, "lv", 40],
     ["focus100h", "心流", "專注累計 100 小時", 150, "s:focus", 6000],
     ["checkin100", "百日", "簽到累計 100 天", 150, "s:checkin", 100],
-    ["lv50", "星露島主", "島嶼升到 Lv50", 300, "lv", 50]
+    ["lv50", "星露島主", "島嶼升到 Lv50", 300, "lv", 50],
+    ["fish1", "第一條魚", "第一次釣到魚", 5, "fish", 1],
+    ["fishdex5", "魚類圖鑑 I", "釣過 5 種魚", 20, "fishdex", 5],
+    ["fish50", "釣魚愛好者", "釣魚 50 次", 30, "fish", 50],
+    ["fishlegend", "傳說的影子", "釣到一條傳說魚", 50, "fishlegend", 1],
+    ["fish300", "老漁夫", "釣魚 300 次", 100, "fish", 300],
+    ["fishdexall", "魚類圖鑑 全", "50 種魚全部釣過", 100, "fishdex", 50]
   ];
 
   function statOf(k) {
@@ -634,6 +642,9 @@ const FARM_JS_VERSION = "2026-10-19 v2";
       case "deco": return (S.deco && S.deco.slots || []).filter(Boolean).length;
       case "pet": return Object.keys(D.pets || {}).filter(k => own("p_" + k)).length;
       case "dew": return (S.stats && S.stats.dewEarned) || 0;
+      case "fish": return (S.fish && S.fish.total) || 0;
+      case "fishdex": return Object.keys((S.fish && S.fish.caught) || {}).filter(k => D.fish[k]).length;
+      case "fishlegend": return Object.keys((S.fish && S.fish.caught) || {}).filter(k => D.fish[k] && D.fish[k].tier === "s").length;
       default: return statOf(kind);
     }
   }
@@ -1101,6 +1112,7 @@ const FARM_JS_VERSION = "2026-10-19 v2";
   function dishKnown(k) {
     const d = D.dishes[k];
     if (!d) return false;
+    if (d.fish) return !!(S.fish && S.fish.caught[d.fish]);     // 魚料理：釣到那種魚就會做
     if (!d.gacha) return S.lv >= d.lv;
     if (S.known.recipes[k]) return true;
     if (d.learn) return !!(S.known.items[d.learn] || S.known.crops[d.learn] || have(d.learn) > 0);
@@ -1204,6 +1216,7 @@ const FARM_JS_VERSION = "2026-10-19 v2";
   ========================================================= */
 
   const QUEUE_MAX = 3;
+  const queueMax = m => D.machines[m]?.queue || QUEUE_MAX;
 
   /* 機器的圖：有圖用圖，沒圖退回 emoji */
   function machineTag(info) {
@@ -1226,7 +1239,7 @@ const FARM_JS_VERSION = "2026-10-19 v2";
     if (!r || S.lv < r.lv) return "還沒解鎖";
     if (!machineOpen(r.machine)) return "機器還沒開";
     const q = machineQueue(r.machine);
-    if (q.length >= QUEUE_MAX) return "排隊滿了";
+    if (q.length >= queueMax(r.machine)) return "排隊滿了";
     if (!takeAll(r.need)) return "材料不夠";
     const start = q.length ? Math.max(now(), q[q.length - 1].t1) : now();
     q.push({ r: rk, t1: start + machineMinutes(r) * MIN });
@@ -1252,6 +1265,59 @@ const FARM_JS_VERSION = "2026-10-19 v2";
 
   function machineReadyCount(m) {
     return machineQueue(m).filter(j => now() >= j.t1).length;
+  }
+
+
+  /* =========================================================
+     10b. 釣魚（碼頭）：點一下用 1 個魚餌，直接釣到一條魚
+  ========================================================= */
+
+  const FISH_TIERS = ["c", "r", "l", "x", "s"];
+
+  function rodNow() {
+    return D.rods[S.fish.rod] || D.rods.bamboo;
+  }
+
+  function rollFish() {
+    const rate = rodNow().rate;
+    let r = Math.random() * 100, t = 0;
+    for (let i = 0; i < rate.length; i++) { r -= rate[i]; if (r < 0) { t = i; break; } t = i; }
+    const tier = FISH_TIERS[t];
+    const list = Object.keys(D.fish).filter(k => D.fish[k].tier === tier);
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
+  /* 釣 n 次；回傳釣到的魚（新魚會標 isNew） */
+  function fishCast(n = 1) {
+    if (!zoneUnlocked("碼頭")) return toast(`碼頭 Lv${zoneLv("碼頭")} 開放`);
+    n = Math.min(n, have("bait"));
+    if (n <= 0) return toast("沒有魚餌了，去牧場的魚餌線做");
+    n = Math.min(n, invSpace());
+    if (n <= 0) return toast(`倉庫滿了（${invUsed()}/${storageCap()}），先賣掉或做成料理`);
+    const got = [];
+    for (let i = 0; i < n; i++) {
+      takeItem("bait", 1);
+      const k = rollFish();
+      const isNew = !S.fish.caught[k];
+      S.fish.caught[k] = (S.fish.caught[k] || 0) + 1;
+      S.fish.total = (S.fish.total || 0) + 1;
+      addItem(k, 1);
+      addExp(D.fish[k].exp);
+      got.push({ k, isNew });
+    }
+    UI.fishResult = got;
+    after();
+  }
+
+  function buyRod(k) {
+    const rod = D.rods[k];
+    if (!rod) return "沒有這支釣竿";
+    if (S.fish.rods[k]) return "已經有了";
+    if (S.lv < rod.lv) return `Lv${rod.lv} 才能買`;
+    if (!spend(rod.price)) return "星露不夠";
+    S.fish.rods[k] = 1;
+    S.fish.rod = k;
+    return "ok";
   }
 
 
@@ -1384,6 +1450,11 @@ const FARM_JS_VERSION = "2026-10-19 v2";
       }
     }
 
+    /* 魚餌線做好自動收 */
+    for (const m of Object.keys(D.machines)) {
+      if (D.machines[m].auto && S.mach[m] && S.mach[m].length && collectMachine(m)) changed = true;
+    }
+
     /* 自動滴水：每 30 分鐘 +1 滴，只會補到上限 */
     const DRIP = 30 * MIN;
     if (!S.drip) S.drip = t;
@@ -1464,7 +1535,7 @@ const FARM_JS_VERSION = "2026-10-19 v2";
   function sellPrice(key) {
     const it = D.items[key];
     if (!it || !it.sell) return 0;
-    if (it.kind === "dish") return it.sell;
+    if (it.kind === "dish" || it.kind === "fish") return it.sell;
     return Math.max(1, Math.round(it.sell * D.market.sellRate));
   }
 
@@ -3246,7 +3317,7 @@ const FARM_JS_VERSION = "2026-10-19 v2";
     {
       const [x, y, w] = POS.pier;
       const open = zoneUnlocked("碼頭");
-      items.push({ y, svg: `<g class="tap" data-act="pier" role="button" tabindex="0" aria-label="碼頭">${building("pier", x, y, w)}${nameplate(x, y - 20, open ? "碼頭・釣魚準備中" : `碼頭 Lv${zoneLv("碼頭")}`)}</g>` });
+      items.push({ y, svg: `<g class="tap" data-act="pier" role="button" tabindex="0" aria-label="碼頭">${building("pier", x, y, w)}${nameplate(x, y - 20, open ? `碼頭・魚餌 ${have("bait")}` : `碼頭 Lv${zoneLv("碼頭")}`)}</g>` });
     }
 
     /* 許願池 */
@@ -3769,7 +3840,14 @@ const FARM_JS_VERSION = "2026-10-19 v2";
       openSheet("market");
     },
 
-    pier: () => toast(zoneUnlocked("碼頭") ? "🎣 釣魚還在準備中，之後會開放" : `碼頭 Lv${zoneLv("碼頭")} 開放，釣魚之後加入`),
+    pier: () => zoneUnlocked("碼頭") ? openSheet("pier") : toast(`碼頭 Lv${zoneLv("碼頭")} 開放，可以釣魚`),
+    fish: el => fishCast(Number(el.dataset.n) || 1),
+    rodbuy: el => {
+      const msg = buyRod(el.dataset.k);
+      toast(msg === "ok" ? `🎣 買了${D.rods[el.dataset.k].name}` : msg);
+      after();
+    },
+    rodset: el => { if (S.fish.rods[el.dataset.k]) { S.fish.rod = el.dataset.k; after(); } },
 
     zone: el => {
       const zone = el.dataset.zone;
@@ -4329,6 +4407,7 @@ const FARM_JS_VERSION = "2026-10-19 v2";
     UI.sheet = null;
     UI.kitchenPick = null;
     UI.wishResult = null;
+    UI.fishResult = null;
     const el = UI.root.querySelector("#fm-sheet");
     el.hidden = true;
     el.innerHTML = "";
@@ -4447,7 +4526,7 @@ const FARM_JS_VERSION = "2026-10-19 v2";
     storage(t) {
 
       const tab = t.tab || "crop";
-      const kinds = { crop: ["crop"], animal: ["animal", "meat"], goods: ["goods"], dish: ["dish"], other: ["tool", "seed", "use"] };
+      const kinds = { crop: ["crop"], animal: ["animal", "meat"], goods: ["goods"], dish: ["dish"], fish: ["fish"], other: ["tool", "seed", "use"] };
       const keys = Object.keys(S.inv).filter(k => have(k) > 0 && kinds[tab].includes(D.items[k]?.kind));
       const market = zoneUnlocked("市集");
       const used = invUsed();
@@ -4477,7 +4556,7 @@ const FARM_JS_VERSION = "2026-10-19 v2";
       }
 
       return sheetTop("倉庫", `${used} / ${cap > 9999 ? "∞" : cap}`) +
-        tabs([["crop", "作物"], ["animal", "畜產"], ["goods", "加工"], ["dish", "料理"], ["other", "其他"]], tab) +
+        tabs([["crop", "作物"], ["animal", "畜產"], ["goods", "加工"], ["dish", "料理"], ["fish", "魚"], ["other", "其他"]], tab) +
         `<div class="fm-panel"><div class="fm-bar" style="margin-bottom:10px"><i style="width:${Math.min(100, (used / cap) * 100)}%"></i></div>
         <div class="fm-grid">${cards || `<div class="fm-empty">這裡還是空的</div>`}</div>${detail}
         ${market ? "" : `<p class="fm-note" style="margin-top:10px">倉庫 ${cap} 格，Lv15 變 200 格。東西太多可以做成料理，或等市集開放後賣掉。</p>`}</div>`;
@@ -4598,6 +4677,60 @@ const FARM_JS_VERSION = "2026-10-19 v2";
         (S.lv >= D.caps.workshopHalf ? "" : `<p class="fm-note" style="margin:0 14px 14px">Lv${D.caps.workshopHalf} 加工時間減半。</p>`);
     },
 
+    /* ---------- 碼頭：釣魚 ---------- */
+    pier(t) {
+
+      const tab = t.tab || "fish";
+      const bait = have("bait");
+      const rod = rodNow();
+      const tierName = k => D.fishTiers[k].name;
+      let body = "";
+
+      if (tab === "fish") {
+        const res = UI.fishResult || [];
+        const resHtml = res.length ? `<div class="fm-fishres">${res.map(({ k, isNew }) => {
+          const f = D.fish[k];
+          return `<div class="fm-card r-${f.tier}"><div class="fm-card-art">${itemIcon(k)}</div><div class="fm-card-name ol">${esc(f.name)}</div>
+            <div class="fm-fish-tier">${tierName(f.tier)}${isNew ? "・新！" : ""}</div></div>`;
+        }).join("")}</div>${res.length === 1 ? `<p class="fm-note" style="text-align:center;margin:6px 0 0">${esc(D.fish[res[0].k].desc)}・賣 ${D.items[res[0].k].sell} 星露</p>` : ""}` : `<div class="fm-empty">點下面的按鈕，用 1 個魚餌釣一次</div>`;
+        const rates = rod.rate.map((r, i) => `<span class="fm-tag r-${FISH_TIERS[i]}">${tierName(FISH_TIERS[i])} ${r}%</span>`).join(" ");
+        body = `<div class="fm-panel">${resHtml}
+          <div class="fm-fish-btns">
+            <button type="button" class="fm-btn green" data-act="fish" data-n="1" ${bait ? "" : "disabled"}>🎣 釣一次</button>
+            <button type="button" class="fm-btn" data-act="fish" data-n="5" ${bait >= 2 ? "" : "disabled"}>釣 ${Math.min(5, Math.max(1, bait))} 次</button>
+          </div>
+          <p class="fm-note" style="margin:8px 0 4px">${rod.emoji} 現在用 <b>${esc(rod.name)}</b>：</p><div>${rates}</div>
+          ${bait ? "" : `<p class="fm-note" style="margin-top:8px">魚餌在牧場的「魚餌線」做：2 飼料＋1 小麥，10 分鐘 5 個，最多排 5 輪，做好自動收。</p>`}</div>`;
+      } else if (tab === "dex") {
+        const caught = S.fish.caught;
+        const n = Object.keys(D.fish).filter(k => caught[k]).length;
+        const groups = FISH_TIERS.map(tr => {
+          const cards = Object.keys(D.fish).filter(k => D.fish[k].tier === tr).map(k => {
+            const f = D.fish[k], c = caught[k] || 0;
+            return `<div class="fm-card r-${tr}" title="${c ? esc(f.desc) : ""}">${c ? `<span class="fm-card-n">${c}</span>` : ""}<div class="fm-card-art" style="${c ? "" : "filter:brightness(0) opacity(.35)"}">${itemIcon(k)}</div>
+              <div class="fm-card-name ol">${c ? esc(f.name) : "？？？"}</div>${c ? `<div class="fm-fish-tier">${esc(D.dishes[f.dish].name)}</div>` : ""}</div>`;
+          }).join("");
+          return `<h3 class="ol fm-fish-h">${tierName(tr)}</h3><div class="fm-grid">${cards}</div>`;
+        }).join("");
+        body = `<div class="fm-panel"><div class="fm-bar" style="margin-bottom:6px"><i style="width:${n * 2}%"></i></div>
+          <p class="fm-note" style="margin:0 0 6px">已經釣過 ${n} / 50 種，一共釣了 ${num(S.fish.total || 0)} 次。釣到新的魚，廚房就會多一道魚料理。</p>${groups}</div>`;
+      } else {
+        const rows = Object.entries(D.rods).map(([k, r]) => {
+          const mine = !!S.fish.rods[k], using = S.fish.rod === k;
+          const btn = using ? `<span class="fm-tag">使用中</span>`
+            : mine ? `<button type="button" class="fm-btn small" data-act="rodset" data-k="${k}">換上</button>`
+            : `<button type="button" class="fm-btn small green" data-act="rodbuy" data-k="${k}" ${S.lv >= r.lv && S.dew >= r.price ? "" : "disabled"}>${S.lv >= r.lv ? `🌟 ${num(r.price)}` : `Lv${r.lv}`}</button>`;
+          return `<div class="fm-row"><div class="fm-row-art">${r.img ? `<img src="${IMG}${r.img}" alt="">` : `<span class="fm-emo">${r.emoji}</span>`}</div>
+            <div><div class="fm-row-name">${esc(r.name)}</div><div class="fm-row-sub">${r.rate.map((x, i) => `${tierName(FISH_TIERS[i])} ${x}%`).join("・")}</div></div>
+            <div class="fm-row-btns">${btn}</div></div>`;
+        }).join("");
+        body = `<div class="fm-panel"><p class="fm-note" style="margin:0 0 8px">好的釣竿比較容易釣到稀有的魚。買過的釣竿可以隨時換。</p><div class="fm-list">${rows}</div></div>`;
+      }
+
+      return sheetTop("碼頭", `${miniIcon("bait", "🪱")} ${bait}`) + tabs([["fish", "釣魚"], ["dex", "魚類圖鑑"], ["rod", "釣竿"]], tab) + body;
+
+    },
+
     /* ---------- 溫室 ---------- */
     green() {
       const z = plotZone("green");
@@ -4619,7 +4752,7 @@ const FARM_JS_VERSION = "2026-10-19 v2";
         <button type="button" class="fm-btn small" data-act="collectall">${uiIcon("harvest", "fm-btn-ic")}全部收成</button></div>
         <p class="fm-note" style="margin:0">動物每次產出前要吃飼料；幼崽吃飽才會長大。${S.lv >= D.caps.autoFeed ? "自動餵食器運作中。" : `Lv${D.caps.autoFeed} 開自動餵食器。`}</p></div>`;
 
-      const mill = machineHtml("feedmill", true);
+      const mill = machineHtml("feedmill", true) + machineHtml("baitline", true);
 
       let inc = "";
       if (S.lv >= D.zones["孵蛋器"].lv) {
@@ -4700,7 +4833,7 @@ const FARM_JS_VERSION = "2026-10-19 v2";
           const n = S.known.dishes[k] || 0;
           if (n) got++;
           cards += `<div class="fm-card ${rarityClass(k)} ${n ? "" : "locked"}">${n ? `<span class="fm-card-n">${n}</span>` : ""}
-            <div class="fm-card-art">${itemIcon(k)}</div><div class="fm-card-name ol">${n || dishKnown(k) ? esc(d.name) : (d.gacha ? "星願池" : `Lv${d.lv}`)}</div></div>`;
+            <div class="fm-card-art">${itemIcon(k)}</div><div class="fm-card-name ol">${n || dishKnown(k) ? esc(d.name) : (d.fish ? "釣魚" : d.gacha ? "星願池" : `Lv${d.lv}`)}</div></div>`;
         }
       } else {
         for (const [sp, a] of Object.entries(D.animals)) {
@@ -4986,11 +5119,11 @@ const FARM_JS_VERSION = "2026-10-19 v2";
       const ok = hasAll(r.need);
       return `<div class="fm-row ${rarityClass(r.out)}"><div class="fm-row-art">${itemIcon(r.out)}</div>
         <div><div class="fm-row-name">${esc(itemName(r.out))} ×${r.qty}</div>${ingsHtml(r.need)}<div class="fm-row-sub">⏱ ${machineMinutes(r)} 分鐘・+3 EXP</div></div>
-        <div class="fm-row-btns"><button type="button" class="fm-btn small green" data-act="startrecipe" data-r="${k}" ${ok && q.length < QUEUE_MAX ? "" : "disabled"}>做</button></div></div>`;
+        <div class="fm-row-btns"><button type="button" class="fm-btn small green" data-act="startrecipe" data-r="${k}" ${ok && q.length < queueMax(m) ? "" : "disabled"}>做</button></div></div>`;
     }).join("");
 
     return `<div class="${inRanch ? "fm-pen" : "fm-panel"}"><div class="fm-pen-head"><h3 class="ol" style="--olc:#6a4220">${machineTag(info)} ${esc(info.name)}</h3>
-      <span class="fm-note">排隊 ${q.length}/${QUEUE_MAX}</span>${ready ? `<button type="button" class="fm-btn small" data-act="collectmach" data-m="${m}">收取 ${ready}</button>` : ""}</div>
+      <span class="fm-note">排隊 ${q.length}/${queueMax(m)}${info.auto ? "・做好自動收" : ""}</span>${ready && !info.auto ? `<button type="button" class="fm-btn small" data-act="collectmach" data-m="${m}">收取 ${ready}</button>` : ""}</div>
       ${queue ? `<div class="fm-ings" style="margin-bottom:8px">${queue}</div>` : ""}<div class="fm-list">${rows}</div></div>`;
 
   }
