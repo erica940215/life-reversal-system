@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-20 v2";
+const FARM_JS_VERSION = "2026-10-20 v3";
 
 (function () {
 
@@ -198,6 +198,27 @@ const FARM_JS_VERSION = "2026-10-20 v2";
     const c = D.crops[key];
     if (c) return "r-" + c.rarity;
     return "r-c";
+  }
+
+  /* 等級（c/r/l/x/s）：給分類、排序用 */
+  function tierOfKey(key) {
+    const it = D.items[key];
+    if (it && it.tier) return it.tier;
+    const c = D.crops[key];
+    if (c && c.rarity) return c.rarity;
+    return "c";
+  }
+
+  /* 依等級分組：每組前面放一個標題，列表和格子都能用 */
+  function tierGroups(list) {
+    let out = "";
+    for (const t of TIERS) {
+      const part = list.filter(e => e.t === t);
+      if (!part.length) continue;
+      out += `<div class="fm-sec ol" style="grid-column:1/-1">${RARITY_NAME[t]}</div>`;
+      out += part.map(e => e.h).join("");
+    }
+    return out;
   }
 
 
@@ -4712,8 +4733,7 @@ const FARM_JS_VERSION = "2026-10-20 v2";
       }
 
       const known = Object.keys(D.dishes).filter(dishKnown);
-      const can = known.filter(k => hasAll(D.dishes[k].need));
-      const order = [...can, ...known.filter(k => !can.includes(k)).reverse()];
+      const order = known.slice().sort((a, b) => (D.dishes[b].sell || 0) - (D.dishes[a].sell || 0));
       const pick = UI.kitchenPick && dishKnown(UI.kitchenPick) ? UI.kitchenPick : (can[0] || known[known.length - 1]);
 
       let feature = "";
@@ -4788,10 +4808,10 @@ const FARM_JS_VERSION = "2026-10-20 v2";
 
       if (tab === "sell") {
         const keys = Object.keys(S.inv).filter(k => have(k) > 0 && sellPrice(k) > 0);
-        const rows = keys.map(k => `<div class="fm-row ${rarityClass(k)}"><div class="fm-row-art">${itemIcon(k)}</div>
+        const rows = tierGroups(keys.map(k => ({ t: tierOfKey(k), h: `<div class="fm-row ${rarityClass(k)}"><div class="fm-row-art">${itemIcon(k)}</div>
           <div><div class="fm-row-name">${esc(itemName(k))} ×${have(k)}</div><div class="fm-row-sub">一個 ${sellPrice(k)} 星露</div></div>
           <div class="fm-row-btns"><button type="button" class="fm-btn small" data-act="sell" data-item="${k}" data-qty="1">賣 1</button>
-          <button type="button" class="fm-btn small" data-act="sell" data-item="${k}" data-qty="all">全部 ${num(sellPrice(k) * have(k))}</button></div></div>`).join("");
+          <button type="button" class="fm-btn small" data-act="sell" data-item="${k}" data-qty="all">全部 ${num(sellPrice(k) * have(k))}</button></div></div>` })), null);
         return sheetTop("市集", `🌟 ${num(S.dew)}`) + tabs([["buy", "買東西"], ["sell", "賣東西"]], tab) +
           `<div class="fm-panel"><p class="fm-note" style="margin:0 0 8px">作物和材料用原價 6 成收購，料理照原價。</p><div class="fm-list">${rows || `<div class="fm-empty">倉庫裡沒有可以賣的</div>`}</div></div>`;
       }
@@ -4941,7 +4961,8 @@ const FARM_JS_VERSION = "2026-10-20 v2";
     book(t) {
 
       const tab = t.tab || "crop";
-      let cards = "", got = 0, total = 0;
+      let got = 0, total = 0;
+      const cardList = [];
 
       if (tab === "ach") {
         const done = ACH.filter(a => net.ach.claimed.has(a[0])).length;
@@ -4969,27 +4990,28 @@ const FARM_JS_VERSION = "2026-10-20 v2";
           total++;
           const n = S.known.crops[k] || 0;
           if (n) got++;
-          cards += `<div class="fm-card ${rarityClass(k)} ${n ? "" : "locked"}">${n ? `<span class="fm-card-n">${n}</span>` : ""}
+          cardList.push({ t: c.rarity || "c", h: `<div class="fm-card ${rarityClass(k)} ${n ? "" : "locked"}">${n ? `<span class="fm-card-n">${n}</span>` : ""}
             <div class="fm-card-art">${c.icon ? `<img src="${IMG}crop/${k}_i.webp" alt="">` : `<span class="fm-emo">${c.emoji}</span>`}</div>
-            <div class="fm-card-name ol">${n ? esc(c.name) : (c.lv ? `Lv${c.lv}` : "星願池")}</div></div>`;
+            <div class="fm-card-name ol">${n ? esc(c.name) : (c.lv ? `Lv${c.lv}` : "星願池")}</div></div>` });
         }
       } else if (tab === "dish") {
         for (const [k, d] of Object.entries(D.dishes)) {
           total++;
           const n = S.known.dishes[k] || 0;
           if (n) got++;
-          cards += `<div class="fm-card ${rarityClass(k)} ${n ? "" : "locked"}">${n ? `<span class="fm-card-n">${n}</span>` : ""}
-            <div class="fm-card-art">${itemIcon(k)}</div><div class="fm-card-name ol">${n || dishKnown(k) ? esc(d.name) : (d.fish ? "釣魚" : d.gacha ? "星願池" : `Lv${d.lv}`)}</div></div>`;
+          cardList.push({ t: tierOfKey(k), h: `<div class="fm-card ${rarityClass(k)} ${n ? "" : "locked"}">${n ? `<span class="fm-card-n">${n}</span>` : ""}
+            <div class="fm-card-art">${itemIcon(k)}</div><div class="fm-card-name ol">${n || dishKnown(k) ? esc(d.name) : (d.fish ? "釣魚" : d.gacha ? "星願池" : `Lv${d.lv}`)}</div></div>` });
         }
       } else {
         for (const [sp, a] of Object.entries(D.animals)) {
           total++;
           const n = S.known.animals[sp] || 0;
           if (n) got++;
-          cards += `<div class="fm-card r-${a.tier || "c"} ${n ? "" : "locked"}"><div class="fm-card-art">${animalIcon(sp, true)}</div><div class="fm-card-name ol">${n ? esc(a.name) : (a.gacha ? "星願池" : `Lv${a.lv}`)}</div></div>`;
+          cardList.push({ t: a.tier || "c", h: `<div class="fm-card r-${a.tier || "c"} ${n ? "" : "locked"}"><div class="fm-card-art">${animalIcon(sp, true)}</div><div class="fm-card-name ol">${n ? esc(a.name) : (a.gacha ? "星願池" : `Lv${a.lv}`)}</div></div>` });
         }
       }
 
+      const cards = tierGroups(cardList);
       return sheetTop("圖鑑", `${got} / ${total}`) + tabs([["crop", "作物"], ["dish", "料理"], ["animal", "動物"], ["ach", "成就"]], tab) +
         `<div class="fm-panel"><div class="fm-bar" style="margin-bottom:10px"><i style="width:${(got / total) * 100}%"></i></div><div class="fm-grid">${cards}</div></div>`;
 
