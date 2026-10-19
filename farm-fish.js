@@ -70,8 +70,14 @@
     ["cloud_peak_shark", "雲巔鮫", "s", "住在雲層裡的鯊魚，很少落到水面", "dish_coffee_cloud", "雲巔咖啡鮫", { coffee: 1, cacao: 1 }]
   ];
 
-  /* 圖已經上傳的（之後放圖時把檔名加進來；沒有圖先用表情符號） */
-  const HAS_IMG = new Set(window.FARM_FISH_IMG || []);
+  /* 已經有圖的魚（img/farm/fish/<key>.webp）；沒有圖的先用表情符號 */
+  const HAS_IMG = new Set([
+    "moon_minnow","paper_boat_fish","cotton_carp","honey_perch","bubble_fish","reed_loach","match_snapper","bun_catfish",
+    "rain_snapper","maple_carp","bell_eel","mint_guppy","star_goby","carpenter_fish","sakura_trout","snail_catfish",
+    "lantern_jelly","ink_shark","glass_mackerel","clay_gator","stalactite_whale","sugar_snapper","spruce_salmon",
+    "clock_carp","aurora_ray","mirror_fish","starsea_turtle",
+    "xuguang_fish","dragon_bone_whale","counter_king"
+  ]);
 
   D.fishTiers = TIER;
   D.fish = {};
