@@ -4696,7 +4696,7 @@ const FARM_JS_VERSION = "2026-10-19 v3";
         const rates = rod.rate.map((r, i) => `<span class="fm-tag r-${FISH_TIERS[i]}">${tierName(FISH_TIERS[i])} ${r}%</span>`).join(" ");
         body = `<div class="fm-panel">${resHtml}
           <div class="fm-fish-btns">
-            <button type="button" class="fm-btn green" data-act="fish" data-n="1" ${bait ? "" : "disabled"}>🎣 釣一次</button>
+            <button type="button" class="fm-btn green" data-act="fish" data-n="1" ${bait ? "" : "disabled"}>${uiIcon("fish_cast", "fm-btn-ic")}釣一次</button>
             <button type="button" class="fm-btn" data-act="fish" data-n="5" ${bait >= 2 ? "" : "disabled"}>釣 ${Math.min(5, Math.max(1, bait))} 次</button>
           </div>
           <p class="fm-note" style="margin:8px 0 4px">${rod.emoji} 現在用 <b>${esc(rod.name)}</b>：</p><div>${rates}</div>

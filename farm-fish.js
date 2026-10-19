@@ -98,12 +98,12 @@
     steel: { name: "鋼竿", price: 1500, lv: 25, rate: [38, 25, 21, 12, 4], emoji: "🎣" },
     starsand: { name: "星砂竿", price: 5000, lv: 35, rate: [30, 24, 24, 15, 7], emoji: "✨" }
   };
-  for (const k of Object.keys(D.rods)) if (HAS_IMG.has("rod_" + k)) D.rods[k].img = `../ui/rod_${k}.webp`;
+  for (const k of Object.keys(D.rods)) D.rods[k].img = `../ui/rod_${k}.webp`;
 
   /* 魚餌：飼料機旁邊的第二條生產線，10 分鐘做 5 個，最多排 5 輪，做好自動收 */
   D.items.bait = { name: "魚餌", emoji: "🪱", kind: "goods", tier: "c", desc: "釣一次魚用 1 個" };
-  if (HAS_IMG.has("bait")) D.items.bait.img = "../ui/bait.webp";
+  D.items.bait.img = "../ui/bait.webp";
   D.machines.baitline = { name: "魚餌線", lv: 15, where: "ranch", emoji: "🪱", queue: 5, fixed: true, auto: true };
-  if (HAS_IMG.has("bait")) D.machines.baitline.img = "../ui/bait.webp";
+  D.machines.baitline.img = "../ui/bait.webp";
   D.recipes.bait = { out: "bait", qty: 5, need: { feed: 2, wheat: 1 }, minutes: 10, machine: "baitline", lv: 15 };
 })();
