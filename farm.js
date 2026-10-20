@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-20 v9";
+const FARM_JS_VERSION = "2026-10-20 v10";
 
 (function () {
 
@@ -373,6 +373,7 @@ const FARM_JS_VERSION = "2026-10-20 v9";
       orders: null,
       ord: null,
       housing: {},
+      tank: {},
       day: null,
       wcred: {},
       drip: now(),
@@ -1693,6 +1694,12 @@ const FARM_JS_VERSION = "2026-10-20 v9";
   /* =========================================================
      12. 市集
   ========================================================= */
+
+  /* 魚缸：放不煮的魚，只存數量，不佔倉庫格子；最多 30 條 */
+  const TANK_MAX = 30;
+  const tankTotal = () => Object.values(S.tank || {}).reduce((a, b) => a + b, 0);
+  const tankList = () => Object.entries(S.tank || {}).filter(([, n]) => n > 0)
+    .sort((a, b) => TIERS.indexOf(D.fish[b[0]]?.tier) - TIERS.indexOf(D.fish[a[0]]?.tier));
 
   const STARDUST_RATE = 100;
   const MARKET_TABS = [["buy", "買東西"], ["sell", "賣東西"], ["exch", "兌換星屑"]];
@@ -4245,6 +4252,27 @@ const FARM_JS_VERSION = "2026-10-20 v9";
       after();
     },
 
+    tankin: el => {
+      const k = el.dataset.item;
+      const n = Math.min(have(k), el.dataset.qty === "all" ? have(k) : 1, TANK_MAX - tankTotal());
+      if (n <= 0) return toast(tankTotal() >= TANK_MAX ? "魚缸滿了" : "沒有這種魚");
+      takeItem(k, n);
+      S.tank = S.tank || {};
+      S.tank[k] = (S.tank[k] || 0) + n;
+      after();
+    },
+
+    tankout: el => {
+      const k = el.dataset.item;
+      const have_ = (S.tank && S.tank[k]) || 0;
+      const n = Math.min(have_, el.dataset.qty === "all" ? have_ : 1, invSpace());
+      if (n <= 0) return toast(invSpace() < 1 ? "倉庫滿了，先騰出位子" : "魚缸裡沒有這種魚");
+      addItem(k, n);
+      S.tank[k] = have_ - n;
+      if (S.tank[k] <= 0) delete S.tank[k];
+      after();
+    },
+
     upghouse: el => {
       const sp = el.dataset.sp;
       const lv = houseLv(sp);
@@ -4966,7 +4994,22 @@ const FARM_JS_VERSION = "2026-10-20 v9";
         body = `<div class="fm-panel"><p class="fm-note" style="margin:0 0 8px">基本釣竿可以買，特殊釣竿要靠條件解鎖。買過或解鎖過的釣竿可以隨時換。傳說紀錄：${S.fish.legends || 0} 次</p><div class="fm-list">${rows}</div></div>`;
       }
 
-      return sheetTop("碼頭", `${miniIcon("bait", "🪱")} ${bait}`) + tabs([["fish", "釣魚"], ["dex", "魚類圖鑑"], ["rod", "釣竿"]], tab) + body;
+      if (tab === "tank") {
+        const inTank = tankList();
+        const total = tankTotal();
+        const inv = Object.keys(S.inv).filter(k => D.items[k]?.kind === "fish" && have(k) > 0);
+        const row = (k, n, mode) => `<div class="fm-row ${rarityClass(k)}"><div class="fm-row-art">${itemIcon(k)}</div>
+          <div><div class="fm-row-name">${esc(itemName(k))} ×${n}</div><div class="fm-row-sub">${D.fish[k] ? esc(D.fish[k].desc) : ""}</div></div>
+          <div class="fm-row-btns"><button type="button" class="fm-btn small" data-act="${mode}" data-item="${k}" data-qty="1">${mode === "tankin" ? "放 1" : "拿 1"}</button>
+          <button type="button" class="fm-btn small" data-act="${mode}" data-item="${k}" data-qty="all">${mode === "tankin" ? "全部放" : "全部拿"}</button></div></div>`;
+        const tankHtml = inTank.map(([k, n]) => row(k, n, "tankout")).join("");
+        const invHtml = inv.map(k => row(k, have(k), "tankin")).join("");
+        body = `<div class="fm-panel"><div class="fm-sec ol">魚缸 ${total} / ${TANK_MAX}</div><p class="fm-note" style="margin:0 0 8px">把不想煮的魚放進來，之後還是可以拿出來。</p>
+          <div class="fm-list">${tankHtml || `<div class="fm-empty">魚缸是空的</div>`}</div></div>
+          <div class="fm-panel"><div class="fm-sec ol">背包裡的魚</div><div class="fm-list">${invHtml || `<div class="fm-empty">背包裡沒有魚</div>`}</div></div>`;
+      }
+
+      return sheetTop("碼頭", `${miniIcon("bait", "🪱")} ${bait}`) + tabs([["fish", "釣魚"], ["dex", "魚類圖鑑"], ["rod", "釣竿"], ["tank", "魚缸"]], tab) + body;
 
     },
 
