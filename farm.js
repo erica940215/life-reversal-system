@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-20 v10";
+const FARM_JS_VERSION = "2026-10-20 v11";
 
 (function () {
 
@@ -253,7 +253,7 @@ const FARM_JS_VERSION = "2026-10-20 v10";
   function storageCap(lv = S.lv) {
     const base = capRow(D.caps.storage, lv)[1];
     if (base > 9999) return base;
-    return base + (own("tool_bigbasket") ? 50 : 0) + (own("s_harvestbarn") ? 200 : 0);
+    return base + 100 + (own("tool_bigbasket") ? 50 : 0) + (own("s_harvestbarn") ? 200 : 0);
   }
 
   function sprinklerCap(lv = S.lv) {
