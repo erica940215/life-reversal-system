@@ -233,7 +233,42 @@
     }
   }
 
+  /* 專注頁的好友專注狀態（每秒跳時間） */
+  function focusFriendsHtml() {
+    const offset = FR.localAt - FR.fetchedAt;
+    const list = FR.list.filter(f => f.status === "accepted");
+    if (!hasDb()) return "";
+    if (!list.length) return `<div class="fr-empty">還沒有好友，到「好友」按鈕加好友後，這裡會看到他們的專注狀態。</div>`;
+    return list.map(f => {
+      if (f.hidden) {
+        return `<div class="fr-card"><div class="fr-friend"><div class="fr-ava">${esc(f.name.slice(0, 1))}</div>
+          <div><div class="fr-name">${esc(f.name)}</div><div class="fr-sub">沒有公開今天的狀態</div></div></div></div>`;
+      }
+      const st = f.focus_state;
+      const liveMs = st === "running" ? f.focus_live_ms + (Date.now() - offset - FR.fetchedAt) : f.focus_live_ms;
+      const todaySec = f.focus_today_sec + (st !== "idle" ? Math.floor(liveMs / 1000) : 0);
+      const live = st === "running"
+        ? `<div class="fr-stat live"><b data-fr-live="${f.id}">${fmtDur(liveMs)}</b><span>專注中</span></div>`
+        : st === "paused"
+          ? `<div class="fr-stat paused"><b>${fmtDur(liveMs)}</b><span>暫停中</span></div>`
+          : `<div class="fr-stat"><b>－</b><span>沒在專注</span></div>`;
+      return `<div class="fr-card"><div class="fr-friend">
+          <div class="fr-ava ${st === "running" ? "on" : st === "paused" ? "pause" : ""}">${esc(f.name.slice(0, 1))}</div>
+          <div><div class="fr-name">${esc(f.name)}</div><div class="fr-sub">${st === "running" ? "🟢 正在專注" : st === "paused" ? "🟠 專注暫停中" : "沒有在專注"}</div></div></div>
+        <div class="fr-stats">${live}<div class="fr-stat"><b data-fr-today="${f.id}">${fmtMin(todaySec)}</b><span>今天專注</span></div></div></div>`;
+    }).join("");
+  }
+
+  function renderFocusFriends() {
+    const el = document.getElementById("focus-friends");
+    if (!el) return;
+    if (!hasDb() || FR.ready === false) { el.innerHTML = ""; return; }
+    if (FR.ready === null) { el.innerHTML = `<div class="fr-sec">好友專注</div><div class="fr-empty">載入中…</div>`; return; }
+    el.innerHTML = `<div class="fr-sec">好友專注</div>` + focusFriendsHtml();
+  }
+
   function render() {
+    renderFocusFriends();
     const ov = document.getElementById("fr-overlay");
     if (!ov || !FR.open) return;
     const panel = ov.querySelector(".fr-panel");
@@ -282,22 +317,12 @@
               <div><div class="fr-name">${esc(f.name)}</div><div class="fr-sub">沒有公開今天的狀態</div></div>
               <button type="button" class="fr-more" data-fr="remove" data-id="${f.id}" data-name="${esc(f.name)}" aria-label="刪除好友">⋯</button></div></div>`;
           }
-          const st = f.focus_state;
-          const liveMs = st === "running" ? f.focus_live_ms + (Date.now() - offset - FR.fetchedAt) : f.focus_live_ms;
-          const todaySec = f.focus_today_sec + (st !== "idle" ? Math.floor(liveMs / 1000) : 0);
-          const live = st === "running"
-            ? `<div class="fr-stat live"><b data-fr-live="${f.id}">${fmtDur(liveMs)}</b><span>專注中</span></div>`
-            : st === "paused"
-              ? `<div class="fr-stat paused"><b>${fmtDur(liveMs)}</b><span>暫停中</span></div>`
-              : `<div class="fr-stat"><b>－</b><span>沒在專注</span></div>`;
           return `<div class="fr-card"><div class="fr-friend">
-              <div class="fr-ava ${st === "running" ? "on" : st === "paused" ? "pause" : ""}">${esc(f.name.slice(0, 1))}</div>
-              <div><div class="fr-name">${esc(f.name)}</div><div class="fr-sub">${st === "running" ? "🟢 正在專注" : st === "paused" ? "🟠 專注暫停中" : `最後活動：${ago(f.last_active)}`}</div></div>
+              <div class="fr-ava">${esc(f.name.slice(0, 1))}</div>
+              <div><div class="fr-name">${esc(f.name)}</div><div class="fr-sub">最後活動：${ago(f.last_active)}</div></div>
               <button type="button" class="fr-more" data-fr="remove" data-id="${f.id}" data-name="${esc(f.name)}" aria-label="刪除好友">⋯</button></div>
             <div class="fr-stats">
               <div class="fr-stat"><b>${f.tasks_today}</b><span>今天完成任務</span></div>
-              ${live}
-              <div class="fr-stat"><b data-fr-today="${f.id}">${fmtMin(todaySec)}</b><span>今天專注</span></div>
             </div></div>`;
         }).join("");
       }
@@ -308,7 +333,7 @@
           <button type="button" class="fr-btn ghost" data-fr="cancel" data-id="${f.id}">取消</button></div></div>`).join("");
       }
 
-      body += `<p class="fr-note">好友只看得到：今天完成幾個任務、有沒有在專注、這次專注多久、今天專注多久。看不到任務名稱和專注科目。</p>`;
+      body += `<p class="fr-note">好友只看得到：今天完成幾個任務。專注的狀態在「專注」頁看。看不到任務名稱和專注科目。</p>`;
     }
 
     const keep = document.getElementById("fr-code-in");
@@ -323,7 +348,6 @@
 
   /* 專注中的時間每秒跳 */
   function tickLive() {
-    if (!FR.open) return;
     const offset = FR.localAt - FR.fetchedAt;
     for (const f of FR.list) {
       if (f.status !== "accepted" || f.focus_state !== "running") continue;
@@ -394,5 +418,9 @@
   else ensureUi();
 
   window.FriendsPanel = { open: openPanel, close: closePanel, reload: loadAll, state: FR };
+
+  /* 專注頁也要看到好友狀態：面板關著時也每 30 秒更新、每秒跳時間 */
+  setInterval(tickLive, 1000);
+  setInterval(() => { if (!FR.open) loadAll(); }, 30000);
 
 })();
