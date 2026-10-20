@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-20 v8";
+const FARM_JS_VERSION = "2026-10-20 v9";
 
 (function () {
 
@@ -4867,8 +4867,8 @@ const FARM_JS_VERSION = "2026-10-20 v8";
         const btn = n => `<button type="button" class="fm-btn small green" data-act="exchstar" data-n="${n}" ${S.dew >= n * STARDUST_RATE ? "" : "disabled"}>兌換 ${n} 個（${num(n * STARDUST_RATE)} 星露）</button>`;
         return sheetTop("市集", `🌟 ${num(S.dew)}`) + tabs(MARKET_TABS, tab) +
           `<div class="fm-panel"><div class="fm-row"><div class="fm-row-art">${miniIcon("stardust", "⭐")}</div>
-            <div><div class="fm-row-name">星露兌換星屑</div><div class="fm-row-sub">1 個星屑 = ${num(one)} 星露・每天最多兌換 10 個</div></div></div>
-            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">${btn(1)}${btn(5)}${btn(10)}</div>
+            <div><div class="fm-row-name">星露兌換星屑</div><div class="fm-row-sub">1 個星屑 = ${num(one)} 星露・每天最多兌換 20 個</div></div></div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">${btn(1)}${btn(5)}${btn(10)}${btn(20)}</div>
             ${net.mode === "server" ? "" : `<p class="fm-note" style="margin-top:8px">資料庫設定好之後才能兌換。</p>`}</div>`;
       }
 

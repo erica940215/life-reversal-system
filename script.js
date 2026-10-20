@@ -924,10 +924,10 @@ function getTaskReward(difficulty) {
 function getTaskDust(difficulty) {
 
   const dust = {
-    easy: 1,
-    normal: 2,
-    hard: 3,
-    epic: 5
+    easy: 2,
+    normal: 3,
+    hard: 5,
+    epic: 8
   };
 
   return dust[difficulty] ?? 2;

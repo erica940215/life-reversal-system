@@ -3,11 +3,11 @@
 -- 可以重複執行。要先執行過「簽到發券與背包」（需要 grant_item）。
 --
 -- 每張訂單交單時，伺服器隨機抽一份獎勵：
---   40%  ⭐ 星屑 ×1
---   25%  ⭐ 星屑 ×3
+--   40%  ⭐ 星屑 ×2
+--   25%  ⭐ 星屑 ×4
 --   20%  🎫 普通星願券 ×1
 --   10%  🎟️ 普通召喚券 ×1
---    5%  ⭐ 星屑 ×6
+--    5%  ⭐ 星屑 ×8
 -- 同一張訂單（day:slot）只能領一次。
 -- =========================================================
 
@@ -29,11 +29,11 @@ begin
   end if;
 
   v_roll := floor(random() * 100)::integer;
-  if v_roll < 40 then        v_item := 'stardust';    v_qty := 1;
-  elsif v_roll < 65 then     v_item := 'stardust';    v_qty := 3;
+  if v_roll < 40 then        v_item := 'stardust';    v_qty := 2;
+  elsif v_roll < 65 then     v_item := 'stardust';    v_qty := 4;
   elsif v_roll < 85 then     v_item := 'wish_normal'; v_qty := 1;
   elsif v_roll < 95 then     v_item := 'ticket_normal'; v_qty := 1;
-  else                       v_item := 'stardust';    v_qty := 6;
+  else                       v_item := 'stardust';    v_qty := 8;
   end if;
 
   perform public.grant_item(v_user, v_item, v_qty, 'farmorder:' || p_key);

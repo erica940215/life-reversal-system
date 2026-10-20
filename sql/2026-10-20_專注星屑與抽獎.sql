@@ -2,7 +2,7 @@
 -- 序光計畫：專注也能拿星屑；專注每滿一小時送一張星願券（普通）
 -- 可以重複執行。要先執行過「簽到發券與背包」（需要 grant_item）與「星願池」。
 --
---   每滿 30 分鐘 → ⭐ 1 星屑
+--   每滿 20 分鐘 → ⭐ 1 星屑
 --   每滿 1 小時  → 🎫 1 張 wish_normal（普通星願券，給星願池抽）
 --
 -- 以「今天」為單位累計專注秒數，每個里程碑只發一次（source_key 固定，grant_item 會擋重複）。
@@ -36,7 +36,7 @@ begin
     from public.focus_sessions
     where user_id = v_user and session_date = v_today;
 
-  v_half  := v_seconds / 1800;
+  v_half  := v_seconds / 1200;
   v_hours := v_seconds / 3600;
 
   for i in 1..v_half loop

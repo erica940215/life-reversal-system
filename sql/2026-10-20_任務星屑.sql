@@ -38,7 +38,7 @@ begin
   select * into v_profile from public.profiles where id = v_user_id for update;
   if not found then raise exception '找不到玩家資料'; end if;
 
-  v_dust := case v_task.difficulty when 'easy' then 1 when 'hard' then 3 when 'epic' then 5 else 2 end;
+  v_dust := case v_task.difficulty when 'easy' then 2 when 'hard' then 5 when 'epic' then 8 else 3 end;
 
   v_new_exp   := v_profile.exp + v_task.exp_reward;
   v_new_gold  := v_profile.gold;          -- 任務不再給金幣
