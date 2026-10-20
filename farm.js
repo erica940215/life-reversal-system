@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-20 v7";
+const FARM_JS_VERSION = "2026-10-20 v8";
 
 (function () {
 
@@ -1693,6 +1693,9 @@ const FARM_JS_VERSION = "2026-10-20 v7";
   /* =========================================================
      12. 市集
   ========================================================= */
+
+  const STARDUST_RATE = 100;
+  const MARKET_TABS = [["buy", "買東西"], ["sell", "賣東西"], ["exch", "兌換星屑"]];
 
   function sellPrice(key) {
     const it = D.items[key];
@@ -4230,6 +4233,18 @@ const FARM_JS_VERSION = "2026-10-20 v7";
 
     buyanimal: el => openModal("buyanimal", { sp: el.dataset.sp }),
 
+    exchstar: async el => {
+      const n = Number(el.dataset.n);
+      const cost = n * STARDUST_RATE;
+      if (net.mode !== "server") return toast("資料庫設定好之後才能兌換");
+      if (S.dew < cost) return toast(`星露不夠：需要 ${num(cost)}`);
+      const { data, error } = await db.rpc("farm_exchange_stardust", { p_count: n });
+      if (error) return toast("兌換失敗：" + error.message);
+      addDew(-cost);
+      toast(`⭐ 兌換 ${n} 個星屑（今天 ${data.used}/${data.cap}）`);
+      after();
+    },
+
     upghouse: el => {
       const sp = el.dataset.sp;
       const lv = houseLv(sp);
@@ -4847,6 +4862,16 @@ const FARM_JS_VERSION = "2026-10-20 v7";
 
       const tab = t.tab || "buy";
 
+      if (tab === "exch") {
+        const one = STARDUST_RATE;
+        const btn = n => `<button type="button" class="fm-btn small green" data-act="exchstar" data-n="${n}" ${S.dew >= n * STARDUST_RATE ? "" : "disabled"}>兌換 ${n} 個（${num(n * STARDUST_RATE)} 星露）</button>`;
+        return sheetTop("市集", `🌟 ${num(S.dew)}`) + tabs(MARKET_TABS, tab) +
+          `<div class="fm-panel"><div class="fm-row"><div class="fm-row-art">${miniIcon("stardust", "⭐")}</div>
+            <div><div class="fm-row-name">星露兌換星屑</div><div class="fm-row-sub">1 個星屑 = ${num(one)} 星露・每天最多兌換 10 個</div></div></div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">${btn(1)}${btn(5)}${btn(10)}</div>
+            ${net.mode === "server" ? "" : `<p class="fm-note" style="margin-top:8px">資料庫設定好之後才能兌換。</p>`}</div>`;
+      }
+
       if (tab === "sell") {
         const keys = Object.keys(S.inv).filter(k => have(k) > 0 && sellPrice(k) > 0);
         const cats = [["dish", "料理", ["dish"]], ["food", "食材", ["crop", "animal", "meat"]], ["fish", "魚類", ["fish"]], ["goods", "加工品", ["goods"]]];
@@ -4860,7 +4885,7 @@ const FARM_JS_VERSION = "2026-10-20 v7";
           if (!ks.length) return "";
           return `<div class="fm-sec ol" style="margin:10px 0 6px">${label}</div>` + ks.map(rowHtml).join("");
         }).join("");
-        return sheetTop("市集", `🌟 ${num(S.dew)}`) + tabs([["buy", "買東西"], ["sell", "賣東西"]], tab) +
+        return sheetTop("市集", `🌟 ${num(S.dew)}`) + tabs(MARKET_TABS, tab) +
           `<div class="fm-panel"><p class="fm-note" style="margin:0 0 8px">作物和材料用原價 6 成收購，料理照原價。</p><div class="fm-list">${rows || `<div class="fm-empty">倉庫裡沒有可以賣的</div>`}</div></div>`;
       }
 
@@ -4872,7 +4897,7 @@ const FARM_JS_VERSION = "2026-10-20 v7";
           ${S.dew >= price * 5 ? `<button type="button" class="fm-btn small" data-act="buy" data-item="${k}" data-qty="5">買 5</button>` : ""}</div></div>`;
       }).join("");
 
-      return sheetTop("市集", `🌟 ${num(S.dew)}`) + tabs([["buy", "買東西"], ["sell", "賣東西"]], tab) + `<div class="fm-panel"><div class="fm-list">${rows}</div></div>`;
+      return sheetTop("市集", `🌟 ${num(S.dew)}`) + tabs(MARKET_TABS, tab) + `<div class="fm-panel"><div class="fm-list">${rows}</div></div>`;
 
     },
 
