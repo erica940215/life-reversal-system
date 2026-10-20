@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-20 v6";
+const FARM_JS_VERSION = "2026-10-20 v7";
 
 (function () {
 
@@ -276,9 +276,15 @@ const FARM_JS_VERSION = "2026-10-20 v6";
     return D.caps.kitchen[S.kitchen.tier + 1] || null;
   }
 
+  /* 住處升級：每種動物各自升級，最多 5 級，每級 +1 隻（在 Lv 加倍之後再加） */
+  const HOUSE_MAX = 5;
+  const houseLv = sp => (S.housing && S.housing[sp]) || 0;
+  const houseCost = sp => 300 * (houseLv(sp) + 1);
+
   function animalCap(sp) {
     const base = D.animals[sp].cap;
-    return S.lv >= D.caps.animalDouble ? base * 2 : base;
+    const mult = S.lv >= D.caps.animalDouble ? 2 : 1;
+    return base * mult + houseLv(sp);
   }
 
   function zoneLv(zone) {
@@ -366,6 +372,7 @@ const FARM_JS_VERSION = "2026-10-20 v6";
       goals: null,
       orders: null,
       ord: null,
+      housing: {},
       day: null,
       wcred: {},
       drip: now(),
@@ -4223,6 +4230,17 @@ const FARM_JS_VERSION = "2026-10-20 v6";
 
     buyanimal: el => openModal("buyanimal", { sp: el.dataset.sp }),
 
+    upghouse: el => {
+      const sp = el.dataset.sp;
+      const lv = houseLv(sp);
+      if (lv >= HOUSE_MAX) return toast("住處已經是最高級了");
+      if (!spend(houseCost(sp))) return;
+      S.housing = S.housing || {};
+      S.housing[sp] = lv + 1;
+      toast(`🏠 ${D.animals[sp].house} 升到 ${lv + 1} 級，可以多住 1 隻`);
+      after();
+    },
+
     incubate: el => {
       const res = incubate(el.dataset.egg);
       if (res !== "ok") return toast(res);
@@ -4976,7 +4994,9 @@ const FARM_JS_VERSION = "2026-10-20 v6";
         const breedTxt = info.breed === "pair"
           ? (S.ranch.breed[sp] ? `下一隻寶寶 <span data-until="${S.ranch.breed[sp]}">${dur(S.ranch.breed[sp] - now())}</span>` : "2 隻成年的放一起會生寶寶")
           : info.breed === "egg" ? "蛋放進孵蛋器會孵出寶寶" : "";
-        return `<div class="fm-pen"><div class="fm-pen-head"><h3 class="ol" style="--olc:#6a4220">${houseIcon(sp)} ${esc(info.house)}</h3><span class="fm-note">${list.length}/${cap}</span></div>
+        const hl = houseLv(sp);
+        const upBtn = `<button type="button" class="fm-btn small" data-act="upghouse" data-sp="${sp}" ${hl < HOUSE_MAX ? "" : "disabled"}>${hl < HOUSE_MAX ? `升級住處 ${hl}/${HOUSE_MAX}・${num(houseCost(sp))} 星露` : `住處已滿級 ${hl}/${HOUSE_MAX}`}</button>`;
+        return `<div class="fm-pen"><div class="fm-pen-head"><h3 class="ol" style="--olc:#6a4220">${houseIcon(sp)} ${esc(info.house)}</h3><span class="fm-note">${list.length}/${cap}</span>${upBtn}</div>
           <div class="fm-animals">${tiles}${empty}</div>${breedTxt ? `<p class="fm-note" style="margin:6px 0 0">${breedTxt}</p>` : ""}</div>`;
       }).filter(Boolean).join("");
 
