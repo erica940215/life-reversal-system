@@ -4134,8 +4134,17 @@ const FARM_JS_VERSION = "2026-10-20 v11";
       const t = UI.sheet;
       if (!t) return;
       const crop = el.dataset.crop;
-      const all = el.dataset.all === "1";
-      doPlant(t.zone, t.key, crop, all);
+      const n = el.dataset.n ? Number(el.dataset.n) : false;
+      doPlant(t.zone, t.key, crop, n);
+    },
+
+    plantq: el => {
+      const k = el.dataset.crop;
+      const max = Math.max(1, Number(el.dataset.max) || 1);
+      UI.plantQty = UI.plantQty || {};
+      const cur = UI.plantQty[k] || 1;
+      UI.plantQty[k] = Math.min(max, Math.max(1, cur + Number(el.dataset.v)));
+      renderSheet();
     },
 
     sprinkler: () => {
@@ -4442,7 +4451,9 @@ const FARM_JS_VERSION = "2026-10-20 v11";
     }
 
     const z = plotZone(zone);
-    const keys = all ? [key, ...z.keys.filter(k => k !== key && !z.store[k])] : [key];
+    /* all：true 種滿空格；數字 n 種 n 格（從點的那格開始）；false 只種一格 */
+    const limit = typeof all === "number" ? all : (all ? Infinity : 1);
+    const keys = [key, ...z.keys.filter(k => k !== key && !z.store[k])].slice(0, limit);
     let planted = 0, thirsty = 0, err = null;
 
     for (const k of keys) {
@@ -4717,8 +4728,16 @@ const FARM_JS_VERSION = "2026-10-20 v11";
         else sub = `${hoursText(c.hours)}・${price}・收成 ${c.sell} 星露、${c.exp} EXP`;
         const byDew = !isFinite(cost) ? 0 : cost > 0 ? Math.floor(S.dew / cost) : emptyCount;
         const maxN = Math.min(emptyCount, seeds + byDew);
-        const btns = `<button type="button" class="fm-btn small green" data-act="plant" data-crop="${k}" ${afford ? "" : "disabled"}>種這格</button>` +
-          (emptyCount > 1 && maxN > 1 ? `<button type="button" class="fm-btn small" data-act="plant" data-crop="${k}" data-all="1">種 ${maxN} 格</button>` : "");
+        let btns;
+        if (emptyCount > 1 && maxN > 1) {
+          const q = Math.min(maxN, Math.max(1, (UI.plantQty && UI.plantQty[k]) || 1));
+          btns = `<div class="fm-qty"><button type="button" class="fm-btn small" data-act="plantq" data-crop="${k}" data-v="-1" data-max="${maxN}" ${q <= 1 ? "disabled" : ""}>－</button>
+            <span class="fm-qty-n">${q} 格</span>
+            <button type="button" class="fm-btn small" data-act="plantq" data-crop="${k}" data-v="1" data-max="${maxN}" ${q >= maxN ? "disabled" : ""}>＋</button></div>
+            <button type="button" class="fm-btn small green" data-act="plant" data-crop="${k}" data-n="${q}" ${afford ? "" : "disabled"}>種 ${q} 格</button>`;
+        } else {
+          btns = `<button type="button" class="fm-btn small green" data-act="plant" data-crop="${k}" ${afford ? "" : "disabled"}>種這格</button>`;
+        }
         return `<div class="fm-row ${rarityClass(k)}">
           <div class="fm-row-art">${c.icon ? `<img src="${IMG}crop/${k}_i.webp" alt="">` : `<span class="fm-emo">${c.emoji}</span>`}</div>
           <div><div class="fm-row-name">${esc(zone === "orchard" && c.treeName ? c.treeName : c.name)}${tagHtml(c.rarity)}</div><div class="fm-row-sub">${sub}</div></div>
