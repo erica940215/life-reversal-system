@@ -3,7 +3,7 @@
 -- 可以重複執行。要先執行過「簽到發券與背包」（需要 grant_item）與「星願池」。
 --
 --   每滿 20 分鐘 → ⭐ 1 星屑
---   每滿 1 小時  → 🎫 1 張 wish_normal（普通星願券，給星願池抽）
+--   每滿 1 小時  → 🎫 1 張 wish_normal（普通星願券，給星願池抽）＋ 1 張農場入場卷（10 分鐘）
 --
 -- 以「今天」為單位累計專注秒數，每個里程碑只發一次（source_key 固定，grant_item 會擋重複）。
 -- 只處理今天（跟 sync_focus_reward 一樣，過去日期不會再發）。
@@ -49,6 +49,8 @@ begin
     if public.grant_item(v_user, 'wish_normal', 1, 'focus-hour:' || v_today || ':' || i) then
       v_tickets := v_tickets + 1;
     end if;
+    -- 每滿一小時送一張農場入場卷（10 分鐘）
+    perform public.grant_item(v_user, 'farmpass10', 1, 'focus-pass:' || v_today || ':' || i);
   end loop;
 
   return json_build_object('success', true, 'dust', v_dust, 'tickets', v_tickets,

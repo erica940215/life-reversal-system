@@ -6,6 +6,7 @@
 --   uncomplete_task(id)  取消完成：扣回 EXP；這個任務發過的星屑也一起收回
 --
 -- 升級還是照舊給 100 金幣（那是升級獎勵，不是任務獎勵）。
+-- 完成任務也送一張農場入場卷（farmpass10）；取消會一起收回
 -- 星屑記在 player_items（item_key = 'stardust'）；每次完成的來源是 'task:<id>:<時間>'，
 -- 取消時寫一筆負數的帳，所以重複完成、取消都不會重複發。
 -- =========================================================
@@ -61,6 +62,10 @@ begin
   perform public.grant_item(v_user_id, 'stardust', v_dust,
                             'task:' || v_task.id || ':' || gen_random_uuid()::text);
 
+  -- 完成任務送一張農場入場卷（10 分鐘）
+  perform public.grant_item(v_user_id, 'farmpass10', 1,
+                            'task-pass:' || v_task.id || ':' || gen_random_uuid()::text);
+
   return json_build_object(
     'success', true,
     'task_id', v_task.id,
@@ -88,6 +93,7 @@ declare
   v_new_exp integer;
   v_new_gold integer;
   v_net integer;
+  v_pass integer;
 begin
   if v_user_id is null then raise exception '尚未登入'; end if;
 
@@ -127,6 +133,18 @@ begin
               'task-undo:' || v_task.id || ':' || gen_random_uuid()::text);
     update public.player_items set qty = greatest(0, qty - v_net), updated_at = now()
       where user_id = v_user_id and item_key = 'stardust';
+  end if;
+
+  -- 取消完成：收回這個任務發過的入場卷
+  select coalesce(sum(delta), 0) into v_pass from public.item_events
+    where user_id = v_user_id and item_key = 'farmpass10'
+      and (source_key like 'task-pass:' || v_task.id || ':%' or source_key like 'task-pass-undo:' || v_task.id || ':%');
+  if v_pass > 0 then
+    insert into public.item_events (user_id, item_key, delta, source_key)
+      values (v_user_id, 'farmpass10', -v_pass,
+              'task-pass-undo:' || v_task.id || ':' || gen_random_uuid()::text);
+    update public.player_items set qty = greatest(0, qty - v_pass), updated_at = now()
+      where user_id = v_user_id and item_key = 'farmpass10';
   end if;
 
   return json_build_object('success', true, 'task_id', v_task.id, 'level', v_new_level,

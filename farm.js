@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-20 v11";
+const FARM_JS_VERSION = "2026-10-22 v1";
 
 (function () {
 
@@ -2853,7 +2853,7 @@ const FARM_JS_VERSION = "2026-10-20 v11";
   }
 
   function renderAll() {
-    if (!UI.root || !S) return;
+    if (!UI.root || !S || net.gated) return;
     renderHud();
     renderScene();
     renderGoal();
@@ -5799,12 +5799,71 @@ const FARM_JS_VERSION = "2026-10-20 v11";
     return typeof gameMode !== "undefined" && gameMode === true;
   }
 
+  /* ---------- 入場時間：早上免費 15 分鐘、入場卷 10 分鐘、睡前卷 30 分鐘 ---------- */
+  net.gate = null;
+  net.gated = false;
+
+  async function refreshGate() {
+    if (net.mode !== "server") { net.gate = { free: true }; return; }
+    try {
+      const { data, error } = await db.rpc("farm_status");
+      if (error) throw error;
+      net.gate = data || { free: true };
+    } catch (error) {
+      /* 還沒執行入場的 SQL：先讓玩家進去，不擋住遊戲 */
+      console.warn("入場狀態讀取失敗：", error);
+      net.gate = { free: true };
+    }
+  }
+
+  function gateActive() {
+    if (!net.gate) return false;
+    if (net.gate.free) return true;
+    return !!net.gate.active_until && Date.parse(net.gate.active_until) > Date.now();
+  }
+
+  function showGate(expired = false) {
+    net.gated = true;
+    const root = document.getElementById("fm-root");
+    if (!root) return;
+    const g = net.gate || {};
+    const btn = (kind, label, ok) => `<button type="button" class="fm-btn green" onclick="FarmGame.enterGate('${kind}')" ${ok ? "" : "disabled"}>${label}</button>`;
+    root.innerHTML = `<div class="fm-panel" style="text-align:center;margin:12px">
+      <h3 class="ol" style="margin:0 0 6px">🚪 ${expired ? "農場時間到了" : "進農場"}</h3>
+      <p class="fm-note" style="margin:0 0 12px">${expired ? "時間用完了，再用一張卷或等明天的免費時段。" : "要有入場時間才能進農場。"}</p>
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:stretch">
+        ${btn("morning", "☀️ 早上免費 15 分鐘", g.morning_ok)}
+        ${btn("pass10", `🎫 入場卷 10 分鐘（剩 ${g.pass10 || 0} 張）`, (g.pass10 || 0) > 0)}
+        ${btn("pass30", `🌙 睡前卷 30 分鐘（剩 ${g.pass30 || 0} 張）`, (g.pass30 || 0) > 0)}
+      </div>
+      <p class="fm-note" style="margin:12px 0 0">完成一個任務、專注每滿 1 小時，都會得到一張入場卷。早上免費是 5:00～11:59，每天一次。</p></div>`;
+  }
+
+  async function enterGate(kind) {
+    const { data, error } = await db.rpc("farm_enter", { p_kind: kind });
+    if (error) return toast("進不去：" + error.message);
+    toast(`🚪 進入農場 ${data.minutes} 分鐘`);
+    await refreshGate();
+    net.gated = false;
+    await startFarm();
+  }
+
+  /* 時間到了就關回入場頁；農場裡面不會被蓋掉，只在超過時間時才切換 */
+  setInterval(() => {
+    if (!net.gate || net.gate.free || net.gated || !net.loaded) return;
+    if (!gateActive()) { toast("⏰ 農場時間到了"); showGate(true); }
+  }, 5000);
+
   async function startFarm() {
 
     if (!uid()) return;
 
     const page = ensurePage();
     if (!page) return;
+
+    await refreshGate();
+    if (!gateActive()) { showGate(); return; }
+    net.gated = false;
 
     if (net.loaded && net.userId === uid()) {
       onShow();
@@ -5963,6 +6022,7 @@ const FARM_JS_VERSION = "2026-10-20 v11";
   /* 開發／測試用 */
   window.FarmGame = {
     version: FARM_JS_VERSION,
+    enterGate: kind => enterGate(kind),
     get state() { return S; },
     get net() { return net; },
     get wish() { return net.ws; },
