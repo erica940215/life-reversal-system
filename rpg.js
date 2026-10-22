@@ -9,7 +9,7 @@
 
 (function () {
 
-  const RPG_JS_VERSION = "2026-10-22 v1";
+  const RPG_JS_VERSION = "2026-10-22 v2";
 
   /* 有圖的檔名（放進 img/rpg/ 之後把 key 加進來，沒加的就顯示 emoji） */
   const RPG_IMG = new Set([
@@ -51,7 +51,8 @@
     ["limited", "每月限定", "🌟", "稀有以上，一半機率出限定裝備"]
   ];
 
-  const RP = { status: null, loading: false, tab: "hero", result: null, error: null, busy: false };
+  const RP = { status: null, loading: false, tab: "hero", result: null, error: null, busy: false,
+    boss: null, bossError: null, rank: [], hit: null };
 
 
   /* ---------- 小工具 ---------- */
@@ -141,6 +142,7 @@
       if (error) throw error;
       RP.status = data;
       RP.error = null;
+      await loadBoss();
     } catch (error) {
       const msg = String(error && (error.message || error.code) || error);
       RP.error = /rpg_status|function|schema cache|PGRST/i.test(msg) ? "setup" : msg;
@@ -148,6 +150,19 @@
     }
     RP.loading = false;
     render();
+  }
+
+  async function loadBoss() {
+    try {
+      const [b, r] = await Promise.all([db.rpc("rpg_boss_status"), db.rpc("rpg_boss_rank")]);
+      if (b.error) throw b.error;
+      RP.boss = b.data;
+      RP.rank = (r && !r.error && r.data) || [];
+      RP.bossError = null;
+    } catch (error) {
+      const msg = String(error && (error.message || error.code) || error);
+      RP.bossError = /rpg_boss|function|schema cache|PGRST/i.test(msg) ? "setup" : msg;
+    }
   }
 
   async function call(name, args, after) {
@@ -257,6 +272,57 @@
     return result + pools + `<p class="rp-note rp-pad">召喚券從每日簽到拿：連續簽到每 3 天 1 張普通、每 7 天 1 張特殊；每月累計簽到 7 天、全勤會給限定券。重複抽到的裝備會升級（最高 Lv5），滿級後換成金幣。</p>`;
   }
 
+  function bossHtml() {
+    if (RP.bossError === "setup") return `<div class="card rp-card"><p class="rp-note">⚠️ 每週王的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-10-22_每週王.sql</b>。</p></div>`;
+    if (RP.bossError) return `<div class="card rp-card"><p class="rp-note">載入失敗：${esc(RP.bossError)}</p></div>`;
+    const b = RP.boss;
+    if (!b) return `<div class="card rp-card"><p class="rp-note">載入中…</p></div>`;
+    if (b.need_class) return `<div class="card rp-card"><p class="rp-note">先到「角色」選一個職業，才能挑戰每週王。</p></div>`;
+
+    const run = b.run;
+    const info = (b.bosses || []).find(x => x.key === run.boss_key) || { name: run.boss_key, emoji: "👹", weak: "", desc: "" };
+    const left = Math.max(0, run.hp - run.dmg);
+    const pct = Math.max(0, Math.min(100, Math.round(left / run.hp * 100)));
+    const killed = !!run.killed_at;
+    const a = b.attacks || {};
+    const remain = Math.max(0, (a.total || 0) - (a.used || 0));
+    const weak = CLASSES[info.weak];
+    const myWeak = RP.status && RP.status.class === info.weak;
+    const end = new Date(b.week_end + "T02:00:00+08:00");
+    const days = Math.max(0, Math.ceil((end.getTime() - Date.now()) / 86400000));
+    const pic = RPG_IMG.has("boss:" + run.boss_key)
+      ? `<img class="rp-boss-img" src="${IMG}boss/${run.boss_key}.webp" alt="">`
+      : `<span class="rp-boss-emo">${info.emoji}</span>`;
+
+    const chk = (ok, text) => `<li class="${ok ? "ok" : ""}">${ok ? "✅" : "⬜"} ${text}</li>`;
+    const hit = RP.hit ? `<div class="rp-hit ${RP.hit.crit ? "crit" : ""}">${RP.hit.crit ? "💥 爆擊！" : "⚔️"} 造成 <b>${RP.hit.dmg}</b> 傷害${RP.hit.weak ? "（弱點 ×1.3）" : ""}・+${RP.hit.gold} 金幣
+        ${RP.hit.killed ? `<br>🎉 打倒了！獲得特殊召喚券 1 張、星屑 ${(RP.hit.reward || {}).stardust || 0}` : ""}</div>` : "";
+
+    const rank = (RP.rank || []).map((r, i) => `<div class="rp-rank ${r.me ? "me" : ""}"><span class="rp-rank-n">${i + 1}</span>
+        <span class="rp-rank-name">${r.class && CLASSES[r.class] ? CLASSES[r.class].emoji : "❔"} ${esc(r.name)}${r.me ? "（你）" : ""}</span>
+        <span class="rp-sub">${r.tier ? `第 ${r.tier} 階` : "還沒出擊"}${r.killed ? "・已打倒" : ""}</span><b>${r.dmg}</b></div>`).join("");
+
+    const hits = (b.hits || []).map(h => `<span class="rp-chip ${h.crit ? "crit" : ""}">${h.day.slice(5).replace("-", "/")} ${h.crit ? "💥" : ""}${h.dmg}</span>`).join("");
+
+    const last = b.last ? `<p class="rp-note">上週：${esc(((b.bosses || []).find(x => x.key === b.last.boss_key) || {}).name || "")} 第 ${b.last.tier} 階・${b.last.killed_at ? "✅ 打倒了" : `打了 ${b.last.dmg} / ${b.last.hp}`}</p>` : "";
+
+    return `<div class="card rp-card rp-boss ${killed ? "dead" : ""}">
+        <div class="rp-boss-top">${pic}<div><h3>${esc(info.name)}・第 ${run.tier} 階</h3>
+          <span class="rp-sub">弱點職業：${weak ? weak.emoji + " " + weak.name : "無"}${myWeak ? "（你剋它！）" : ""}・還剩 ${days} 天</span></div></div>
+        <p class="rp-note">${esc(info.desc)}</p>
+        <div class="rp-hp"><div class="rp-hp-bar" style="width:${pct}%"></div><span>${killed ? "已打倒 🎉" : `${left} / ${run.hp}`}</span></div>
+        ${hit}
+        <button type="button" class="btn btn-primary rp-attack" data-rp="attack" ${killed || !remain ? "disabled" : ""}>
+          ${killed ? "這週打倒了，下週一出新的王" : remain ? `⚔️ 出擊（今天還有 ${remain} 次）` : "今天的出擊次數用完了"}</button>
+        <p class="rp-note">一次大約打出你的戰力 ${(b.power || {}).power || 0} 點傷害。今天的出擊次數：</p>
+        <ul class="rp-checks">${chk(true, "每天基本 1 次")}${chk(a.focus_min >= 60, `專注滿 60 分（今天 ${a.focus_min || 0} 分）`)}
+          ${chk(a.tasks >= 3, `完成 3 個任務（今天 ${a.tasks || 0} 個）`)}${chk(!!a.exercise, "今天有運動紀錄")}</ul>
+        ${hits ? `<div class="rp-chips">${hits}</div>` : ""}
+        ${last}
+        <p class="rp-note">每次出擊 +5 金幣。打倒王：金幣 ${150 + 50 * run.tier}、特殊召喚券 1 張、星屑 ${3 + run.tier}，下週的王升一階。</p></div>
+      <div class="card rp-card"><h3>本週好友傷害排行</h3>${rank || `<p class="rp-note">加好友之後就能一起比。</p>`}</div>`;
+  }
+
   function bookHtml() {
     const gear = (RP.status.catalog && RP.status.catalog.gear) || {};
     const keys = Object.keys(gear);
@@ -288,8 +354,8 @@
     if (RP.error) { root.innerHTML = `<div class="card rp-card"><p class="rp-note">載入失敗：${esc(RP.error)}</p></div>`; return; }
     if (!RP.status) { root.innerHTML = `<div class="card rp-card"><p class="rp-note">冒險載入中…</p></div>`; return; }
 
-    const tabs = [["hero", "角色"], ["summon", "召喚"], ["book", "圖鑑"]];
-    const body = RP.tab === "summon" ? summonHtml() : RP.tab === "book" ? bookHtml() : heroHtml();
+    const tabs = [["hero", "角色"], ["boss", "每週王"], ["summon", "召喚"], ["book", "圖鑑"]];
+    const body = RP.tab === "summon" ? summonHtml() : RP.tab === "book" ? bookHtml() : RP.tab === "boss" ? bossHtml() : heroHtml();
     root.innerHTML = `<div class="rp-tabs">${tabs.map(([k, l]) =>
       `<button type="button" class="rp-tab ${RP.tab === k ? "on" : ""}" data-rp="tab" data-v="${k}">${l}</button>`).join("")}</div>${body}
       <p class="rp-ver">冒險 ${RPG_JS_VERSION}</p>`;
@@ -307,6 +373,13 @@
       const c = CLASSES[el.dataset.v];
       if (RP.status.class && !confirm(`確定換成「${c.name}」？之後 7 天內不能再換。`)) return;
       call("rpg_set_class", { p_class: el.dataset.v }, () => toast(`${c.emoji} 你現在是${c.name}了`));
+      return;
+    }
+    if (act === "attack") {
+      call("rpg_boss_attack", {}, data => {
+        RP.hit = data;
+        toast(data.killed ? "🎉 打倒每週王了！" : `${data.crit ? "💥 爆擊！" : "⚔️"} 造成 ${data.dmg} 傷害`);
+      });
       return;
     }
     if (act === "summon") {
@@ -376,6 +449,27 @@
       .t-x { border-color: #ffa726 !important; } .t-s { border-color: #ef5350 !important; }
       .rp-gear.t-s, .rp-slot.t-s { box-shadow: 0 0 0 1px rgba(239,83,80,.35), 0 0 12px rgba(239,83,80,.25); }
       .rp-gear.t-x, .rp-slot.t-x { box-shadow: 0 0 10px rgba(255,167,38,.25); }
+      .rp-boss-top { display: flex; align-items: center; gap: 12px; }
+      .rp-boss-top > div { flex: 1; min-width: 0; }
+      .rp-boss-emo { font-size: 56px; width: 76px; height: 76px; display: inline-flex; align-items: center; justify-content: center; animation: rp-bob 2.4s ease-in-out infinite; }
+      .rp-boss-img { width: 84px; height: 84px; object-fit: contain; animation: rp-bob 2.4s ease-in-out infinite; }
+      .rp-boss.dead .rp-boss-emo, .rp-boss.dead .rp-boss-img { filter: grayscale(1); opacity: .5; animation: none; }
+      @keyframes rp-bob { 50% { transform: translateY(-5px); } }
+      .rp-hp { position: relative; height: 22px; border-radius: 99px; background: rgba(127,127,127,.18); overflow: hidden; margin: 10px 0; }
+      .rp-hp-bar { height: 100%; background: linear-gradient(90deg, #ef5350, #ff8a65); transition: width .5s; }
+      .rp-hp span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; }
+      .rp-attack { width: 100%; margin: 6px 0; padding: 12px; font-size: 16px; }
+      .rp-hit { padding: 10px; border-radius: 12px; background: rgba(108,75,216,.12); margin: 6px 0; font-size: 14px; }
+      .rp-hit.crit { background: rgba(255,167,38,.18); }
+      .rp-checks { list-style: none; padding: 0; margin: 4px 0; font-size: 13px; display: grid; gap: 3px; }
+      .rp-checks li { opacity: .65; } .rp-checks li.ok { opacity: 1; font-weight: 700; }
+      .rp-chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0; }
+      .rp-chip { font-size: 12px; padding: 2px 8px; border-radius: 99px; background: rgba(127,127,127,.12); }
+      .rp-chip.crit { background: rgba(255,167,38,.25); font-weight: 700; }
+      .rp-rank { display: flex; align-items: center; gap: 8px; padding: 8px 6px; border-bottom: 1px solid rgba(127,127,127,.15); }
+      .rp-rank.me { background: rgba(108,75,216,.08); border-radius: 10px; }
+      .rp-rank-n { width: 22px; text-align: center; font-weight: 800; opacity: .7; }
+      .rp-rank-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       @media (max-width: 420px) { .rp-classes, .rp-stats { grid-template-columns: 1fr 1fr; } }
     `;
     document.head.appendChild(css);
