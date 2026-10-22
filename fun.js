@@ -10,7 +10,9 @@
 
   /* 還沒給圖的小怪獸先用 emoji；給了圖就把 key 加進來 */
   const MONSTER_IMG = new Set(["m_owl", "m_pillow", "m_kappa", "m_snail", "m_hamster", "m_fly", "m_drop",
-    "m_rooster", "m_tomato", "m_chick", "m_bookworm", "m_hedgehog", "m_secret"]);
+    "m_rooster", "m_tomato", "m_chick", "m_bookworm", "m_hedgehog", "m_secret",
+    "z_aries", "z_taurus", "z_gemini", "z_cancer", "z_leo", "z_virgo", "z_libra", "z_scorpio",
+    "z_sagittarius", "z_capricorn", "z_aquarius", "z_pisces", "z_polaris"]);
 
   const FRAMES = [
     ["frame_wood", "新手木框", "開木寶箱有機會拿到"],
@@ -93,7 +95,7 @@
     ["z_capricorn", "摩羯寶寶", "♑", "一步一步往山頂爬。"],
     ["z_aquarius", "水瓶寶寶", "♒", "抱著水瓶提醒你喝水。"],
     ["z_pisces", "雙魚寶寶", "♓", "兩條小魚繞著你游。"],
-    ["z_polaris", "北極星精靈", "🌟", "隱藏版。永遠在北方發光，迷路時看看它。"]
+    ["z_polaris", "北極星寶寶", "🌟", "隱藏版。永遠在北方發光，迷路時看看它。"]
   ];
   const SERIES = { m: { name: "序光小怪獸", secret: "m_secret", frame: "小怪獸框" }, z: { name: "星座寶寶", secret: "z_polaris", frame: "星座框" } };
   const seriesList = k => (k === "z" ? ZODIAC : MONSTERS);
