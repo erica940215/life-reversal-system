@@ -9,7 +9,7 @@
 
 (function () {
 
-  const RPG_JS_VERSION = "2026-10-22 v4";
+  const RPG_JS_VERSION = "2026-10-23 v5";
 
   /* 有圖的檔名（放進 img/rpg/ 之後把 key 加進來，沒加的就顯示 emoji） */
   const RPG_IMG = new Set([
@@ -24,6 +24,9 @@
     "gear:harvest_scythe", "gear:maple_cape", "gear:harvest_crown",
     "gear:iron_sword", "gear:quill_pen", "gear:hunter_bow", "gear:leather_armor", "gear:apprentice_robe",
     "gear:night_cloak", "gear:focus_earring", "gear:runner_shoes", "gear:oath_ring",
+    "gear:dew_rapier", "gear:dew_mail", "gear:dew_wreath", "gear:bulwark_hammer", "gear:bulwark_plate", "gear:bulwark_badge",
+    "gear:academy_staff", "gear:academy_robe", "gear:academy_monocle", "gear:meteor_bow", "gear:meteor_cloak", "gear:meteor_earring",
+    "gear:astrolabe", "gear:warlord_axe", "gear:oath_aegis", "gear:sky_bow",
     "boss:sloth_slime", "boss:delay_dragon", "boss:phone_wraith", "boss:fatigue_golem"
     /* 之後有新圖就加進來，沒加的就顯示 emoji */
   ]);
@@ -51,7 +54,7 @@
   const POOLS = [
     ["normal", "普通召喚", "🎫", "什麼都可能出，十連保底一件精良以上"],
     ["special", "特殊召喚", "🎟️", "精良以上，稀有和史詩機率高"],
-    ["limited", "每月限定", "🌟", "稀有以上，一半機率出限定裝備"]
+    ["limited", "每月限定", "🌟", "稀有以上，一半機率出這個月的限定裝備"]
   ];
 
   const RP = { status: null, loading: false, tab: "hero", result: null, error: null, busy: false,
@@ -125,7 +128,40 @@
     return out;
   }
 
+  /* 三件同一套 → 回傳套裝代號；還有每一套穿了幾件 */
+  function setInfo() {
+    const eq = (RP.status && RP.status.equip) || {};
+    const count = {};
+    for (const [slot] of SLOTS) {
+      const g = eq[slot] ? gearInfo(eq[slot]) : null;
+      if (g && g.set) count[g.set] = (count[g.set] || 0) + 1;
+    }
+    const full = Object.keys(count).find(k => count[k] >= 3) || null;
+    return { full, count };
+  }
+
+  function classHit() {
+    const eq = (RP.status && RP.status.equip) || {};
+    return SLOTS.some(([slot]) => { const g = eq[slot] ? gearInfo(eq[slot]) : null; return g && g.class && g.class === RP.status.class; });
+  }
+
+  function applySet(st) {
+    const { full } = setInfo();
+    const sets = (RP.status.catalog && RP.status.catalog.sets) || {};
+    if (!full || !sets[full]) return st;
+    const b = sets[full].bonus || {};
+    const out = {};
+    for (const k of Object.keys(st)) out[k] = Math.round(st[k] * (1 + (b[k] || 0)));
+    return out;
+  }
+
   function power(st, cls) {
+    const p0 = powerRaw(st, cls);
+    const cb = (RP.status && RP.status.catalog && RP.status.catalog.class_bonus) || 0.2;
+    return Math.round(classHit() ? p0 * (1 + cb) : p0);
+  }
+
+  function powerRaw(st, cls) {
     const sum = st.str + st.int + st.vit + st.wil;
     if (cls === "scholar") return Math.round(sum + st.int);
     if (cls === "warrior") return Math.round(sum + (st.str + st.vit) * 0.5);
@@ -196,8 +232,13 @@
     const cls = CLASSES[st0.class];
     const base = baseStats();
     const eq = equipStats();
-    const total = { str: base.str + eq.str, int: base.int + eq.int, vit: base.vit + eq.vit, wil: base.wil + eq.wil };
+    const total = applySet({ str: base.str + eq.str, int: base.int + eq.int, vit: base.vit + eq.vit, wil: base.wil + eq.wil });
     const pw = power(total, st0.class);
+    const sets = (st0.catalog && st0.catalog.sets) || {};
+    const si = setInfo();
+    const setLine = Object.entries(si.count).map(([k, n]) => sets[k]
+      ? `<div class="rp-setline ${n >= 3 ? "on" : ""}">🧩 ${esc(sets[k].name)} ${n} / 3${n >= 3 ? `：${esc(sets[k].desc)} ✨` : `（湊滿 3 件：${esc(sets[k].desc)}）`}</div>` : "").join("")
+      + (classHit() ? `<div class="rp-setline on">👑 職業專屬傳說：戰力 +20% ✨</div>` : "");
     const src = st0.src || {};
     const srcText = {
       str: `完成 ${src.tasks || 0} 個任務`,
@@ -219,7 +260,7 @@
         <div class="rp-slot-art">${cur ? gearIcon(cur) : `<span class="rp-emo dim">＋</span>`}</div>
         <div class="rp-slot-body"><span class="rp-sub">${label}</span>
           <b>${g ? `${esc(g.name)} Lv${gearLevel(cur)}` : "沒有裝備"}</b>
-          ${g ? `<span class="rp-sub">${statLine(gearStats(cur, gearLevel(cur)))}</span>` : ""}
+          ${g ? `<span class="rp-sub">${statLine(gearStats(cur, gearLevel(cur)))}${g.set && sets[g.set] ? `・${esc(sets[g.set].name)}` : ""}${g.class && CLASSES[g.class] ? `・${CLASSES[g.class].name}專屬` : ""}</span>` : ""}
           <select data-rp="equip" data-slot="${slot}" ${opts.length ? "" : "disabled"}>
             <option value="">${opts.length ? "（卸下）" : "還沒有這類裝備"}</option>
             ${opts.map(o => `<option value="${o.key}" ${o.key === cur ? "selected" : ""}>[${TIER_NAME[gearInfo(o.key).tier]}] ${esc(gearInfo(o.key).name)} Lv${o.level}</option>`).join("")}
@@ -237,7 +278,7 @@
         <div class="rp-stats">${stats}</div>
         <p class="rp-note">屬性看的是最近 7 天的真實紀錄，越常做事角色越強；一段時間沒做，屬性就會慢慢掉下來。</p>
       </div>
-      <div class="card rp-card"><h3>裝備</h3><div class="rp-slots">${slots}</div></div>
+      <div class="card rp-card"><h3>裝備</h3><div class="rp-slots">${slots}</div>${setLine}</div>
       <div class="card rp-card"><h3>換職業</h3>
         <p class="rp-note">${canChange ? "現在可以換職業。換了之後 7 天內不能再換。" : `下次可以換：${next.toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}`}</p>
         <div class="rp-row">${Object.entries(CLASSES).filter(([k]) => k !== st0.class).map(([k, c]) =>
@@ -253,11 +294,15 @@
       const n = t[pool] || 0;
       const r = rates[pool] || {};
       const rateText = TIER_ORDER.slice().reverse().filter(k => r[k]).map(k => `${TIER_NAME[k]} ${r[k]}%`).join("・");
+      const cat0 = st0.catalog || {};
+      const ym = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Taipei" }).slice(0, 7);
+      const ser = cat0.series && cat0.series[ym];
+      const serName = pool === "limited" && ser && cat0.series_name ? `本月系列：${cat0.series_name[ser]}` : "";
       return `<div class="card rp-card rp-pool p-${pool}">
         <div class="rp-pool-top"><span class="rp-emo big">${RPG_IMG.has("ui:ticket_" + pool) ? `<img class="rp-ic big" src="${IMG}ui/ticket_${pool}.webp" alt="">` : emoji}</span>
           <div><h3>${name}</h3><span class="rp-sub">${desc}</span></div>
           <div class="rp-power"><span class="rp-sub">召喚券</span><b>${n}</b></div></div>
-        <p class="rp-note">${rateText}</p>
+        <p class="rp-note">${serName ? `<b>${serName}</b>・` : ""}${rateText}</p>
         <div class="rp-row"><button type="button" class="btn btn-primary btn-small" data-rp="summon" data-pool="${pool}" data-n="1" ${n >= 1 ? "" : "disabled"}>召喚 1 次</button>
           <button type="button" class="btn btn-primary btn-small" data-rp="summon" data-pool="${pool}" data-n="10" ${n >= 10 ? "" : "disabled"}>召喚 10 次</button></div></div>`;
     }).join("");
@@ -329,6 +374,7 @@
 
   function bookHtml() {
     const gear = (RP.status.catalog && RP.status.catalog.gear) || {};
+    const sets = (RP.status.catalog && RP.status.catalog.sets) || {};
     const keys = Object.keys(gear);
     const got = keys.filter(k => gearLevel(k) > 0).length;
     const groups = TIER_ORDER.map(t => {
@@ -338,7 +384,8 @@
         const lv = gearLevel(k);
         const g = gear[k];
         return `<div class="rp-gear t-${t} ${lv ? "" : "locked"}">${gearIcon(k, true)}<b>${lv ? esc(g.name) : "？？？"}</b>
-          <span class="rp-sub">${lv ? `Lv${lv}・${statLine(gearStats(k, lv))}` : (g.pool === "limited" ? "限定" : SLOTS.find(s => s[0] === g.slot)[1])}</span></div>`;
+          <span class="rp-sub">${lv ? `Lv${lv}・${statLine(gearStats(k, lv))}` : (g.pool === "limited" ? "限定" : SLOTS.find(s => s[0] === g.slot)[1])}</span>
+          ${g.set && sets[g.set] ? `<span class="rp-mini">${esc(sets[g.set].name)}</span>` : ""}${g.class && CLASSES[g.class] ? `<span class="rp-mini cls">${CLASSES[g.class].name}專屬</span>` : ""}</div>`;
       }).join("")}</div>`;
     }).join("");
     return `<div class="card rp-card"><h3>裝備圖鑑 ${got} / ${keys.length}</h3>${groups}</div>`;
@@ -476,6 +523,10 @@
       .rp-rank.me { background: rgba(108,75,216,.08); border-radius: 10px; }
       .rp-rank-n { width: 22px; text-align: center; font-weight: 800; opacity: .7; }
       .rp-rank-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .rp-setline { margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: rgba(127,127,127,.08); font-size: 13px; opacity: .75; }
+      .rp-setline.on { opacity: 1; font-weight: 700; background: rgba(108,75,216,.14); }
+      .rp-mini { font-size: 10px; padding: 0 6px; border-radius: 99px; background: rgba(108,75,216,.15); }
+      .rp-mini.cls { background: rgba(239,83,80,.18); }
       @media (max-width: 420px) { .rp-classes, .rp-stats { grid-template-columns: 1fr 1fr; } }
     `;
     document.head.appendChild(css);

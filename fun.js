@@ -5,7 +5,7 @@
 ========================================================= */
 (function () {
 
-  const FUN_JS_VERSION = "2026-10-22 v2";
+  const FUN_JS_VERSION = "2026-10-23 v3";
   const IMG = "img/fun/";
 
   /* 還沒給圖的小怪獸先用 emoji；給了圖就把 key 加進來 */
@@ -20,7 +20,8 @@
     ["frame_dragon", "屠龍者框", "打倒第 5 階的每週王"],
     ["frame_crown", "王者框", "打倒第 10 階的每週王"],
     ["frame_monster", "小怪獸框", "序光小怪獸 13 隻集滿"],
-    ["frame_lucky", "大吉框", "累計抽到 10 次大吉"]
+    ["frame_lucky", "大吉框", "累計抽到 10 次大吉"],
+    ["frame_zodiac", "星座框", "星座寶寶 13 隻集滿"]
   ];
   const CLASS_EMOJI = { scholar: "📚", warrior: "⚔️", guardian: "🛡️", ranger: "🏹" };
 
@@ -74,6 +75,29 @@
     ["chest_star", "星光寶箱", "出擊掉寶箱時 1% 是它"]
   ];
 
+  /* 還沒給圖的頭像框 */
+  const FRAME_NOIMG = new Set(["frame_zodiac"]);
+  const frameImg = (k, cls) => FRAME_NOIMG.has(k) ? `<span class="fn-frame-emo ${cls}">🌌</span>` : img(k, cls);
+
+  /* 扭蛋系列二：星座寶寶（還沒給圖，先用星座符號） */
+  const ZODIAC = [
+    ["z_aries", "牡羊寶寶", "♈", "頭上捲捲的小角，衝第一。"],
+    ["z_taurus", "金牛寶寶", "♉", "慢慢來，但一定會到。"],
+    ["z_gemini", "雙子寶寶", "♊", "兩個一起，話很多。"],
+    ["z_cancer", "巨蟹寶寶", "♋", "外殼硬硬，心很軟。"],
+    ["z_leo", "獅子寶寶", "♌", "鬃毛蓬蓬，最愛被稱讚。"],
+    ["z_virgo", "處女寶寶", "♍", "把每顆星星都擦得亮亮的。"],
+    ["z_libra", "天秤寶寶", "♎", "幫你在玩和讀書之間找平衡。"],
+    ["z_scorpio", "天蠍寶寶", "♏", "安靜但很專注。"],
+    ["z_sagittarius", "射手寶寶", "♐", "背著小弓到處冒險。"],
+    ["z_capricorn", "摩羯寶寶", "♑", "一步一步往山頂爬。"],
+    ["z_aquarius", "水瓶寶寶", "♒", "抱著水瓶提醒你喝水。"],
+    ["z_pisces", "雙魚寶寶", "♓", "兩條小魚繞著你游。"],
+    ["z_polaris", "北極星精靈", "🌟", "隱藏版。永遠在北方發光，迷路時看看它。"]
+  ];
+  const SERIES = { m: { name: "序光小怪獸", secret: "m_secret", frame: "小怪獸框" }, z: { name: "星座寶寶", secret: "z_polaris", frame: "星座框" } };
+  const seriesList = k => (k === "z" ? ZODIAC : MONSTERS);
+
   const MONSTERS = [
     ["m_owl", "熬夜貓頭鷹", "🦉", "黑眼圈很重，還抱著手機。"],
     ["m_pillow", "賴床枕頭怪", "🛏️", "一靠近就會被黏住。"],
@@ -101,6 +125,7 @@
     fortuneAnim: false, fortuneNew: false,
     scratch: null,       // { prize, line, grid, reward, revealed }
     chest: null,         // { chest, reward, phase: "shake" | "open" }
+    series: "m",
     gacha: null          // { key, count, dust, set_done, phase: "turn" | "drop" | "open" | "show" }
   };
 
@@ -116,7 +141,7 @@
   const rewardText = r => Object.entries(r || {}).filter(([, v]) => v > 0).map(([k, v]) => `${ITEM_NAME[k] || k} ×${v}`).join("、");
 
   function monsterIcon(key, big = false) {
-    const m = MONSTERS.find(x => x[0] === key);
+    const m = MONSTERS.concat(ZODIAC).find(x => x[0] === key);
     if (MONSTER_IMG.has(key)) return `<img class="fn-mon-img ${big ? "big" : ""}" src="${IMG}${key}.webp" alt="">`;
     return `<span class="fn-mon-emo ${big ? "big" : ""}">${m ? m[2] : "❔"}</span>`;
   }
@@ -126,7 +151,7 @@
   function avatar(cls, frame, size = 44) {
     const face = cls ? `<img class="fn-av-face" src="img/rpg/class/${cls}.webp" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'fn-av-emo',textContent:'${CLASS_EMOJI[cls] || "🙂"}'}))">`
                      : `<span class="fn-av-emo">🙂</span>`;
-    const fr = frame ? `<img class="fn-av-frame ${frame === "frame_crown" ? "crown" : ""}" src="${IMG}${frame}.webp" alt="">` : "";
+    const fr = frame && !FRAME_NOIMG.has(frame) ? `<img class="fn-av-frame ${frame === "frame_crown" ? "crown" : ""}" src="${IMG}${frame}.webp" alt="">` : "";
     return `<span class="fn-av ${frame ? "has" : ""} ${frame === "frame_crown" ? "is-crown" : ""}" style="--s:${size}px">${face}${fr}</span>`;
   }
 
@@ -347,7 +372,7 @@
     const show = c ? `<div class="fn-chest-show">
         ${img(c.phase === "open" ? c.chest + "_open" : c.chest, "fn-chest-big " + (c.phase === "shake" ? "shake" : "pop"))}
         ${c.phase === "open" ? `<div class="fn-result">🎁 ${esc((CHESTS.find(x => x[0] === c.chest) || [])[1])}打開了！<div>獲得：${rewardText(c.reward)}</div>
-          ${c.frame ? `<div class="fn-got-frame">${img(c.frame, "fn-frame-ic")}<b>🖼️ 新的頭像框：${esc((FRAMES.find(f => f[0] === c.frame) || [])[1])}！</b></div>` : ""}</div>
+          ${c.frame ? `<div class="fn-got-frame">${frameImg(c.frame, "fn-frame-ic")}<b>🖼️ 新的頭像框：${esc((FRAMES.find(f => f[0] === c.frame) || [])[1])}！</b></div>` : ""}</div>
           <button type="button" class="btn btn-small" data-fn="chest-close">好</button>` : `<p class="fn-note">喀啦喀啦……</p>`}</div>` : "";
 
     const list = CHESTS.map(([k, name, from]) => {
@@ -377,7 +402,10 @@
   function gachaHtml() {
     const g = FN.gacha;
     const mons = (FN.status && FN.status.monsters) || {};
-    const got = MONSTERS.filter(m => mons[m[0]]).length;
+    const ser = SERIES[FN.series] ? FN.series : "m";
+    const LIST = seriesList(ser);
+    const info = SERIES[ser];
+    const got = LIST.filter(m => mons[m[0]]).length;
 
     let stage = "";
     if (g) {
@@ -385,36 +413,39 @@
       else if (g.phase === "drop") stage = img("capsule", "fn-capsule drop");
       else if (g.phase === "open") stage = img("capsule_open", "fn-capsule pop");
       else {
-        const m = MONSTERS.find(x => x[0] === g.key) || [g.key, g.key, "❔", ""];
-        stage = `<div class="fn-mon-reveal ${g.key === "m_secret" ? "secret" : ""}">${monsterIcon(g.key, true)}
-          <b>${g.key === "m_secret" ? "🌟 隱藏版！" : ""}${esc(m[1])}</b><span class="fn-note">${esc(m[3])}</span>
+        const m = MONSTERS.concat(ZODIAC).find(x => x[0] === g.key) || [g.key, g.key, "❔", ""];
+        const sec = g.key === "m_secret" || g.key === "z_polaris";
+        stage = `<div class="fn-mon-reveal ${sec ? "secret" : ""}">${monsterIcon(g.key, true)}
+          <b>${sec ? "🌟 隱藏版！" : ""}${esc(m[1])}</b><span class="fn-note">${esc(m[3])}</span>
           <span class="fn-tag">${g.count > 1 ? `重複了，換成星屑 ${g.dust}` : "NEW！放上收藏架"}</span>
-          ${g.set_done ? `<div class="fn-result big">🎊 13 隻全部到齊！送你限定召喚券 1 張、星屑 30</div>` : ""}
+          ${g.set_done ? `<div class="fn-result big">🎊 13 隻全部到齊！送你限定召喚券 1 張、星屑 30、${g.key && g.key.startsWith("z_") ? "星座框" : "小怪獸框"}</div>` : ""}
           <button type="button" class="btn btn-small" data-fn="gacha-close">好</button></div>`;
       }
     } else {
       stage = img("gacha_machine", "fn-machine");
     }
 
-    const shelf = MONSTERS.map(([k, name]) => {
+    const shelf = LIST.map(([k, name]) => {
       const n = mons[k] || 0;
-      return `<div class="fn-shelf-item ${n ? "" : "locked"} ${k === "m_secret" ? "secret" : ""}">${n ? monsterIcon(k) : `<span class="fn-mon-emo">❔</span>`}
+      return `<div class="fn-shelf-item ${n ? "" : "locked"} ${k === info.secret ? "secret" : ""}">${n ? monsterIcon(k) : `<span class="fn-mon-emo">❔</span>`}
         <span>${n ? esc(name) : "？？？"}</span>${n > 1 ? `<i>×${n}</i>` : ""}</div>`;
     }).join("");
 
     return `<div class="card rp-card fn-sec"><div class="fn-sec-top">${img("gacha_coin", "fn-ic")}
-        <div><h3>🥚 序光扭蛋機</h3><span class="rp-sub">系列一：序光小怪獸（${got} / 13）</span></div>
+        <div><h3>🥚 序光扭蛋機</h3><span class="rp-sub">${info.name}（${got} / 13）</span></div>
         <div class="rp-power"><span class="rp-sub">扭蛋幣</span><b>${qty("gacha_coin")}</b></div></div>
+      <div class="fn-series">${Object.entries(SERIES).map(([k, v], i) => `<button type="button" class="fn-series-btn ${k === ser ? "on" : ""}" data-fn="series" data-v="${k}" ${g ? "disabled" : ""}>
+        系列${i + 1}：${v.name}</button>`).join("")}</div>
       <div class="fn-stage">${stage}</div>
       ${g ? "" : `<button type="button" class="btn btn-primary fn-wide" data-fn="gacha" ${qty("gacha_coin") > 0 && !FN.busy ? "" : "disabled"}>🪙 投幣，轉一次</button>`}
       <div class="fn-shelf">${shelf}</div>
-      <p class="rp-note">扭蛋幣從寶箱和週末商人拿。重複的換星屑（隱藏版換 10）。13 隻集滿送限定召喚券和星屑 30。</p></div>`;
+      <p class="rp-note">扭蛋幣從寶箱和週末商人拿。重複的換星屑（隱藏版換 10）。每個系列 13 隻集滿送限定召喚券、星屑 30 和${info.frame}。</p></div>`;
   }
 
   async function pullGacha() {
     FN.gacha = { phase: "turn" };
     rerender();
-    const [data] = await Promise.all([rpc("fun_gacha_pull"), new Promise(r => setTimeout(r, 900))]);
+    const [data] = await Promise.all([rpc("fun_gacha_pull", { p_series: FN.series }), new Promise(r => setTimeout(r, 900))]);
     if (!data) { FN.gacha = null; rerender(); return; }
     FN.gacha = { ...data, phase: "drop" };
     rerender();
@@ -462,10 +493,10 @@
       const has = owned.includes(k);
       const on = st.frame === k;
       return `<button type="button" class="fn-frame ${has ? "" : "locked"} ${on ? "on" : ""}" data-fn="frame" data-v="${k}" ${has && !FN.busy ? "" : "disabled"}>
-        ${img(k, "fn-frame-ic")}<b>${has ? esc(name) : "？？？"}</b><span class="rp-sub">${on ? "戴著中" : esc(from)}</span></button>`;
+        ${frameImg(k, "fn-frame-ic")}<b>${has ? esc(name) : "？？？"}</b><span class="rp-sub">${on ? "戴著中" : esc(from)}</span></button>`;
     }).join("");
     return `<div class="card rp-card fn-sec"><div class="fn-sec-top">${avatar(st.class, st.frame, 72)}
-        <div><h3>🖼️ 頭像框</h3><span class="rp-sub">收集 ${owned.length} / 8。戴著的框會出現在每週王的好友排行</span></div></div>
+        <div><h3>🖼️ 頭像框</h3><span class="rp-sub">收集 ${owned.length} / ${FRAMES.length}。戴著的框會出現在每週王的好友排行</span></div></div>
       <div class="fn-frames">${list}</div>
       ${st.frame ? `<button type="button" class="btn btn-small" data-fn="frame" data-v="">拿下頭像框</button>` : ""}
       <p class="rp-note">大吉累計：${st.daikichi_count || 0} / 10</p></div>`;
@@ -531,6 +562,7 @@
     else if (act === "gacha") pullGacha();
     else if (act === "gacha-close") { FN.gacha = null; rerender(); }
     else if (act === "buy") buy(el.dataset.v);
+    else if (act === "series") { FN.series = el.dataset.v; rerender(); }
     else if (act === "frame") equipFrame(el.dataset.v);
     else if (act === "goto") {
       if (window.RpgGame) window.RpgGame.state.tab = "fun";
@@ -626,6 +658,10 @@
       .fn-frame.locked { cursor: default; } .fn-frame.locked .fn-frame-ic { filter: grayscale(1) brightness(.6); opacity: .5; }
       .fn-frame.on { border-color: #6c4bd8; box-shadow: 0 0 0 2px rgba(108,75,216,.4); }
       .fn-frame-ic { width: 56px; height: 56px; }
+      .fn-frame-emo { display: inline-flex; align-items: center; justify-content: center; font-size: 30px; border-radius: 50%; border: 3px solid rgba(108,75,216,.5); }
+      .fn-series { display: flex; gap: 6px; margin: 4px 0 6px; }
+      .fn-series-btn { flex: 1; padding: 7px 4px; border-radius: 10px; border: 1px solid rgba(127,127,127,.25); background: transparent; color: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+      .fn-series-btn.on { background: #6c4bd8; color: #fff; border-color: #6c4bd8; }
       .fn-got-frame { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; color: #e8a317; }
       .fn-shop { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
       .fn-shop-item { display: flex; flex-direction: column; gap: 4px; padding: 10px; border-radius: 12px; background: rgba(127,127,127,.08); }
