@@ -9,7 +9,7 @@
 
 (function () {
 
-  const RPG_JS_VERSION = "2026-10-22 v2";
+  const RPG_JS_VERSION = "2026-10-22 v3";
 
   /* 有圖的檔名（放進 img/rpg/ 之後把 key 加進來，沒加的就顯示 emoji） */
   const RPG_IMG = new Set([
@@ -299,7 +299,8 @@
 
     const chk = (ok, text) => `<li class="${ok ? "ok" : ""}">${ok ? "✅" : "⬜"} ${text}</li>`;
     const hit = RP.hit ? `<div class="rp-hit ${RP.hit.crit ? "crit" : ""}">${RP.hit.crit ? "💥 爆擊！" : "⚔️"} 造成 <b>${RP.hit.dmg}</b> 傷害${RP.hit.weak ? "（弱點 ×1.3）" : ""}・+${RP.hit.gold} 金幣
-        ${RP.hit.killed ? `<br>🎉 打倒了！獲得特殊召喚券 1 張、星屑 ${(RP.hit.reward || {}).stardust || 0}` : ""}</div>` : "";
+        ${RP.hit.chest ? `<br>🎁 掉了一個${{ chest_wood: "木寶箱", chest_iron: "鐵寶箱", chest_gold: "金寶箱", chest_star: "星光寶箱" }[RP.hit.chest] || "寶箱"}！到「驚喜」打開` : ""}
+        ${RP.hit.killed ? `<br>🎉 打倒了！獲得特殊召喚券 1 張、星屑 ${(RP.hit.reward || {}).stardust || 0}、金寶箱 1 個` : ""}</div>` : "";
 
     const rank = (RP.rank || []).map((r, i) => `<div class="rp-rank ${r.me ? "me" : ""}"><span class="rp-rank-n">${i + 1}</span>
         <span class="rp-rank-name">${r.class && CLASSES[r.class] ? CLASSES[r.class].emoji : "❔"} ${esc(r.name)}${r.me ? "（你）" : ""}</span>
@@ -319,10 +320,10 @@
           ${killed ? "這週打倒了，下週一出新的王" : remain ? `⚔️ 出擊（今天還有 ${remain} 次）` : "今天的出擊次數用完了"}</button>
         <p class="rp-note">一次大約打出你的戰力 ${(b.power || {}).power || 0} 點傷害。今天的出擊次數：</p>
         <ul class="rp-checks">${chk(true, "每天基本 1 次")}${chk(a.focus_min >= 60, `專注滿 60 分（今天 ${a.focus_min || 0} 分）`)}
-          ${chk(a.tasks >= 3, `完成 3 個任務（今天 ${a.tasks || 0} 個）`)}${chk(!!a.exercise, "今天有運動紀錄")}</ul>
+          ${chk(a.tasks >= 3, `完成 3 個任務（今天 ${a.tasks || 0} 個）`)}${chk(!!a.exercise, "今天有運動紀錄")}${a.fortune ? chk(true, "🎋 今天抽到中吉") : ""}</ul>
         ${hits ? `<div class="rp-chips">${hits}</div>` : ""}
         ${last}
-        <p class="rp-note">每次出擊 +5 金幣。打倒王：金幣 ${150 + 50 * run.tier}、特殊召喚券 1 張、星屑 ${3 + run.tier}，下週的王升一階。</p></div>
+        <p class="rp-note">每次出擊 +5 金幣，25% 掉寶箱。打倒王：金幣 ${150 + 50 * run.tier}、特殊召喚券 1 張、星屑 ${3 + run.tier}、金寶箱 1 個，下週的王升一階。</p></div>
       <div class="card rp-card"><h3>本週好友傷害排行</h3>${rank || `<p class="rp-note">加好友之後就能一起比。</p>`}</div>`;
   }
 
@@ -357,8 +358,9 @@
     if (RP.error) { root.innerHTML = `<div class="card rp-card"><p class="rp-note">載入失敗：${esc(RP.error)}</p></div>`; return; }
     if (!RP.status) { root.innerHTML = `<div class="card rp-card"><p class="rp-note">冒險載入中…</p></div>`; return; }
 
-    const tabs = [["hero", "角色"], ["boss", "每週王"], ["summon", "召喚"], ["book", "圖鑑"]];
-    const body = RP.tab === "summon" ? summonHtml() : RP.tab === "book" ? bookHtml() : RP.tab === "boss" ? bossHtml() : heroHtml();
+    const tabs = [["hero", "角色"], ["boss", "每週王"], ["fun", "驚喜"], ["summon", "召喚"], ["book", "圖鑑"]];
+    const body = RP.tab === "summon" ? summonHtml() : RP.tab === "book" ? bookHtml() : RP.tab === "boss" ? bossHtml()
+      : RP.tab === "fun" ? (window.FunGame ? window.FunGame.html() : "") : heroHtml();
     root.innerHTML = `<div class="rp-tabs">${tabs.map(([k, l]) =>
       `<button type="button" class="rp-tab ${RP.tab === k ? "on" : ""}" data-rp="tab" data-v="${k}">${l}</button>`).join("")}</div>${body}
       <p class="rp-ver">冒險 ${RPG_JS_VERSION}</p>`;
@@ -381,7 +383,8 @@
     if (act === "attack") {
       call("rpg_boss_attack", {}, data => {
         RP.hit = data;
-        toast(data.killed ? "🎉 打倒每週王了！" : `${data.crit ? "💥 爆擊！" : "⚔️"} 造成 ${data.dmg} 傷害`);
+        toast(data.killed ? "🎉 打倒每週王了！" : `${data.crit ? "💥 爆擊！" : "⚔️"} 造成 ${data.dmg} 傷害${data.chest ? "・掉了寶箱！" : ""}`);
+        if (window.FunGame) window.FunGame.reload();
       });
       return;
     }
@@ -415,7 +418,7 @@
       .page[data-page="rpg"]:not(.rp-on) .rp-off { display: block; }
       .page[data-page="rpg"]:not(.rp-on) #rp-root { display: none; }
       .rp-tabs { display: flex; gap: 6px; margin: 4px 0 12px; }
-      .rp-tab { flex: 1; padding: 9px 0; border-radius: 12px; border: 1px solid rgba(127,127,127,.25); background: transparent; color: inherit; font-weight: 700; cursor: pointer; }
+      .rp-tab { flex: 1; min-width: 0; padding: 9px 0; font-size: 14px; border-radius: 12px; border: 1px solid rgba(127,127,127,.25); background: transparent; color: inherit; font-weight: 700; cursor: pointer; }
       .rp-tab.on { background: #6c4bd8; color: #fff; border-color: #6c4bd8; }
       .rp-card h3 { margin: 0 0 6px; }
       .rp-note { font-size: 13px; opacity: .78; margin: 6px 0; line-height: 1.55; }
