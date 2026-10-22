@@ -9,7 +9,7 @@
 
 (function () {
 
-  const RPG_JS_VERSION = "2026-10-23 v5";
+  const RPG_JS_VERSION = "2026-10-23 v6";
 
   /* 有圖的檔名（放進 img/rpg/ 之後把 key 加進來，沒加的就顯示 emoji） */
   const RPG_IMG = new Set([
@@ -199,6 +199,7 @@
       RP.boss = b.data;
       RP.rank = (r && !r.error && r.data) || [];
       RP.bossError = null;
+      if (window.TeamGame && !window.TeamGame.state.status) window.TeamGame.reload();
     } catch (error) {
       const msg = String(error && (error.message || error.code) || error);
       RP.bossError = /rpg_boss|function|schema cache|PGRST/i.test(msg) ? "setup" : msg;
@@ -333,6 +334,9 @@
     const left = Math.max(0, run.hp - run.dmg);
     const pct = Math.max(0, Math.min(100, Math.round(left / run.hp * 100)));
     const killed = !!run.killed_at;
+    const ts = window.TeamGame && window.TeamGame.state && window.TeamGame.state.status;
+    const inTeam = !!(ts && ts.team);
+    const raidAlive = inTeam && ts.raid && !ts.raid.killed_at;
     const a = b.attacks || {};
     const remain = Math.max(0, (a.total || 0) - (a.used || 0));
     const weak = CLASSES[info.weak];
@@ -345,6 +349,8 @@
 
     const chk = (ok, text) => `<li class="${ok ? "ok" : ""}">${ok ? "✅" : "⬜"} ${text}</li>`;
     const hit = RP.hit ? `<div class="rp-hit ${RP.hit.crit ? "crit" : ""}">${RP.hit.crit ? "💥 爆擊！" : "⚔️"} 造成 <b>${RP.hit.dmg}</b> 傷害${RP.hit.weak ? "（弱點 ×1.3）" : ""}・+${RP.hit.gold} 金幣
+        ${RP.hit.cheer ? `<br>📣 加油加成 +${RP.hit.cheer * 10}%` : ""}
+        ${RP.hit.raid_dmg ? `<br>🐲 團隊王也受到 ${RP.hit.raid_dmg} 傷害${RP.hit.raid_killed ? "，打倒了！全隊拿到團隊寶箱 🎉" : ""}` : ""}
         ${RP.hit.chest ? `<br>🎁 掉了一個${{ chest_wood: "木寶箱", chest_iron: "鐵寶箱", chest_gold: "金寶箱", chest_star: "星光寶箱" }[RP.hit.chest] || "寶箱"}！到「驚喜」打開` : ""}
         ${RP.hit.killed ? `<br>🎉 打倒了！獲得特殊召喚券 1 張、星屑 ${(RP.hit.reward || {}).stardust || 0}、金寶箱 1 個` : ""}</div>` : "";
 
@@ -362,8 +368,10 @@
         <p class="rp-note">${esc(info.desc)}</p>
         <div class="rp-hp"><div class="rp-hp-bar" style="width:${pct}%"></div><span>${killed ? "已打倒 🎉" : `${left} / ${run.hp}`}</span></div>
         ${hit}
-        <button type="button" class="btn btn-primary rp-attack" data-rp="attack" ${killed || !remain ? "disabled" : ""}>
-          ${killed ? "這週打倒了，下週一出新的王" : remain ? `⚔️ 出擊（今天還有 ${remain} 次）` : "今天的出擊次數用完了"}</button>
+        <button type="button" class="btn btn-primary rp-attack" data-rp="attack" ${(killed && !raidAlive) || !remain ? "disabled" : ""}>
+          ${killed && !raidAlive ? "這週打倒了，下週一出新的王" : !remain ? "今天的出擊次數用完了"
+            : killed ? `🐲 出擊團隊王（今天還有 ${remain} 次）` : `⚔️ 出擊（今天還有 ${remain} 次）`}</button>
+        ${ts && ts.cheers_unused ? `<p class="rp-note">📣 有 ${ts.cheers_unused} 個好友幫你加油，下一次出擊傷害 +${Math.min(ts.cheers_unused, 3) * 10}%</p>` : ""}
         <p class="rp-note">一次大約打出你的戰力 ${(b.power || {}).power || 0} 點傷害。今天的出擊次數：</p>
         <ul class="rp-checks">${chk(true, "每天基本 1 次")}${chk(a.focus_min >= 60, `專注滿 60 分（今天 ${a.focus_min || 0} 分）`)}
           ${chk(a.tasks >= 3, `完成 3 個任務（今天 ${a.tasks || 0} 個）`)}${chk(!!a.exercise, "今天有運動紀錄")}${a.fortune ? chk(true, "🎋 今天抽到中吉") : ""}</ul>
@@ -406,9 +414,10 @@
     if (RP.error) { root.innerHTML = `<div class="card rp-card"><p class="rp-note">載入失敗：${esc(RP.error)}</p></div>`; return; }
     if (!RP.status) { root.innerHTML = `<div class="card rp-card"><p class="rp-note">冒險載入中…</p></div>`; return; }
 
-    const tabs = [["hero", "角色"], ["boss", "每週王"], ["fun", "驚喜"], ["summon", "召喚"], ["book", "圖鑑"]];
+    const tabs = [["hero", "角色"], ["boss", "每週王"], ["team", "小隊"], ["fun", "驚喜"], ["summon", "召喚"], ["book", "圖鑑"]];
     const body = RP.tab === "summon" ? summonHtml() : RP.tab === "book" ? bookHtml() : RP.tab === "boss" ? bossHtml()
-      : RP.tab === "fun" ? (window.FunGame ? window.FunGame.html() : "") : heroHtml();
+      : RP.tab === "fun" ? (window.FunGame ? window.FunGame.html() : "")
+      : RP.tab === "team" ? (window.TeamGame ? window.TeamGame.html() : "") : heroHtml();
     root.innerHTML = `<div class="rp-tabs">${tabs.map(([k, l]) =>
       `<button type="button" class="rp-tab ${RP.tab === k ? "on" : ""}" data-rp="tab" data-v="${k}">${l}</button>`).join("")}</div>${body}
       <p class="rp-ver">冒險 ${RPG_JS_VERSION}</p>`;
@@ -433,6 +442,7 @@
         RP.hit = data;
         toast(data.killed ? "🎉 打倒每週王了！" : `${data.crit ? "💥 爆擊！" : "⚔️"} 造成 ${data.dmg} 傷害${data.chest ? "・掉了寶箱！" : ""}`);
         if (window.FunGame) window.FunGame.reload();
+        if (window.TeamGame) window.TeamGame.reload();
       });
       return;
     }
@@ -466,7 +476,7 @@
       .page[data-page="rpg"]:not(.rp-on) .rp-off { display: block; }
       .page[data-page="rpg"]:not(.rp-on) #rp-root { display: none; }
       .rp-tabs { display: flex; gap: 6px; margin: 4px 0 12px; }
-      .rp-tab { flex: 1; min-width: 0; padding: 9px 0; font-size: 14px; border-radius: 12px; border: 1px solid rgba(127,127,127,.25); background: transparent; color: inherit; font-weight: 700; cursor: pointer; }
+      .rp-tab { flex: 1; min-width: 0; padding: 9px 0; font-size: 13px; border-radius: 12px; border: 1px solid rgba(127,127,127,.25); background: transparent; color: inherit; font-weight: 700; cursor: pointer; }
       .rp-tab.on { background: #6c4bd8; color: #fff; border-color: #6c4bd8; }
       .rp-card h3 { margin: 0 0 6px; }
       .rp-note { font-size: 13px; opacity: .78; margin: 6px 0; line-height: 1.55; }

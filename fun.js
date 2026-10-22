@@ -5,7 +5,7 @@
 ========================================================= */
 (function () {
 
-  const FUN_JS_VERSION = "2026-10-23 v3";
+  const FUN_JS_VERSION = "2026-10-23 v4";
   const IMG = "img/fun/";
 
   /* 還沒給圖的小怪獸先用 emoji；給了圖就把 key 加進來 */
@@ -74,7 +74,8 @@
     ["chest_wood", "木寶箱", "每週王出擊有機會掉"],
     ["chest_iron", "鐵寶箱", "史詩任務必掉、商人有賣"],
     ["chest_gold", "金寶箱", "打倒每週王必掉"],
-    ["chest_star", "星光寶箱", "出擊掉寶箱時 1% 是它"]
+    ["chest_star", "星光寶箱", "出擊掉寶箱時 1% 是它"],
+    ["chest_team", "團隊寶箱", "小隊打倒團隊王，每人 1 個"]
   ];
 
   /* 還沒給圖的頭像框 */
@@ -99,6 +100,10 @@
   ];
   const SERIES = { m: { name: "序光小怪獸", secret: "m_secret", frame: "小怪獸框" }, z: { name: "星座寶寶", secret: "z_polaris", frame: "星座框" } };
   const seriesList = k => (k === "z" ? ZODIAC : MONSTERS);
+
+  /* 還沒給圖的寶箱先用 emoji */
+  const CHEST_NOIMG = new Set(["chest_team"]);
+  const chestImg = (k, cls) => CHEST_NOIMG.has(k.replace(/_open$/, "")) ? `<span class="fn-chest-emo ${cls}">${k.endsWith("_open") ? "🎊" : "🎁"}</span>` : img(k, cls);
 
   const MONSTERS = [
     ["m_owl", "熬夜貓頭鷹", "🦉", "黑眼圈很重，還抱著手機。"],
@@ -372,14 +377,14 @@
   function chestHtml() {
     const c = FN.chest;
     const show = c ? `<div class="fn-chest-show">
-        ${img(c.phase === "open" ? c.chest + "_open" : c.chest, "fn-chest-big " + (c.phase === "shake" ? "shake" : "pop"))}
+        ${chestImg(c.phase === "open" ? c.chest + "_open" : c.chest, "fn-chest-big " + (c.phase === "shake" ? "shake" : "pop"))}
         ${c.phase === "open" ? `<div class="fn-result">🎁 ${esc((CHESTS.find(x => x[0] === c.chest) || [])[1])}打開了！<div>獲得：${rewardText(c.reward)}</div>
           ${c.frame ? `<div class="fn-got-frame">${frameImg(c.frame, "fn-frame-ic")}<b>🖼️ 新的頭像框：${esc((FRAMES.find(f => f[0] === c.frame) || [])[1])}！</b></div>` : ""}</div>
           <button type="button" class="btn btn-small" data-fn="chest-close">好</button>` : `<p class="fn-note">喀啦喀啦……</p>`}</div>` : "";
 
     const list = CHESTS.map(([k, name, from]) => {
       const n = qty(k);
-      return `<div class="fn-chest ${n ? "" : "none"}">${img(k, "fn-chest-ic")}<b>${name}</b><span class="rp-sub">${from}</span>
+      return `<div class="fn-chest ${n ? "" : "none"}">${chestImg(k, "fn-chest-ic")}<b>${name}</b><span class="rp-sub">${from}</span>
         <button type="button" class="btn btn-small ${n ? "btn-primary" : ""}" data-fn="chest" data-v="${k}" ${n && !FN.busy && !c ? "" : "disabled"}>開（${n}）</button></div>`;
     }).join("");
 
@@ -544,7 +549,7 @@
     box.hidden = !show;
     if (!show) return;
     box.innerHTML = fortuneHtml(true) + `<button type="button" class="fn-more" data-fn="goto">🎁 驚喜：刮刮樂 ${qty("scratch_card")}・寶箱 ${
-      qty("chest_wood") + qty("chest_iron") + qty("chest_gold") + qty("chest_star")}・扭蛋幣 ${qty("gacha_coin")} ›</button>`;
+      qty("chest_wood") + qty("chest_iron") + qty("chest_gold") + qty("chest_star") + qty("chest_team")}・扭蛋幣 ${qty("gacha_coin")} ›</button>`;
   }
 
 
@@ -660,6 +665,8 @@
       .fn-frame.locked { cursor: default; } .fn-frame.locked .fn-frame-ic { filter: grayscale(1) brightness(.6); opacity: .5; }
       .fn-frame.on { border-color: #6c4bd8; box-shadow: 0 0 0 2px rgba(108,75,216,.4); }
       .fn-frame-ic { width: 56px; height: 56px; }
+      .fn-chest-emo { display: inline-flex; align-items: center; justify-content: center; font-size: 44px; }
+      .fn-chest-emo.fn-chest-big { font-size: 110px; display: flex; margin: 0 auto; }
       .fn-frame-emo { display: inline-flex; align-items: center; justify-content: center; font-size: 30px; border-radius: 50%; border: 3px solid rgba(108,75,216,.5); }
       .fn-series { display: flex; gap: 6px; margin: 4px 0 6px; }
       .fn-series-btn { flex: 1; padding: 7px 4px; border-radius: 10px; border: 1px solid rgba(127,127,127,.25); background: transparent; color: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
