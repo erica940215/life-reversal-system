@@ -21,7 +21,10 @@
     "gear:silverscale_mail", "gear:wind_boots", "gear:time_hourglass",
     "gear:dawn_blade", "gear:star_grimoire", "gear:dawn_plate", "gear:undying_heart", "gear:gale_wings",
     "gear:order_sword", "gear:eternal_book", "gear:order_crown",
-    "gear:harvest_scythe", "gear:maple_cape", "gear:harvest_crown"
+    "gear:harvest_scythe", "gear:maple_cape", "gear:harvest_crown",
+    "gear:iron_sword", "gear:quill_pen", "gear:hunter_bow", "gear:leather_armor", "gear:apprentice_robe",
+    "gear:night_cloak", "gear:focus_earring", "gear:runner_shoes", "gear:oath_ring",
+    "boss:sloth_slime", "boss:delay_dragon", "boss:phone_wraith", "boss:fatigue_golem"
     /* 之後有新圖就加進來，沒加的就顯示 emoji */
   ]);
   const IMG = "img/rpg/";
@@ -452,7 +455,7 @@
       .rp-boss-top { display: flex; align-items: center; gap: 12px; }
       .rp-boss-top > div { flex: 1; min-width: 0; }
       .rp-boss-emo { font-size: 56px; width: 76px; height: 76px; display: inline-flex; align-items: center; justify-content: center; animation: rp-bob 2.4s ease-in-out infinite; }
-      .rp-boss-img { width: 84px; height: 84px; object-fit: contain; animation: rp-bob 2.4s ease-in-out infinite; }
+      .rp-boss-img { width: 112px; height: 112px; object-fit: contain; animation: rp-bob 2.4s ease-in-out infinite; }
       .rp-boss.dead .rp-boss-emo, .rp-boss.dead .rp-boss-img { filter: grayscale(1); opacity: .5; animation: none; }
       @keyframes rp-bob { 50% { transform: translateY(-5px); } }
       .rp-hp { position: relative; height: 22px; border-radius: 99px; background: rgba(127,127,127,.18); overflow: hidden; margin: 10px 0; }
