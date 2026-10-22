@@ -13,7 +13,11 @@
 
   /* 有圖的檔名（放進 img/rpg/ 之後把 key 加進來，沒加的就顯示 emoji） */
   const RPG_IMG = new Set([
-    /* 例如 "gear:wood_sword", "class:scholar", "ui:ticket_normal" */
+    "class:scholar", "class:warrior", "class:guardian", "class:ranger",
+    "ui:ticket_normal", "ui:ticket_special", "ui:ticket_limited",
+    "gear:wood_sword", "gear:practice_book", "gear:cloth_shirt",
+    "gear:straw_bracer", "gear:old_watch", "gear:lucky_cord"
+    /* 之後有新圖就加進來，沒加的就顯示 emoji */
   ]);
   const IMG = "img/rpg/";
 
