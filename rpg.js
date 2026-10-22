@@ -16,7 +16,12 @@
     "class:scholar", "class:warrior", "class:guardian", "class:ranger",
     "ui:ticket_normal", "ui:ticket_special", "ui:ticket_limited",
     "gear:wood_sword", "gear:practice_book", "gear:cloth_shirt",
-    "gear:straw_bracer", "gear:old_watch", "gear:lucky_cord"
+    "gear:straw_bracer", "gear:old_watch", "gear:lucky_cord",
+    "gear:starsteel_blade", "gear:sage_staff", "gear:guardian_shield", "gear:moonlight_robe",
+    "gear:silverscale_mail", "gear:wind_boots", "gear:time_hourglass",
+    "gear:dawn_blade", "gear:star_grimoire", "gear:dawn_plate", "gear:undying_heart", "gear:gale_wings",
+    "gear:order_sword", "gear:eternal_book", "gear:order_crown",
+    "gear:harvest_scythe", "gear:maple_cape", "gear:harvest_crown"
     /* 之後有新圖就加進來，沒加的就顯示 emoji */
   ]);
   const IMG = "img/rpg/";
