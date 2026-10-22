@@ -9,7 +9,7 @@
 
 (function () {
 
-  const RPG_JS_VERSION = "2026-10-22 v3";
+  const RPG_JS_VERSION = "2026-10-22 v4";
 
   /* 有圖的檔名（放進 img/rpg/ 之後把 key 加進來，沒加的就顯示 emoji） */
   const RPG_IMG = new Set([
@@ -303,7 +303,7 @@
         ${RP.hit.killed ? `<br>🎉 打倒了！獲得特殊召喚券 1 張、星屑 ${(RP.hit.reward || {}).stardust || 0}、金寶箱 1 個` : ""}</div>` : "";
 
     const rank = (RP.rank || []).map((r, i) => `<div class="rp-rank ${r.me ? "me" : ""}"><span class="rp-rank-n">${i + 1}</span>
-        <span class="rp-rank-name">${r.class && CLASSES[r.class] ? CLASSES[r.class].emoji : "❔"} ${esc(r.name)}${r.me ? "（你）" : ""}</span>
+        ${window.FunGame && window.FunGame.avatar ? window.FunGame.avatar(r.class, r.frame, 40) : ""}<span class="rp-rank-name">${r.class && CLASSES[r.class] ? CLASSES[r.class].emoji : "❔"} ${esc(r.name)}${r.me ? "（你）" : ""}</span>
         <span class="rp-sub">${r.tier ? `第 ${r.tier} 階` : "還沒出擊"}${r.killed ? "・已打倒" : ""}</span><b>${r.dmg}</b></div>`).join("");
 
     const hits = (b.hits || []).map(h => `<span class="rp-chip ${h.crit ? "crit" : ""}">${h.day.slice(5).replace("-", "/")} ${h.crit ? "💥" : ""}${h.dmg}</span>`).join("");

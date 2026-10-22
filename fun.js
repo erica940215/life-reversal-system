@@ -5,11 +5,24 @@
 ========================================================= */
 (function () {
 
-  const FUN_JS_VERSION = "2026-10-22 v1";
+  const FUN_JS_VERSION = "2026-10-22 v2";
   const IMG = "img/fun/";
 
   /* 還沒給圖的小怪獸先用 emoji；給了圖就把 key 加進來 */
-  const MONSTER_IMG = new Set([]);
+  const MONSTER_IMG = new Set(["m_owl", "m_pillow", "m_kappa", "m_snail", "m_hamster", "m_fly", "m_drop",
+    "m_rooster", "m_tomato", "m_chick", "m_bookworm", "m_hedgehog", "m_secret"]);
+
+  const FRAMES = [
+    ["frame_wood", "新手木框", "開木寶箱有機會拿到"],
+    ["frame_leaf", "森林葉框", "開鐵寶箱有機會拿到"],
+    ["frame_gold", "黃金框", "開金寶箱有機會拿到"],
+    ["frame_star", "星光框", "開星光寶箱有機會拿到"],
+    ["frame_dragon", "屠龍者框", "打倒第 5 階的每週王"],
+    ["frame_crown", "王者框", "打倒第 10 階的每週王"],
+    ["frame_monster", "小怪獸框", "序光小怪獸 13 隻集滿"],
+    ["frame_lucky", "大吉框", "累計抽到 10 次大吉"]
+  ];
+  const CLASS_EMOJI = { scholar: "📚", warrior: "⚔️", guardian: "🛡️", ranger: "🏹" };
 
   const FORTUNES = {
     daikichi: { name: "大吉", color: "#e8a317", effect: "今天專注拿到的星屑 ×2" },
@@ -108,6 +121,14 @@
     return `<span class="fn-mon-emo ${big ? "big" : ""}">${m ? m[2] : "❔"}</span>`;
   }
 
+
+  /* 頭像：職業立繪放中間，外面套頭像框（王者框是戴在頭上的王冠） */
+  function avatar(cls, frame, size = 44) {
+    const face = cls ? `<img class="fn-av-face" src="img/rpg/class/${cls}.webp" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'fn-av-emo',textContent:'${CLASS_EMOJI[cls] || "🙂"}'}))">`
+                     : `<span class="fn-av-emo">🙂</span>`;
+    const fr = frame ? `<img class="fn-av-frame ${frame === "frame_crown" ? "crown" : ""}" src="${IMG}${frame}.webp" alt="">` : "";
+    return `<span class="fn-av ${frame ? "has" : ""} ${frame === "frame_crown" ? "is-crown" : ""}" style="--s:${size}px">${face}${fr}</span>`;
+  }
 
   /* ---------- 資料 ---------- */
 
@@ -325,7 +346,8 @@
     const c = FN.chest;
     const show = c ? `<div class="fn-chest-show">
         ${img(c.phase === "open" ? c.chest + "_open" : c.chest, "fn-chest-big " + (c.phase === "shake" ? "shake" : "pop"))}
-        ${c.phase === "open" ? `<div class="fn-result">🎁 ${esc((CHESTS.find(x => x[0] === c.chest) || [])[1])}打開了！<div>獲得：${rewardText(c.reward)}</div></div>
+        ${c.phase === "open" ? `<div class="fn-result">🎁 ${esc((CHESTS.find(x => x[0] === c.chest) || [])[1])}打開了！<div>獲得：${rewardText(c.reward)}</div>
+          ${c.frame ? `<div class="fn-got-frame">${img(c.frame, "fn-frame-ic")}<b>🖼️ 新的頭像框：${esc((FRAMES.find(f => f[0] === c.frame) || [])[1])}！</b></div>` : ""}</div>
           <button type="button" class="btn btn-small" data-fn="chest-close">好</button>` : `<p class="fn-note">喀啦喀啦……</p>`}</div>` : "";
 
     const list = CHESTS.map(([k, name, from]) => {
@@ -343,7 +365,8 @@
     rerender();
     const [data] = await Promise.all([rpc("fun_chest_open", { p_chest: key }), new Promise(r => setTimeout(r, 900))]);
     if (!data) { FN.chest = null; rerender(); return; }
-    FN.chest = { chest: key, reward: data.reward, phase: "open" };
+    FN.chest = { chest: key, reward: data.reward, frame: data.frame, phase: "open" };
+    if (data.frame) toast("🖼️ 拿到新的頭像框！");
     rerender();
     load();
   }
@@ -405,7 +428,7 @@
   function shopHtml() {
     const st = FN.status;
     if (!st.weekend) {
-      return `<div class="card rp-card fn-sec"><div class="fn-sec-top"><span class="fn-merchant">🧳</span>
+      return `<div class="card rp-card fn-sec"><div class="fn-sec-top">${img("merchant", "fn-merchant-img dim")}
         <div><h3>週末流浪商人</h3><span class="rp-sub">每週六、日才會出現，用金幣買好東西</span></div></div>
         <p class="rp-note">商人還在路上……金幣先存起來吧（現在有 ${st.gold}）。</p></div>`;
     }
@@ -418,7 +441,7 @@
         <button type="button" class="btn btn-small ${done ? "" : "btn-primary"}" data-fn="buy" data-v="${o.item}"
           ${done || st.gold < o.price || FN.busy ? "disabled" : ""}>${done ? "買過了" : "買"}</button></div>`;
     }).join("");
-    return `<div class="card rp-card fn-sec"><div class="fn-sec-top"><span class="fn-merchant bob">🧳</span>
+    return `<div class="card rp-card fn-sec"><div class="fn-sec-top">${img("merchant", "fn-merchant-img bob")}
         <div><h3>週末流浪商人</h3><span class="rp-sub">「嘿嘿，這週帶了好貨喔。」每樣限買一次</span></div>
         <div class="rp-power"><span class="rp-sub">金幣</span><b>${st.gold}</b></div></div>
       <div class="fn-shop">${items}</div></div>`;
@@ -430,6 +453,35 @@
   }
 
 
+  /* ---------- 🖼️ 頭像框 ---------- */
+
+  function frameHtml() {
+    const st = FN.status;
+    const owned = st.frames || [];
+    const list = FRAMES.map(([k, name, from]) => {
+      const has = owned.includes(k);
+      const on = st.frame === k;
+      return `<button type="button" class="fn-frame ${has ? "" : "locked"} ${on ? "on" : ""}" data-fn="frame" data-v="${k}" ${has && !FN.busy ? "" : "disabled"}>
+        ${img(k, "fn-frame-ic")}<b>${has ? esc(name) : "？？？"}</b><span class="rp-sub">${on ? "戴著中" : esc(from)}</span></button>`;
+    }).join("");
+    return `<div class="card rp-card fn-sec"><div class="fn-sec-top">${avatar(st.class, st.frame, 72)}
+        <div><h3>🖼️ 頭像框</h3><span class="rp-sub">收集 ${owned.length} / 8。戴著的框會出現在每週王的好友排行</span></div></div>
+      <div class="fn-frames">${list}</div>
+      ${st.frame ? `<button type="button" class="btn btn-small" data-fn="frame" data-v="">拿下頭像框</button>` : ""}
+      <p class="rp-note">大吉累計：${st.daikichi_count || 0} / 10</p></div>`;
+  }
+
+  async function equipFrame(key) {
+    const data = await rpc("fun_frame_equip", { p_frame: key || null });
+    if (data) {
+      FN.status.frame = data.frame;
+      toast(data.frame ? "🖼️ 換好頭像框了" : "拿下頭像框了");
+      rerender();
+      if (window.RpgGame && window.RpgGame.reload) window.RpgGame.reload();
+    }
+  }
+
+
   /* ---------- 整頁（冒險 → 驚喜） ---------- */
 
   function html() {
@@ -438,7 +490,7 @@
     if (FN.error) return `<div class="card rp-card"><p class="rp-note">載入失敗：${esc(FN.error)}</p></div>`;
     if (!FN.status) { if (!FN.loading && !FN.tried) { FN.tried = true; load(); } return `<div class="card rp-card"><p class="rp-note">載入中…</p></div>`; }
     setTimeout(setupScratchCanvas, 30);
-    return `<div class="card rp-card fn-sec">${fortuneHtml(false)}</div>${scratchHtml()}${chestHtml()}${gachaHtml()}${shopHtml()}
+    return `<div class="card rp-card fn-sec">${fortuneHtml(false)}</div>${scratchHtml()}${chestHtml()}${gachaHtml()}${frameHtml()}${shopHtml()}
       <p class="rp-ver">驚喜 ${FUN_JS_VERSION}</p>`;
   }
 
@@ -479,6 +531,7 @@
     else if (act === "gacha") pullGacha();
     else if (act === "gacha-close") { FN.gacha = null; rerender(); }
     else if (act === "buy") buy(el.dataset.v);
+    else if (act === "frame") equipFrame(el.dataset.v);
     else if (act === "goto") {
       if (window.RpgGame) window.RpgGame.state.tab = "fun";
       if (typeof showPage === "function") showPage("rpg");
@@ -559,10 +612,25 @@
       .fn-shelf-item.secret:not(.locked) { background: radial-gradient(circle, rgba(255,215,64,.35), transparent 70%); }
       .fn-shelf-item i { position: absolute; top: 0; right: 4px; font-style: normal; font-weight: 800; font-size: 11px; color: #6c4bd8; }
 
-      .fn-merchant { font-size: 44px; width: 60px; text-align: center; }
+      .fn-merchant-img { width: 76px; height: 76px; flex: none; }
+      .fn-merchant-img.dim { filter: grayscale(.6); opacity: .55; }
+      .fn-av { position: relative; display: inline-flex; align-items: center; justify-content: center; width: var(--s); height: var(--s); flex: none; }
+      .fn-av-face, .fn-av-emo { width: 70%; height: 70%; border-radius: 50%; object-fit: cover; background: rgba(127,127,127,.15); display: inline-flex; align-items: center; justify-content: center; font-size: calc(var(--s) * .4); }
+      .fn-av:not(.has) .fn-av-face, .fn-av:not(.has) .fn-av-emo { width: 92%; height: 92%; }
+      .fn-av-frame { position: absolute; inset: -6%; width: 112%; height: 112%; object-fit: contain; pointer-events: none; transform: translateY(3%); }
+      .fn-av.is-crown .fn-av-face, .fn-av.is-crown .fn-av-emo { width: 80%; height: 80%; margin-top: 22%; }
+      .fn-av-frame.crown { inset: auto; top: -26%; left: 8%; width: 84%; height: 84%; transform: none; }
+      .fn-frames { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+      .fn-frame { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 2px; border-radius: 12px; border: 1px solid rgba(127,127,127,.2); background: rgba(127,127,127,.06); color: inherit; font-size: 12px; cursor: pointer; text-align: center; }
+      .fn-frame .rp-sub { font-size: 10px; line-height: 1.3; }
+      .fn-frame.locked { cursor: default; } .fn-frame.locked .fn-frame-ic { filter: grayscale(1) brightness(.6); opacity: .5; }
+      .fn-frame.on { border-color: #6c4bd8; box-shadow: 0 0 0 2px rgba(108,75,216,.4); }
+      .fn-frame-ic { width: 56px; height: 56px; }
+      .fn-got-frame { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; color: #e8a317; }
       .fn-shop { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
       .fn-shop-item { display: flex; flex-direction: column; gap: 4px; padding: 10px; border-radius: 12px; background: rgba(127,127,127,.08); }
       .fn-shop-item.sale { background: rgba(255,167,38,.14); border: 1px solid rgba(255,167,38,.5); }
+      @media (max-width: 380px) { .fn-frames { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
       .fn-shop-item s { opacity: .5; } .fn-shop-item i { font-style: normal; color: #e65100; font-weight: 800; }
     `;
     document.head.appendChild(css);
@@ -614,6 +682,6 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();
 
-  window.FunGame = { version: FUN_JS_VERSION, html, reload: load, state: FN };
+  window.FunGame = { version: FUN_JS_VERSION, html, reload: load, state: FN, avatar };
 
 })();

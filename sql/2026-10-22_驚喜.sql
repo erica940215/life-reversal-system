@@ -12,6 +12,8 @@
 --   寶箱：每週王每次出擊 25% 掉寶箱、打倒王必掉金寶箱、完成史詩任務必掉鐵寶箱
 --   扭蛋：扭蛋幣從寶箱、商人來；序光小怪獸 12 隻＋隱藏版 1 隻，重複換星屑，集滿送大禮
 --   商人：每週六、日出現，用金幣買 4 樣東西，其中一樣 7 折
+--   頭像框：木 / 鐵 / 金 / 星光寶箱有機會開出對應的框；打倒第 5 階、第 10 階的每週王；扭蛋集滿；累計 10 次大吉
+--           戴著的框會顯示在每週王的好友排行
 -- =========================================================
 
 
@@ -60,10 +62,22 @@ create table if not exists public.fun_shop_buys (
   primary key (user_id, week_start, item)
 );
 
+create table if not exists public.fun_frames (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  frame_key text not null,
+  obtained_at timestamptz not null default now(),
+  primary key (user_id, frame_key)
+);
+
+create table if not exists public.fun_profile (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  frame text
+);
+
 do $$
 declare t text;
 begin
-  foreach t in array array['fun_fortunes', 'fun_scratch_log', 'fun_chest_log', 'fun_monsters', 'fun_shop_buys'] loop
+  foreach t in array array['fun_fortunes', 'fun_scratch_log', 'fun_chest_log', 'fun_monsters', 'fun_shop_buys', 'fun_frames', 'fun_profile'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('drop policy if exists "own select" on public.%I', t);
     execute format('create policy "own select" on public.%I for select using (auth.uid() = user_id)', t);
@@ -155,7 +169,22 @@ returns jsonb language sql immutable as $$
 $$;
 
 
--- ---------- 自動發：當天任務全清 → 刮刮樂；史詩任務 → 鐵寶箱 ----------
+-- ---------- 🖼️ 給頭像框（第一個框會自動戴上） ----------
+create or replace function public.fun_frame_grant(p_user uuid, p_frame text)
+returns boolean language plpgsql security definer set search_path to 'public'
+as $function$
+begin
+  insert into public.fun_frames (user_id, frame_key) values (p_user, p_frame) on conflict do nothing;
+  if not found then return false; end if;
+  insert into public.fun_profile (user_id, frame) values (p_user, p_frame)
+    on conflict (user_id) do update set frame = coalesce(public.fun_profile.frame, excluded.frame);
+  return true;
+end;
+$function$;
+revoke all on function public.fun_frame_grant(uuid, text) from public, anon, authenticated;
+
+
+-- ---------- 自動發：當天任務全清 → 刮刮樂；史詩任務 → 鐵寶箱；達成條件 → 頭像框 ----------
 create or replace function public.fun_auto_grants(p_user uuid)
 returns void language plpgsql security definer set search_path to 'public'
 as $function$
@@ -177,6 +206,19 @@ begin
              and completed_at >= now() - interval '2 days' loop
     perform public.grant_item(p_user, 'chest_iron', 1, 'chest-epic:' || t.id);
   end loop;
+
+  if exists (select 1 from public.rpg_boss_runs where user_id = p_user and killed_at is not null and tier >= 5) then
+    perform public.fun_frame_grant(p_user, 'frame_dragon');
+  end if;
+  if exists (select 1 from public.rpg_boss_runs where user_id = p_user and killed_at is not null and tier >= 10) then
+    perform public.fun_frame_grant(p_user, 'frame_crown');
+  end if;
+  if (select count(*) from public.fun_monsters where user_id = p_user) >= 13 then
+    perform public.fun_frame_grant(p_user, 'frame_monster');
+  end if;
+  if (select count(*) from public.fun_fortunes where user_id = p_user and kind = 'daikichi') >= 10 then
+    perform public.fun_frame_grant(p_user, 'frame_lucky');
+  end if;
 end;
 $function$;
 revoke all on function public.fun_auto_grants(uuid) from public, anon, authenticated;
@@ -229,7 +271,11 @@ begin
     'gold', coalesce((select gold from public.profiles where id = v_user), 0),
     'weekend', v_weekend,
     'shop', case when v_weekend then public.fun_shop_offers(v_week) else null end,
-    'bought', v_bought);
+    'bought', v_bought,
+    'class', (select class from public.rpg_heroes where user_id = v_user),
+    'frame', (select frame from public.fun_profile where user_id = v_user),
+    'frames', coalesce((select jsonb_agg(frame_key order by obtained_at) from public.fun_frames where user_id = v_user), '[]'::jsonb),
+    'daikichi_count', (select count(*) from public.fun_fortunes where user_id = v_user and kind = 'daikichi'));
 end;
 $function$;
 revoke all on function public.fun_status() from public, anon;
@@ -366,6 +412,8 @@ declare
   v_user uuid := auth.uid();
   v_reward jsonb;
   v_id bigint;
+  v_frame text;
+  v_got_frame text := null;
 begin
   if v_user is null then raise exception '尚未登入'; end if;
   if p_chest not in ('chest_wood', 'chest_iron', 'chest_gold', 'chest_star') then raise exception '沒有這種寶箱'; end if;
@@ -397,10 +445,21 @@ begin
   select coalesce(jsonb_object_agg(key, value), '{}'::jsonb) into v_reward
     from jsonb_each(v_reward) where value::text::int > 0;
 
-  insert into public.fun_chest_log (user_id, chest, reward) values (v_user, p_chest, v_reward) returning id into v_id;
+  -- 頭像框：木 6%、鐵 10%、金 20%、星光 60%（已經有了就不會再出）
+  v_frame := case p_chest when 'chest_wood' then 'frame_wood' when 'chest_iron' then 'frame_leaf'
+                          when 'chest_gold' then 'frame_gold' else 'frame_star' end;
+  if random() < (case p_chest when 'chest_wood' then 0.06 when 'chest_iron' then 0.10
+                              when 'chest_gold' then 0.20 else 0.60 end)
+     and public.fun_frame_grant(v_user, v_frame) then
+    v_got_frame := v_frame;
+  end if;
+
+  insert into public.fun_chest_log (user_id, chest, reward)
+    values (v_user, p_chest, v_reward || case when v_got_frame is null then '{}'::jsonb else jsonb_build_object('frame', v_got_frame) end)
+    returning id into v_id;
   perform public.fun_give(v_user, v_reward, 'chest:' || v_id);
 
-  return json_build_object('success', true, 'chest', p_chest, 'reward', v_reward);
+  return json_build_object('success', true, 'chest', p_chest, 'reward', v_reward, 'frame', v_got_frame);
 end;
 $function$;
 revoke all on function public.fun_chest_open(text) from public, anon;
@@ -484,6 +543,25 @@ end;
 $function$;
 revoke all on function public.fun_shop_buy(text) from public, anon;
 grant execute on function public.fun_shop_buy(text) to authenticated;
+
+
+-- ---------- 🖼️ 換頭像框（傳 null 就是拿下來） ----------
+create or replace function public.fun_frame_equip(p_frame text)
+returns json language plpgsql security definer set search_path to 'public'
+as $function$
+declare v_user uuid := auth.uid();
+begin
+  if v_user is null then raise exception '尚未登入'; end if;
+  if p_frame is not null and not exists (select 1 from public.fun_frames where user_id = v_user and frame_key = p_frame) then
+    raise exception '還沒有這個頭像框';
+  end if;
+  insert into public.fun_profile (user_id, frame) values (v_user, p_frame)
+    on conflict (user_id) do update set frame = excluded.frame;
+  return json_build_object('success', true, 'frame', p_frame);
+end;
+$function$;
+revoke all on function public.fun_frame_equip(text) from public, anon;
+grant execute on function public.fun_frame_equip(text) to authenticated;
 
 
 -- =========================================================
@@ -646,6 +724,39 @@ end;
 $function$;
 revoke all on function public.rpg_boss_attack() from public, anon;
 grant execute on function public.rpg_boss_attack() to authenticated;
+
+-- 🖼️ 好友排行顯示頭像框
+create or replace function public.rpg_boss_rank()
+returns json language plpgsql security definer set search_path to 'public'
+as $function$
+declare
+  v_user uuid := auth.uid();
+  v_week date := public.app_today() - (extract(isodow from public.app_today())::int - 1);
+begin
+  if v_user is null then raise exception '尚未登入'; end if;
+  return coalesce((
+    select json_agg(row_to_json(x) order by x.dmg desc, x.name)
+    from (
+      select u.id = v_user as me,
+             coalesce(p.username, '冒險者') as name,
+             h.class,
+             fp.frame,
+             coalesce(r.dmg, 0) as dmg,
+             r.tier,
+             r.killed_at is not null as killed
+      from (select v_user as id
+            union select case when f.user_a = v_user then f.user_b else f.user_a end
+            from public.friendships f
+            where f.status = 'accepted' and (f.user_a = v_user or f.user_b = v_user)) u
+      left join public.profiles p on p.id = u.id
+      left join public.rpg_heroes h on h.user_id = u.id
+      left join public.fun_profile fp on fp.user_id = u.id
+      left join public.rpg_boss_runs r on r.user_id = u.id and r.week_start = v_week
+    ) x), '[]'::json);
+end;
+$function$;
+revoke all on function public.rpg_boss_rank() from public, anon;
+grant execute on function public.rpg_boss_rank() to authenticated;
 
 notify pgrst, 'reload schema';
 
