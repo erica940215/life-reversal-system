@@ -78,7 +78,7 @@
   ];
 
   /* 還沒給圖的頭像框 */
-  const FRAME_NOIMG = new Set(["frame_zodiac"]);
+  const FRAME_NOIMG = new Set([]);
   const frameImg = (k, cls) => FRAME_NOIMG.has(k) ? `<span class="fn-frame-emo ${cls}">🌌</span>` : img(k, cls);
 
   /* 扭蛋系列二：星座寶寶（還沒給圖，先用星座符號） */
