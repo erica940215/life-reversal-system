@@ -759,7 +759,7 @@ body.fm-page #idea-fab { display: none !important; }
 /* ---------- 🎣 主動釣魚 ---------- */
 .fm-pond { margin-bottom: 8px; }
 .fm-pond-water { position: relative; height: 190px; border-radius: 16px; overflow: hidden; touch-action: manipulation; cursor: pointer; user-select: none; -webkit-user-select: none;
-  background: linear-gradient(180deg, #8fd3ff 0%, #4aa8e0 38%, #2f7fc0 100%); box-shadow: inset 0 -20px 40px rgba(0,40,90,.35); }
+  background: #3f9ad6 url(img/farm/ui/pond_bg.webp) center / cover no-repeat; box-shadow: inset 0 -20px 40px rgba(0,40,90,.35); }
 .fm-pond-wave { position: absolute; left: -50%; width: 200%; height: 20px; border-radius: 50%; background: rgba(255,255,255,.18); animation: fm-wave 6s linear infinite; }
 .fm-pond-wave.w1 { top: 34%; } .fm-pond-wave.w2 { top: 70%; animation-duration: 9s; animation-direction: reverse; opacity: .6; }
 @keyframes fm-wave { from { transform: translateX(0) scaleY(1); } 50% { transform: translateX(12%) scaleY(1.4); } to { transform: translateX(0) scaleY(1); } }
