@@ -755,3 +755,60 @@ body.fm-page #idea-fab { display: none !important; }
 .fm-fish-btns { display: flex; gap: 8px; justify-content: center; margin-top: 12px; }
 .fm-fish-btns .fm-btn { min-width: 112px; }
 .fm-fish-h { margin: 12px 2px 6px; font-size: 15px; --olc: #2f5f86; color: #fff; }
+
+/* ---------- 🎣 主動釣魚 ---------- */
+.fm-pond { margin-bottom: 8px; }
+.fm-pond-water { position: relative; height: 190px; border-radius: 16px; overflow: hidden; touch-action: manipulation; cursor: pointer; user-select: none; -webkit-user-select: none;
+  background: linear-gradient(180deg, #8fd3ff 0%, #4aa8e0 38%, #2f7fc0 100%); box-shadow: inset 0 -20px 40px rgba(0,40,90,.35); }
+.fm-pond-wave { position: absolute; left: -50%; width: 200%; height: 20px; border-radius: 50%; background: rgba(255,255,255,.18); animation: fm-wave 6s linear infinite; }
+.fm-pond-wave.w1 { top: 34%; } .fm-pond-wave.w2 { top: 70%; animation-duration: 9s; animation-direction: reverse; opacity: .6; }
+@keyframes fm-wave { from { transform: translateX(0) scaleY(1); } 50% { transform: translateX(12%) scaleY(1.4); } to { transform: translateX(0) scaleY(1); } }
+.fm-pond-line { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.fm-pond-line path { fill: none; stroke: rgba(255,255,255,.85); stroke-width: .5; vector-effect: non-scaling-stroke; }
+.fm-pond[data-phase="idle"] .fm-pond-line, .fm-pond[data-phase="done"] .fm-pond-line, .fm-pond[data-phase="fail"] .fm-pond-line { opacity: 0; }
+.fm-pond[data-phase="cast"] .fm-pond-line path { stroke-dasharray: 200; animation: fm-castline .7s ease-out both; }
+@keyframes fm-castline { from { stroke-dashoffset: 200; } to { stroke-dashoffset: 0; } }
+.fm-bob { position: absolute; left: 50%; top: 58%; width: 26px; height: 26px; margin: -13px 0 0 -13px; pointer-events: none; transition: transform .15s; }
+.fm-bob-top { position: absolute; left: 7px; top: 0; width: 12px; height: 16px; border-radius: 50% 50% 40% 40%; background: linear-gradient(180deg, #ff5252 0 55%, #fff 55%); box-shadow: 0 1px 2px rgba(0,0,0,.3); animation: fm-bobfloat 2.2s ease-in-out infinite; }
+.fm-bob-ring { position: absolute; left: -6px; top: 12px; width: 38px; height: 10px; border-radius: 50%; border: 2px solid rgba(255,255,255,.55); animation: fm-ring 2.2s ease-out infinite; }
+@keyframes fm-bobfloat { 50% { transform: translateY(2px); } }
+@keyframes fm-ring { from { transform: scale(.6); opacity: .9; } to { transform: scale(1.4); opacity: 0; } }
+.fm-pond[data-phase="idle"] .fm-bob, .fm-pond[data-phase="done"] .fm-bob, .fm-pond[data-phase="fail"] .fm-bob { opacity: 0; }
+.fm-pond[data-phase="cast"] .fm-bob { animation: fm-bobin .7s cubic-bezier(.3,1.4,.5,1) both; }
+@keyframes fm-bobin { from { transform: translate(120px, -110px) scale(.6); } to { transform: none; } }
+.fm-bob.nib { transform: translateY(5px); }
+.fm-pond[data-phase="bite"] .fm-bob { transform: translateY(14px); }
+.fm-pond[data-phase="bite"] .fm-bob-top { animation: fm-shake .12s linear infinite; }
+.fm-pond[data-phase="bite"] .fm-bob-ring { animation-duration: .5s; border-color: #fff; }
+@keyframes fm-shake { 0%, 100% { transform: translateX(-2px); } 50% { transform: translateX(2px); } }
+.fm-splash { position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%); font-size: 40px; opacity: 0; pointer-events: none; }
+.fm-pond[data-phase="bite"] .fm-splash { animation: fm-splash .5s ease-out infinite; }
+@keyframes fm-splash { from { opacity: 1; transform: translate(-50%, -50%) scale(.6); } to { opacity: 0; transform: translate(-50%, -90%) scale(1.3); } }
+.fm-pond[data-phase="reel"] .fm-pond-water { animation: fm-tug .25s ease-in-out infinite; }
+@keyframes fm-tug { 50% { transform: translateX(2px); } }
+.fm-pond-msg { text-align: center; font-size: 15px; margin: 8px 0 4px; min-height: 22px; }
+.fm-bang { color: #ff5252; font-size: 22px; animation: fm-bang .3s ease-in-out infinite alternate; display: inline-block; }
+@keyframes fm-bang { to { transform: scale(1.15); } }
+.fm-tier-c { color: #9e9e9e; } .fm-tier-r { color: #42a5f5; } .fm-tier-l { color: #ab47bc; } .fm-tier-x { color: #ffa726; } .fm-tier-s { color: #ef5350; }
+.fm-reel { margin: 6px 0; touch-action: manipulation; cursor: pointer; user-select: none; -webkit-user-select: none; }
+.fm-reel-track { position: relative; height: 34px; border-radius: 99px; background: rgba(0,0,0,.25); overflow: hidden; border: 2px solid rgba(255,255,255,.5); }
+.fm-reel-zone { position: absolute; top: 0; bottom: 0; background: linear-gradient(90deg, rgba(102,187,106,.6), #66bb6a 40%, #66bb6a 60%, rgba(102,187,106,.6)); }
+.fm-reel-ptr { position: absolute; top: -2px; bottom: -2px; width: 6px; margin-left: -3px; border-radius: 3px; background: #fff; box-shadow: 0 0 6px rgba(255,255,255,.9); }
+.fm-reel-row { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; min-height: 22px; }
+.fm-reel-dots { display: flex; gap: 6px; align-items: center; }
+.fm-reel-dots i { width: 12px; height: 12px; border-radius: 50%; background: rgba(255,255,255,.25); border: 1px solid rgba(255,255,255,.5); }
+.fm-reel-dots i.on { background: #66bb6a; }
+.fm-reel-miss { color: #ef5350; font-weight: 800; margin-left: 4px; }
+.fm-reel-flash { font-weight: 900; font-size: 18px; }
+.fm-reel-flash.perfect { color: #ffd54f; } .fm-reel-flash.hit { color: #66bb6a; } .fm-reel-flash.miss { color: #ef5350; }
+.fm-pond-res { text-align: center; padding: 6px 0; }
+.fm-pond-fail { font-size: 16px; padding: 14px 0; }
+.fm-catch { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 16px; margin: 4px; border-radius: 16px; background: rgba(255,255,255,.1); animation: fm-fishpop .45s cubic-bezier(.2,1.6,.4,1) both; }
+.fm-catch-art .fm-ic, .fm-catch-art img { width: 96px; height: 96px; }
+.fm-catch-name { font-size: 18px; font-weight: 800; }
+.fm-catch-sub { font-size: 13px; }
+.fm-catch-tags span { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; margin: 2px; border-radius: 99px; background: #ffd54f; color: #5d4300; }
+.fm-perfect { font-weight: 900; color: #ffd54f; margin: 4px 0; }
+.fm-castbtn { width: 100%; padding: 12px; font-size: 17px; }
+.fm-quick { margin: 10px 0 4px; font-size: 13px; }
+.fm-quick summary { cursor: pointer; opacity: .8; }

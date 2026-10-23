@@ -1429,7 +1429,231 @@ const FARM_JS_VERSION = "2026-10-22 v1";
     return added;
   }
 
-  /* 釣魚：一次按鈕；雙鉤竿一次拉兩條（扣兩個魚餌） */
+
+  /* =========================================================
+     🎣 主動釣魚：拋竿 → 等浮標 → 浮標下沉時點一下 → 反應條收竿
+     越稀有的魚：咬鉤的時間越短、綠色區越窄、指針越快、要點中越多次
+     主動釣：稀有魚機率提高、經驗 ×1.5；每天第一竿必定稀有以上
+  ========================================================= */
+  const REEL = {
+    c: { zone: 34, speed: 70, hits: 1, bite: 1400, kg: [0.3, 1.5] },
+    r: { zone: 28, speed: 88, hits: 1, bite: 1200, kg: [0.8, 3] },
+    l: { zone: 22, speed: 105, hits: 2, bite: 1000, kg: [2, 6] },
+    x: { zone: 17, speed: 125, hits: 2, bite: 900, kg: [4, 12] },
+    s: { zone: 12, speed: 145, hits: 3, bite: 800, kg: [10, 30] }
+  };
+
+  function activeRates() {
+    const r = rodRates().slice();
+    const move = Math.min(8, r[0] - 5);
+    r[0] -= move; r[2] += Math.round(move * 0.5); r[3] += Math.round(move * 0.3); r[4] += move - Math.round(move * 0.5) - Math.round(move * 0.3);
+    return r;
+  }
+
+  function firstCastToday() { return S.fish.dayFirst !== todayKey(); }
+
+  function rollActive(first) {
+    if (first) return pickFish(2 + pickTier([70, 25, 5]));
+    const rod = rodNow();
+    if (rod.effect === "pity" && (S.fish.miss || 0) >= 29) return rollFish();
+    return pickFish(pickTier(activeRates()));
+  }
+
+  function fishGo() {
+    if (!zoneUnlocked("碼頭")) return toast(`碼頭 Lv${zoneLv("碼頭")} 開放`);
+    const G0 = UI.fishGame;
+    if (G0 && !["done", "fail"].includes(G0.phase)) return;
+    const per = rodNow().effect === "double" ? 2 : 1;
+    if (have("bait") < per) return toast(per > 1 ? "魚餌不夠（雙鉤竿一次要 2 個）" : "沒有魚餌了，去牧場的魚餌線做");
+    if (invSpace() < 1) return toast(`倉庫滿了（${invUsed()}/${storageCap()}），先賣掉或做成料理`);
+    takeItem("bait", per);
+    const first = firstCastToday();
+    if (first) S.fish.dayFirst = todayKey();
+    const t = performance.now();
+    UI.fishResult = null;
+    UI.fishGame = { phase: "cast", t0: t, per, first, biteAt: t + 700 + 1800 + Math.random() * 5000,
+      nibbles: [], hits: 0, perfects: 0, misses: 0, p: 0, dir: 1, flash: null, flashAt: 0 };
+    const G = UI.fishGame;
+    const nn = Math.floor(Math.random() * 3);
+    for (let i = 0; i < nn; i++) G.nibbles.push(t + 900 + Math.random() * (G.biteAt - t - 1300));
+    saveSoon();
+    renderSheet();
+    requestAnimationFrame(pondLoop);
+  }
+
+  function newZone(G) {
+    const w = REEL[G.tier].zone;
+    G.zc = w / 2 + 4 + Math.random() * (100 - w - 8);
+  }
+
+  function pondTap() {
+    const G = UI.fishGame;
+    if (!G) return;
+    const t = performance.now();
+    if (G.phase === "cast") return;
+    if (G.phase === "wait") return fishFail("太早收竿了，魚被嚇跑了 🫧");
+    if (G.phase === "bite") {
+      G.phase = "reel"; G.reelStart = t; G.last = t; G.p = Math.random() * 30; G.dir = 1;
+      newZone(G);
+      return;
+    }
+    if (G.phase === "reel") {
+      const w = REEL[G.tier].zone;
+      const d = Math.abs(G.p - G.zc);
+      if (d <= w / 2) {
+        const perfect = d <= w * 0.18;
+        G.hits++; if (perfect) G.perfects++;
+        G.flash = perfect ? "perfect" : "hit"; G.flashAt = t;
+        try { navigator.vibrate && navigator.vibrate(perfect ? [20, 30, 20] : 25); } catch (e) {}
+        if (G.hits >= REEL[G.tier].hits) return fishLand();
+        newZone(G);
+      } else {
+        G.misses++; G.flash = "miss"; G.flashAt = t;
+        if (G.misses >= 2) return fishFail("線斷了…魚跑掉了 💨");
+      }
+    }
+  }
+
+  function fishFail(msg) {
+    const G = UI.fishGame;
+    G.phase = "fail"; G.msg = msg;
+    S.fish.escaped = (S.fish.escaped || 0) + 1;
+    saveSoon();
+    drawPond();
+  }
+
+  function fishLand() {
+    const G = UI.fishGame;
+    const rod = rodNow();
+    const got = [];
+    const give = (k, main) => {
+      if (invSpace() < 1) return;
+      const isNew = !S.fish.caught[k];
+      S.fish.caught[k] = (S.fish.caught[k] || 0) + 1;
+      S.fish.total = (S.fish.total || 0) + 1;
+      addItem(k, 1);
+      const allPerfect = main && G.perfects >= REEL[G.tier].hits;
+      addExp(Math.round(D.fish[k].exp * 1.5 * (allPerfect ? 1.5 : 1)));
+      const tier = D.fish[k].tier;
+      if (tier === "s") S.fish.legends = (S.fish.legends || 0) + 1;
+      if (isNightNow()) S.fish.nightFish = (S.fish.nightFish || 0) + 1;
+      if (isRainDay()) S.fish.rainFish = (S.fish.rainFish || 0) + 1;
+      const [a, b] = REEL[tier].kg;
+      const kg = Math.round((a + Math.random() * (b - a)) * (1 + 0.08 * (main ? G.perfects : 0)) * 100) / 100;
+      S.fish.best = S.fish.best || {};
+      const record = !S.fish.best[k] || kg > S.fish.best[k];
+      if (record) S.fish.best[k] = kg;
+      got.push({ k, isNew, kg, record: record && !isNew });
+    };
+    give(G.k, true);
+    if (rod.effect === "double") give(rollActive(false), false);
+    if (rod.effect === "night" && isNightNow() && Math.random() < 0.2) give(rollActive(false), false);
+    const hiTier = ["l", "x", "s"].includes(D.fish[G.k].tier);
+    S.fish.miss = hiTier ? 0 : (S.fish.miss || 0) + 1;
+    S.fish.active = (S.fish.active || 0) + 1;
+    if (G.perfects >= REEL[G.tier].hits) S.fish.perfect = (S.fish.perfect || 0) + 1;
+    checkRodUnlocks();
+    G.phase = "done"; G.got = got;
+    UI.fishResult = got;
+    try { navigator.vibrate && navigator.vibrate([30, 40, 60]); } catch (e) {}
+    after();
+  }
+
+  function pondLoop() {
+    const G = UI.fishGame;
+    if (!G || G.phase === "done" || G.phase === "fail") { drawPond(); return; }
+    if (!UI.sheet || UI.sheet.name !== "pier" || (UI.sheet.tab || "fish") !== "fish") { UI.fishGame = null; return; }
+    const t = performance.now();
+    if (G.phase === "cast" && t - G.t0 > 700) G.phase = "wait";
+    if (G.phase === "wait" && t >= G.biteAt) {
+      G.phase = "bite"; G.biteStart = t;
+      G.k = rollActive(G.first); G.tier = D.fish[G.k].tier;
+      try { navigator.vibrate && navigator.vibrate(60); } catch (e) {}
+    }
+    if (G.phase === "bite" && t - G.biteStart > REEL[G.tier].bite) { fishFail("太慢了，魚把餌吃掉跑了 🐟💨"); return; }
+    if (G.phase === "reel") {
+      const dt = (t - G.last) / 1000; G.last = t;
+      G.p += G.dir * REEL[G.tier].speed * dt;
+      if (G.p >= 100) { G.p = 100; G.dir = -1; }
+      if (G.p <= 0) { G.p = 0; G.dir = 1; }
+    }
+    drawPond();
+    requestAnimationFrame(pondLoop);
+  }
+
+  const TIER_LABEL = { c: "普通", r: "少見", l: "稀有", x: "史詩", s: "傳說" };
+
+  function drawPond() {
+    const el = UI.root && UI.root.querySelector("#fm-pond");
+    if (!el) return;
+    const G = UI.fishGame;
+    const t = performance.now();
+    const phase = G ? G.phase : "idle";
+    el.dataset.phase = phase;
+    const bob = el.querySelector(".fm-bob");
+    const msg = el.querySelector(".fm-pond-msg");
+    const reel = el.querySelector(".fm-reel");
+    const res = el.querySelector(".fm-pond-res");
+    let nib = false;
+    if (G && phase === "wait") nib = G.nibbles.some(n => t >= n && t - n < 260);
+    bob.classList.toggle("nib", nib);
+    if (phase === "idle") msg.innerHTML = (S.fish.dayFirst !== todayKey()) ? "🌅 今日第一竿：必定<b>稀有以上</b>！" : "點下面的「拋竿」開始";
+    else if (phase === "cast") msg.textContent = "拋竿～";
+    else if (phase === "wait") msg.textContent = nib ? "……有動靜？（還不是現在）" : "等浮標沉下去……";
+    else if (phase === "bite") msg.innerHTML = "<b class='fm-bang'>！ 現在點！</b>";
+    else if (phase === "reel") msg.innerHTML = `在<b>綠色區</b>點一下收線（${G.hits} / ${REEL[G.tier].hits}）・<span class="fm-tier-${G.tier}">${TIER_LABEL[G.tier]}的魚</span>`;
+    else msg.textContent = "";
+    reel.hidden = phase !== "reel";
+    if (phase === "reel") {
+      const w = REEL[G.tier].zone;
+      const z = reel.querySelector(".fm-reel-zone");
+      z.style.left = (G.zc - w / 2) + "%"; z.style.width = w + "%";
+      reel.querySelector(".fm-reel-ptr").style.left = G.p + "%";
+      reel.querySelector(".fm-reel-dots").innerHTML = Array.from({ length: REEL[G.tier].hits }, (_, i) => `<i class="${i < G.hits ? "on" : ""}"></i>`).join("")
+        + (G.misses ? `<span class="fm-reel-miss">${"✕".repeat(G.misses)}</span>` : "");
+      const fl = reel.querySelector(".fm-reel-flash");
+      const show = G.flash && t - G.flashAt < 450;
+      fl.textContent = show ? (G.flash === "perfect" ? "完美！" : G.flash === "hit" ? "好！" : "偏了！") : "";
+      fl.className = "fm-reel-flash " + (show ? G.flash : "");
+    }
+    res.hidden = !(phase === "done" || phase === "fail");
+    if (phase === "fail" && res.dataset.k !== "fail") {
+      res.dataset.k = "fail";
+      res.innerHTML = `<div class="fm-pond-fail">${esc(G.msg)}</div><button type="button" class="fm-btn green" data-act="fishgo">${uiIcon("fish_cast", "fm-btn-ic")}再拋一竿</button>`;
+    }
+    if (phase === "done" && res.dataset.k !== "done") {
+      res.dataset.k = "done";
+      const perfectAll = G.perfects >= REEL[G.tier].hits;
+      res.innerHTML = `${G.got.map(({ k, isNew, kg, record }) => {
+        const f = D.fish[k];
+        return `<div class="fm-catch r-${f.tier}"><div class="fm-catch-art">${itemIcon(k)}</div>
+          <div class="fm-catch-name ol">${esc(f.name)}</div>
+          <div class="fm-catch-sub"><span class="fm-tier-${f.tier}">${TIER_LABEL[f.tier]}</span>・${kg} kg</div>
+          <div class="fm-catch-tags">${isNew ? `<span>🆕 新魚！</span>` : ""}${record ? `<span>🏆 新紀錄！</span>` : ""}</div></div>`;
+      }).join("")}
+        ${perfectAll ? `<div class="fm-perfect">✨ 完美收竿！經驗加倍</div>` : ""}
+        <p class="fm-note" style="text-align:center;margin:4px 0">${esc(D.fish[G.got[0].k].desc)}・賣 ${D.items[G.got[0].k].sell} 星露</p>
+        <button type="button" class="fm-btn green" data-act="fishgo" ${have("bait") ? "" : "disabled"}>${uiIcon("fish_cast", "fm-btn-ic")}再拋一竿（魚餌 ${have("bait")}）</button>`;
+    }
+    if (phase !== "done" && phase !== "fail") res.dataset.k = "";
+  }
+
+  function pondHtml() {
+    return `<div id="fm-pond" class="fm-pond" data-phase="idle">
+      <div class="fm-pond-water" data-pond>
+        <div class="fm-pond-wave w1"></div><div class="fm-pond-wave w2"></div>
+        <svg class="fm-pond-line" viewBox="0 0 100 100" preserveAspectRatio="none"><path d="M100,0 Q70,30 50,58" /></svg>
+        <div class="fm-bob"><span class="fm-bob-top"></span><span class="fm-bob-ring"></span></div>
+        <div class="fm-splash">💦</div>
+      </div>
+      <div class="fm-pond-msg"></div>
+      <div class="fm-reel" data-pond hidden><div class="fm-reel-track"><div class="fm-reel-zone"></div><div class="fm-reel-ptr"></div></div>
+        <div class="fm-reel-row"><div class="fm-reel-dots"></div><div class="fm-reel-flash"></div></div></div>
+      <div class="fm-pond-res" hidden></div>
+    </div>`;
+  }
+
+  /* 快速釣：一次按鈕；雙鉤竿一次拉兩條（扣兩個魚餌） */
   function fishCast(n = 1) {
     if (!zoneUnlocked("碼頭")) return toast(`碼頭 Lv${zoneLv("碼頭")} 開放`);
     const per = rodNow().effect === "double" ? 2 : 1;
@@ -2844,6 +3068,12 @@ const FARM_JS_VERSION = "2026-10-22 v1";
     UI.centered = false;
 
     root.addEventListener("click", onClick);
+    /* 釣魚：用 pointerdown 反應比較快 */
+    root.addEventListener("pointerdown", e => {
+      if (!e.target.closest("[data-pond]") || e.target.closest("[data-act]")) return;
+      e.preventDefault();
+      pondTap();
+    });
     setupPan();
 
     if (window.ResizeObserver) {
@@ -4014,6 +4244,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
 
     pier: () => zoneUnlocked("碼頭") ? openSheet("pier") : toast(`碼頭 Lv${zoneLv("碼頭")} 開放，可以釣魚`),
     fish: el => fishCast(Number(el.dataset.n) || 1),
+    fishgo: () => fishGo(),
     rodbuy: el => {
       const msg = buyRod(el.dataset.k);
       toast(msg === "ok" ? `🎣 買了${D.rods[el.dataset.k].name}` : msg);
@@ -4638,6 +4869,8 @@ const FARM_JS_VERSION = "2026-10-22 v1";
   }
 
   function closeSheet() {
+    if (UI.fishGame && !["done", "fail"].includes(UI.fishGame.phase)) { toast("收竿了，這次的魚餌泡湯了"); S.fish.escaped = (S.fish.escaped || 0) + 1; saveSoon(); }
+    UI.fishGame = null;
     UI.sheet = null;
     UI.kitchenPick = null;
     UI.wishResult = null;
@@ -4673,6 +4906,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
     el.innerHTML = fn(t);
     el.hidden = false;
     el.scrollTop = scroll;
+    if (t.name === "pier") drawPond();
 
   }
 
@@ -4966,19 +5200,24 @@ const FARM_JS_VERSION = "2026-10-22 v1";
       let body = "";
 
       if (tab === "fish") {
-        const res = UI.fishResult || [];
+        const res = UI.fishGame ? [] : (UI.fishResult || []);
         const resHtml = res.length ? `<div class="fm-fishres">${res.map(({ k, isNew }) => {
           const f = D.fish[k];
           return `<div class="fm-card r-${f.tier}"><div class="fm-card-art">${itemIcon(k)}</div><div class="fm-card-name ol">${esc(f.name)}</div>
             <div class="fm-fish-tier">${tierName(f.tier)}${isNew ? "・新！" : ""}</div></div>`;
-        }).join("")}</div>${res.length === 1 ? `<p class="fm-note" style="text-align:center;margin:6px 0 0">${esc(D.fish[res[0].k].desc)}・賣 ${D.items[res[0].k].sell} 星露</p>` : ""}` : `<div class="fm-empty">點下面的按鈕，用 1 個魚餌釣一次</div>`;
-        const rates = rodRates().map((r, i) => `<span class="fm-tag r-${FISH_TIERS[i]}">${tierName(FISH_TIERS[i])} ${r}%</span>`).join(" ");
-        body = `<div class="fm-panel">${resHtml}
-          <div class="fm-fish-btns">
-            <button type="button" class="fm-btn green" data-act="fish" data-n="1" ${bait ? "" : "disabled"}>${uiIcon("fish_cast", "fm-btn-ic")}釣一次</button>
-            <button type="button" class="fm-btn" data-act="fish" data-n="5" ${bait >= 2 ? "" : "disabled"}>釣 ${Math.min(5, Math.max(1, bait))} 次</button>
-          </div>
-          <p class="fm-note" style="margin:8px 0 4px">${rod.emoji} 現在用 <b>${esc(rod.name)}</b>：</p><div>${rates}</div>
+        }).join("")}</div>` : "";
+        const rates = activeRates().map((r, i) => `<span class="fm-tag r-${FISH_TIERS[i]}">${tierName(FISH_TIERS[i])} ${r}%</span>`).join(" ");
+        const busy = UI.fishGame && !["done", "fail"].includes(UI.fishGame.phase);
+        body = `<div class="fm-panel">${pondHtml()}
+          ${UI.fishGame ? "" : `<button type="button" class="fm-btn green fm-castbtn" data-act="fishgo" ${bait ? "" : "disabled"}>${uiIcon("fish_cast", "fm-btn-ic")}拋竿（魚餌 ${bait}）</button>`}
+          ${resHtml}
+          <details class="fm-quick" ${busy ? "hidden" : ""}><summary>⚡ 快速釣（沒時間玩的時候）</summary>
+            <div class="fm-fish-btns">
+              <button type="button" class="fm-btn small" data-act="fish" data-n="1" ${bait ? "" : "disabled"}>快速釣 1 次</button>
+              <button type="button" class="fm-btn small" data-act="fish" data-n="5" ${bait >= 2 ? "" : "disabled"}>快速釣 ${Math.min(5, Math.max(1, bait))} 次</button>
+            </div><p class="fm-note">直接出結果，但沒有主動釣的稀有魚加成和 1.5 倍經驗。</p></details>
+          <p class="fm-note" style="margin:8px 0 4px">${rod.emoji} 現在用 <b>${esc(rod.name)}</b>（主動釣機率）：</p><div>${rates}</div>
+          <p class="fm-note" style="margin:6px 0 0">主動釣：已經釣起 ${num(S.fish.active || 0)} 條・完美收竿 ${num(S.fish.perfect || 0)} 次・跑掉 ${num(S.fish.escaped || 0)} 條</p>
           ${bait ? "" : `<p class="fm-note" style="margin-top:8px">魚餌在牧場的「魚餌線」做：2 飼料＋1 小麥，10 分鐘 5 個，最多排 5 輪，做好自動收。</p>`}</div>`;
       } else if (tab === "dex") {
         const caught = S.fish.caught;
@@ -4987,7 +5226,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
           const cards = Object.keys(D.fish).filter(k => D.fish[k].tier === tr).map(k => {
             const f = D.fish[k], c = caught[k] || 0;
             return `<div class="fm-card r-${tr}" title="${c ? esc(f.desc) : ""}">${c ? `<span class="fm-card-n">${c}</span>` : ""}<div class="fm-card-art" style="${c ? "" : "filter:brightness(0) opacity(.35)"}">${itemIcon(k)}</div>
-              <div class="fm-card-name ol">${c ? esc(f.name) : "？？？"}</div>${c ? `<div class="fm-fish-tier">${esc(D.dishes[f.dish].name)}</div>` : ""}</div>`;
+              <div class="fm-card-name ol">${c ? esc(f.name) : "？？？"}</div>${c ? `<div class="fm-fish-tier">${S.fish.best && S.fish.best[k] ? `🏆 ${S.fish.best[k]} kg` : esc(D.dishes[f.dish].name)}</div>` : ""}</div>`;
           }).join("");
           return `<h3 class="ol fm-fish-h">${tierName(tr)}</h3><div class="fm-grid">${cards}</div>`;
         }).join("");
