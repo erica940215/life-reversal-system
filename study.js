@@ -11,7 +11,7 @@
 
   const STUDY_JS_VERSION = "2026-10-23 v1";
   const IMG = "img/study/";
-  const ST_IMG = new Set([]);   /* 有圖再加：world_chronos、world_void、world_kraken、world_titan */
+  const ST_IMG = new Set(["world_chronos", "world_void", "world_kraken", "world_titan", "kcard"]);   /* 有圖再加：world_chronos、world_void、world_kraken、world_titan */
 
   const ST = {
     kc: null, combo: null, room: null, ml: null, rest: null, skill: null, world: null,
