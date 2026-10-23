@@ -5,11 +5,14 @@
 ========================================================= */
 (function () {
 
-  const GROWTH_JS_VERSION = "2026-10-23 v1";
+  const GROWTH_JS_VERSION = "2026-10-23 v2";
   const IMG = "img/growth/";
 
   /* 有圖的就加進來（放在 img/growth/），沒加的先用 emoji */
-  const GR_IMG = new Set([]);
+  const GR_IMG = new Set(["map_village", "map_forest", "map_swamp", "map_ruins", "map_oasis", "map_tundra",
+    "map_volcano", "map_peak", "map_temple", "map_sky", "map_end",
+    "buddy_egg", "buddy_baby", "buddy_teen", "buddy_wise", "buddy_strong", "buddy_lively", "buddy_guard",
+    "buddy_wise_legend", "buddy_strong_legend", "buddy_lively_legend", "buddy_guard_legend"]);
 
   const BUDDY_STAGE = ["蛋", "寶寶", "少年", "成年", "傳說"];
   const BUDDY_FORM = {
