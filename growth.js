@@ -348,6 +348,7 @@
       .gr-node.l { transform: translateX(30px); }
       .gr-node-art { position: relative; flex: none; }
       .gr-node-ic { width: 56px; height: 56px; font-size: 36px; border-radius: 50%; background: rgba(127,127,127,.12); border: 3px solid rgba(127,127,127,.3); }
+      img.gr-node-ic { object-fit: cover; }
       .gr-node.done .gr-node-ic { border-color: #66bb6a; }
       .gr-node.here .gr-node-ic { border-color: #6c4bd8; box-shadow: 0 0 0 4px rgba(108,75,216,.3); }
       .gr-node.lock { opacity: .45; }
