@@ -9,7 +9,7 @@
 
 (function () {
 
-  const RPG_JS_VERSION = "2026-10-23 v6";
+  const RPG_JS_VERSION = "2026-10-23 v7";
 
   /* 有圖的檔名（放進 img/rpg/ 之後把 key 加進來，沒加的就顯示 emoji） */
   const RPG_IMG = new Set([
@@ -416,8 +416,9 @@
 
     const tabs = [["hero", "角色"], ["boss", "每週王"], ["team", "小隊"], ["fun", "驚喜"], ["summon", "召喚"], ["book", "圖鑑"]];
     const body = RP.tab === "summon" ? summonHtml() : RP.tab === "book" ? bookHtml() : RP.tab === "boss" ? bossHtml()
-      : RP.tab === "fun" ? (window.FunGame ? window.FunGame.html() : "")
-      : RP.tab === "team" ? (window.TeamGame ? window.TeamGame.html() : "") : heroHtml();
+      : RP.tab === "fun" ? (window.EventGame ? window.EventGame.halloweenHtml() : "") + (window.FunGame ? window.FunGame.html() : "")
+      : RP.tab === "team" ? (window.TeamGame ? window.TeamGame.html() : "")
+      : heroHtml() + (window.EventGame && RP.status && RP.status.class ? window.EventGame.journalHtml() : "");
     root.innerHTML = `<div class="rp-tabs">${tabs.map(([k, l]) =>
       `<button type="button" class="rp-tab ${RP.tab === k ? "on" : ""}" data-rp="tab" data-v="${k}">${l}</button>`).join("")}</div>${body}
       <p class="rp-ver">冒險 ${RPG_JS_VERSION}</p>`;

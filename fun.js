@@ -23,7 +23,8 @@
     ["frame_crown", "王者框", "打倒第 10 階的每週王"],
     ["frame_monster", "小怪獸框", "序光小怪獸 13 隻集滿"],
     ["frame_lucky", "大吉框", "累計抽到 10 次大吉"],
-    ["frame_zodiac", "星座框", "星座寶寶 13 隻集滿"]
+    ["frame_zodiac", "星座框", "星座寶寶 13 隻集滿"],
+    ["frame_pumpkin", "南瓜框", "萬聖節糖果商店兌換"]
   ];
   const CLASS_EMOJI = { scholar: "📚", warrior: "⚔️", guardian: "🛡️", ranger: "🏹" };
 
@@ -79,8 +80,8 @@
   ];
 
   /* 還沒給圖的頭像框 */
-  const FRAME_NOIMG = new Set([]);
-  const frameImg = (k, cls) => FRAME_NOIMG.has(k) ? `<span class="fn-frame-emo ${cls}">🌌</span>` : img(k, cls);
+  const FRAME_NOIMG = new Set(["frame_pumpkin"]);
+  const frameImg = (k, cls) => FRAME_NOIMG.has(k) ? `<span class="fn-frame-emo ${cls}">${k === "frame_pumpkin" ? "🎃" : "🌌"}</span>` : img(k, cls);
 
   /* 扭蛋系列二：星座寶寶（還沒給圖，先用星座符號） */
   const ZODIAC = [
