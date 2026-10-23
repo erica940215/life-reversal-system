@@ -9,7 +9,7 @@
 
 (function () {
 
-  const RPG_JS_VERSION = "2026-10-23 v8";
+  const RPG_JS_VERSION = "2026-10-23 v9";
 
   /* 有圖的檔名（放進 img/rpg/ 之後把 key 加進來，沒加的就顯示 emoji） */
   const RPG_IMG = new Set([
@@ -350,6 +350,7 @@
 
     const chk = (ok, text) => `<li class="${ok ? "ok" : ""}">${ok ? "✅" : "⬜"} ${text}</li>`;
     const hit = RP.hit ? `<div class="rp-hit ${RP.hit.crit ? "crit" : ""}">${RP.hit.crit ? "💥 爆擊！" : "⚔️"} 造成 <b>${RP.hit.dmg}</b> 傷害${RP.hit.weak ? "（弱點 ×1.3）" : ""}・+${RP.hit.gold} 金幣
+        ${RP.hit.world_dmg ? `<br>🌍 世界王也受到 ${RP.hit.world_dmg} 傷害${RP.hit.world_killed ? "，全服打倒了！" : ""}` : ""}
         ${RP.hit.cheer ? `<br>📣 加油加成 +${RP.hit.cheer * 10}%` : ""}
         ${RP.hit.raid_dmg ? `<br>🐲 團隊王也受到 ${RP.hit.raid_dmg} 傷害${RP.hit.raid_killed ? "，打倒了！全隊拿到團隊寶箱 🎉" : ""}` : ""}
         ${RP.hit.chest ? `<br>🎁 掉了一個${{ chest_wood: "木寶箱", chest_iron: "鐵寶箱", chest_gold: "金寶箱", chest_star: "星光寶箱" }[RP.hit.chest] || "寶箱"}！到「驚喜」打開` : ""}
@@ -416,11 +417,13 @@
     if (!RP.status) { root.innerHTML = `<div class="card rp-card"><p class="rp-note">冒險載入中…</p></div>`; return; }
 
     const tabs = [["hero", "角色"], ["boss", "每週王"], ["team", "小隊"], ["journey", "旅程"], ["fun", "驚喜"], ["summon", "召喚"], ["book", "圖鑑"]];
-    const body = RP.tab === "summon" ? summonHtml() : RP.tab === "book" ? bookHtml() : RP.tab === "boss" ? bossHtml()
+    const body = RP.tab === "summon" ? summonHtml() : RP.tab === "book" ? bookHtml()
+      : RP.tab === "boss" ? (window.StudyGame ? window.StudyGame.worldHtml() : "") + bossHtml()
       : RP.tab === "fun" ? (window.EventGame ? window.EventGame.halloweenHtml() : "") + (window.FunGame ? window.FunGame.html() : "")
       : RP.tab === "team" ? (window.TeamGame ? window.TeamGame.html() : "") + (window.GrowthGame ? window.GrowthGame.betsHtml() : "")
       : RP.tab === "journey" ? (window.GrowthGame ? window.GrowthGame.html() : "")
-      : heroHtml() + (window.EventGame && RP.status && RP.status.class ? window.EventGame.journalHtml() : "");
+      : heroHtml() + (window.StudyGame && RP.status && RP.status.class ? window.StudyGame.skillHtml() : "")
+        + (window.EventGame && RP.status && RP.status.class ? window.EventGame.journalHtml() : "");
     root.innerHTML = `<div class="rp-tabs">${tabs.map(([k, l]) =>
       `<button type="button" class="rp-tab ${RP.tab === k ? "on" : ""}" data-rp="tab" data-v="${k}">${l}</button>`).join("")}</div>${body}
       <p class="rp-ver">冒險 ${RPG_JS_VERSION}</p>`;
@@ -446,6 +449,7 @@
         toast(data.killed ? "🎉 打倒每週王了！" : `${data.crit ? "💥 爆擊！" : "⚔️"} 造成 ${data.dmg} 傷害${data.chest ? "・掉了寶箱！" : ""}`);
         if (window.FunGame) window.FunGame.reload();
         if (window.TeamGame) window.TeamGame.reload();
+        if (window.StudyGame) window.StudyGame.reloadWorld();
       });
       return;
     }
