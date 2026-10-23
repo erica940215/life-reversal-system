@@ -282,6 +282,7 @@
       .tm-feed { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(127,127,127,.12); font-size: 14px; line-height: 1.5; }
       .tm-like { display: inline-flex; align-items: center; gap: 3px; border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 13px; padding: 4px; }
       .tm-like-ic { width: 20px; height: 20px; font-size: 16px; }
+      .tm-like:not(.on) img.tm-like-ic { filter: grayscale(1); opacity: .45; }
       .tm-like.on { color: #ef5350; font-weight: 700; }
     `;
     document.head.appendChild(css);
