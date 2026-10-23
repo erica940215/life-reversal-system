@@ -103,7 +103,7 @@
   const seriesList = k => (k === "z" ? ZODIAC : MONSTERS);
 
   /* 還沒給圖的寶箱先用 emoji */
-  const CHEST_NOIMG = new Set(["chest_team"]);
+  const CHEST_NOIMG = new Set([]);
   const chestImg = (k, cls) => CHEST_NOIMG.has(k.replace(/_open$/, "")) ? `<span class="fn-chest-emo ${cls}">${k.endsWith("_open") ? "🎊" : "🎁"}</span>` : img(k, cls);
 
   const MONSTERS = [

@@ -9,7 +9,9 @@
   const IMG = "img/team/";
 
   /* 有圖的就加進來（放在 img/team/），沒加的先用 emoji */
-  const TEAM_IMG = new Set([]);
+  const TEAM_IMG = new Set(["raid_hydra", "raid_vampire", "raid_abyss", "raid_fog",
+    "emblem_wolf", "emblem_eagle", "emblem_dragon", "emblem_lion", "emblem_fox", "emblem_whale", "emblem_phoenix", "emblem_owl",
+    "cheer", "like"]);
 
   const EMBLEMS = [
     ["emblem_wolf", "狼", "🐺"], ["emblem_eagle", "鷹", "🦅"], ["emblem_dragon", "龍", "🐉"], ["emblem_lion", "獅", "🦁"],
