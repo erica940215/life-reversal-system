@@ -27,6 +27,7 @@
     "gear:dew_rapier", "gear:dew_mail", "gear:dew_wreath", "gear:bulwark_hammer", "gear:bulwark_plate", "gear:bulwark_badge",
     "gear:academy_staff", "gear:academy_robe", "gear:academy_monocle", "gear:meteor_bow", "gear:meteor_cloak", "gear:meteor_earring",
     "gear:astrolabe", "gear:warlord_axe", "gear:oath_aegis", "gear:sky_bow",
+    "gear:jack_staff", "gear:witch_hat",
     "gear:snow_lantern_staff", "gear:starry_cloak", "gear:snow_crystal", "gear:koi_sword", "gear:red_brocade_robe", "gear:lucky_pouch",
     "boss:sloth_slime", "boss:delay_dragon", "boss:phone_wraith", "boss:fatigue_golem"
     /* 之後有新圖就加進來，沒加的就顯示 emoji */

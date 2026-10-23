@@ -9,11 +9,13 @@
 ========================================================= */
 (function () {
 
-  const EVENT_JS_VERSION = "2026-10-23 v1";
+  const EVENT_JS_VERSION = "2026-10-23 v2";
   const IMG = "img/event/";
 
   /* 有圖的就加進來（放在 img/event/），沒加的先用 emoji */
-  const EV_IMG = new Set([]);
+  const EV_IMG = new Set(["place_forest", "place_swamp", "place_ruins", "place_peak", "place_sky",
+    "ghost_pumpkin", "ghost_bat", "ghost_witch_cat", "ghost_king", "hw_banner",
+    "shop_frame_pumpkin", "shop_jack_staff", "shop_witch_hat", "candy"]);
 
   const PLACES = [
     { key: "place_forest", name: "晨光森林", emoji: "🌲", min: 10 },
@@ -214,7 +216,7 @@
     return `<div class="card rp-card ev-hw">
       <div class="ev-hw-top">${art("hw_banner", "🎃", "ev-hw-ic")}<div class="ev-grow"><h3>萬聖節・南瓜幽靈大作戰</h3>
         <span class="ev-sub">${h.active ? `還剩 ${days} 天（11/1 結束，糖果商店開到 11/3）` : "活動結束了，糖果商店開到 11/3"}</span></div>
-        <div class="rp-power"><span class="rp-sub">糖果</span><b>🍬 ${h.candy}</b></div></div>
+        <div class="rp-power"><span class="rp-sub">糖果</span><b class="ev-candy">${art("candy", "🍬", "ev-candy-ic")}${h.candy}</b></div></div>
       <p class="rp-note">完成任務有 40% 會遇到幽靈、專注 25 分鐘以上一定遇到一隻、10/31 簽到會出現南瓜大王。</p>
       ${waiting.length ? `<div class="ev-ghosts">${ghosts}</div>
         <button type="button" class="btn btn-primary tm-wide ev-wide" data-ev="catchall" ${EV.busy ? "disabled" : ""}>🕸️ 全部抓起來（${waiting.length} 隻）</button>`
@@ -501,6 +503,9 @@
       .ev-shop-item { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 4px; border-radius: 12px; background: rgba(0,0,0,.14); text-align: center; font-size: 12px; }
       .ev-shop-ic { width: 44px; height: 44px; font-size: 32px; }
       .ev-wide { width: 100%; }
+      .ev-candy { display: inline-flex; align-items: center; gap: 2px; }
+      .ev-candy-ic { width: 30px; height: 30px; font-size: 22px; }
+      .ev-hw-ic { border-radius: 10px; }
       .ev-today { padding: 0; overflow: hidden; }
       .ev-today-btn { display: flex; width: 100%; align-items: center; gap: 12px; padding: 12px 14px; border: 0; background: linear-gradient(90deg, rgba(255,112,67,.18), rgba(108,75,216,.12)); color: inherit; text-align: left; cursor: pointer; font-size: 14px; }
       .ev-today-ic { font-size: 30px; } .wiggle { animation: fn-shake .8s ease-in-out infinite; }
