@@ -5,7 +5,7 @@
 ========================================================= */
 (function () {
 
-  const TEAM_JS_VERSION = "2026-10-23 v1";
+  const TEAM_JS_VERSION = "2026-10-23 v2";
   const IMG = "img/team/";
 
   /* 有圖的就加進來（放在 img/team/），沒加的先用 emoji */
@@ -20,6 +20,15 @@
   const CLASS_INFO = { scholar: ["學者", "📚"], warrior: ["戰士", "⚔️"], guardian: ["守護者", "🛡️"], ranger: ["遊俠", "🏹"] };
   const BOSS_NAME = { sloth_slime: "怠惰史萊姆王", delay_dragon: "拖延巨龍", phone_wraith: "手機幽靈", fatigue_golem: "疲憊石像" };
   const RAID_NAME = { raid_hydra: "無盡滑動九頭蛇", raid_vampire: "熬夜吸血鬼伯爵", raid_abyss: "拖延深淵魔王", raid_fog: "焦慮迷霧巨人" };
+
+  const TITLE_NAME = {
+    night_owl: ["夜行者", "🦉"], early_bird: ["晨型戰士", "🌅"], focus_demon: ["專注魔人", "🔥"], marathon: ["馬拉松選手", "🏃"],
+    attendance: ["全勤王", "📅"], harvester: ["任務收割機", "🌾"], slayer: ["屠龍者", "🐉"], lucky_king: ["歐皇", "👑"],
+    unlucky: ["非洲酋長", "🥁"], collector: ["收藏家", "🗃️"], butterfly: ["社交蝴蝶", "🦋"], daikichi: ["大吉體質", "🎋"],
+    crow_friend: ["烏鴉之友", "🐦‍⬛"], explorer: ["天空旅人", "🏰"], sealer: ["封印大師", "🔒"], parent: ["夥伴之親", "🐣"],
+    ghostbuster: ["捉鬼大師", "👻"], wanderer: ["世界盡頭", "🌅"], gambler: ["說到做到", "🤝"]
+  };
+  const chip = k => (window.GrowthGame ? window.GrowthGame.titleChip(k) : "");
 
   const TM = { status: null, feed: [], error: null, busy: false, loading: false, tried: false, editing: false, pick: "emblem_wolf" };
 
@@ -148,7 +157,7 @@
       <p class="rp-note">每完成一項，每個人拿鐵寶箱 1 個；三項全清再拿金寶箱 1 個，還有 25% 機會拿星光寶箱。目標依人數調整。</p></div>`;
 
     const mem = members.map(m => `<div class="tm-row tm-mem">${avatar(m.class, m.frame, 44)}
-        <div class="tm-grow"><b>${esc(m.name)}${m.owner ? " 👑" : ""}${m.me ? "（你）" : ""}</b>
+        <div class="tm-grow"><b>${esc(m.name)}${m.owner ? " 👑" : ""}${m.me ? "（你）" : ""}${chip(m.title)}</b>
           <span class="rp-sub">${m.class ? CLASS_INFO[m.class][1] + " " + CLASS_INFO[m.class][0] : "還沒選職業"}</span>
           <span class="rp-sub">今天：專注 ${m.focus_min} 分・任務 ${m.tasks} 個・出擊 ${m.attacks} 次</span></div>
         ${t.owner && !m.me ? `<button type="button" class="btn btn-small" data-tm="kick" data-v="${m.id}" data-n="${esc(m.name)}">請離開</button>` : ""}</div>`).join("");
@@ -188,6 +197,11 @@
       case "collect": return `集滿了${d.series === "z" ? "星座寶寶" : "序光小怪獸"}全系列 🥚`;
       case "raid": return `帶著「${esc(d.team_name)}」打倒了第 ${d.tier} 階「${esc(RAID_NAME[d.boss] || "團隊王")}」🐲`;
       case "quest": return `「${esc(d.team_name)}」完成了本週全部小隊任務 🎯`;
+      case "map": return `在大地圖上抵達了「${esc(d.name)}」🗺️`;
+      case "seal": return `把「${esc(d.name)}」封印了 ${d.days} 天 🔒`;
+      case "buddy": return `的小夥伴「${esc(d.name)}」長大成年了 🐣`;
+      case "title": { const t = TITLE_NAME[d.title]; return `拿到稱號「${t ? t[1] + " " + t[0] : d.title}」🏷️`; }
+      case "bet": return `接受了 ${esc(d.with)} 的賭約（各押 ${d.stake} 星屑）🤝`;
       default: return esc(e.kind);
     }
   }
@@ -196,7 +210,7 @@
     const list = TM.feed || [];
     return `<div class="card rp-card"><h3>📰 好友動態</h3>
       ${list.length ? list.map(e => `<div class="tm-feed">${avatar(e.class, e.frame, 36)}
-        <div class="tm-grow"><div><b>${esc(e.name)}</b>${e.me ? "（你）" : ""} ${feedText(e)}</div><span class="rp-sub">${ago(e.at)}</span></div>
+        <div class="tm-grow"><div><b>${esc(e.name)}</b>${chip(e.title)}${e.me ? "（你）" : ""} ${feedText(e)}</div><span class="rp-sub">${ago(e.at)}</span></div>
         <button type="button" class="tm-like ${e.liked ? "on" : ""}" data-tm="like" data-v="${e.id}">${art("like", e.liked ? "❤️" : "🤍", "tm-like-ic")} ${e.likes || ""}</button></div>`).join("")
         : `<p class="rp-note">最近 7 天還沒有動態。打倒每週王、抽到傳說、湊滿套裝都會出現在這裡。</p>`}</div>`;
   }

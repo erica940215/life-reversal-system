@@ -9,7 +9,7 @@
 
 (function () {
 
-  const RPG_JS_VERSION = "2026-10-23 v7";
+  const RPG_JS_VERSION = "2026-10-23 v8";
 
   /* 有圖的檔名（放進 img/rpg/ 之後把 key 加進來，沒加的就顯示 emoji） */
   const RPG_IMG = new Set([
@@ -355,7 +355,7 @@
         ${RP.hit.killed ? `<br>🎉 打倒了！獲得特殊召喚券 1 張、星屑 ${(RP.hit.reward || {}).stardust || 0}、金寶箱 1 個` : ""}</div>` : "";
 
     const rank = (RP.rank || []).map((r, i) => `<div class="rp-rank ${r.me ? "me" : ""}"><span class="rp-rank-n">${i + 1}</span>
-        ${window.FunGame && window.FunGame.avatar ? window.FunGame.avatar(r.class, r.frame, 40) : ""}<span class="rp-rank-name">${r.class && CLASSES[r.class] ? CLASSES[r.class].emoji : "❔"} ${esc(r.name)}${r.me ? "（你）" : ""}</span>
+        ${window.FunGame && window.FunGame.avatar ? window.FunGame.avatar(r.class, r.frame, 40) : ""}<span class="rp-rank-name">${r.class && CLASSES[r.class] ? CLASSES[r.class].emoji : "❔"} ${esc(r.name)}${r.me ? "（你）" : ""}${window.GrowthGame ? window.GrowthGame.titleChip(r.title) : ""}</span>
         <span class="rp-sub">${r.tier ? `第 ${r.tier} 階` : "還沒出擊"}${r.killed ? "・已打倒" : ""}</span><b>${r.dmg}</b></div>`).join("");
 
     const hits = (b.hits || []).map(h => `<span class="rp-chip ${h.crit ? "crit" : ""}">${h.day.slice(5).replace("-", "/")} ${h.crit ? "💥" : ""}${h.dmg}</span>`).join("");
@@ -414,10 +414,11 @@
     if (RP.error) { root.innerHTML = `<div class="card rp-card"><p class="rp-note">載入失敗：${esc(RP.error)}</p></div>`; return; }
     if (!RP.status) { root.innerHTML = `<div class="card rp-card"><p class="rp-note">冒險載入中…</p></div>`; return; }
 
-    const tabs = [["hero", "角色"], ["boss", "每週王"], ["team", "小隊"], ["fun", "驚喜"], ["summon", "召喚"], ["book", "圖鑑"]];
+    const tabs = [["hero", "角色"], ["boss", "每週王"], ["team", "小隊"], ["journey", "旅程"], ["fun", "驚喜"], ["summon", "召喚"], ["book", "圖鑑"]];
     const body = RP.tab === "summon" ? summonHtml() : RP.tab === "book" ? bookHtml() : RP.tab === "boss" ? bossHtml()
       : RP.tab === "fun" ? (window.EventGame ? window.EventGame.halloweenHtml() : "") + (window.FunGame ? window.FunGame.html() : "")
-      : RP.tab === "team" ? (window.TeamGame ? window.TeamGame.html() : "")
+      : RP.tab === "team" ? (window.TeamGame ? window.TeamGame.html() : "") + (window.GrowthGame ? window.GrowthGame.betsHtml() : "")
+      : RP.tab === "journey" ? (window.GrowthGame ? window.GrowthGame.html() : "")
       : heroHtml() + (window.EventGame && RP.status && RP.status.class ? window.EventGame.journalHtml() : "");
     root.innerHTML = `<div class="rp-tabs">${tabs.map(([k, l]) =>
       `<button type="button" class="rp-tab ${RP.tab === k ? "on" : ""}" data-rp="tab" data-v="${k}">${l}</button>`).join("")}</div>${body}
@@ -477,7 +478,7 @@
       .page[data-page="rpg"]:not(.rp-on) .rp-off { display: block; }
       .page[data-page="rpg"]:not(.rp-on) #rp-root { display: none; }
       .rp-tabs { display: flex; gap: 6px; margin: 4px 0 12px; }
-      .rp-tab { flex: 1; min-width: 0; padding: 9px 0; font-size: 13px; border-radius: 12px; border: 1px solid rgba(127,127,127,.25); background: transparent; color: inherit; font-weight: 700; cursor: pointer; }
+      .rp-tab { flex: 1; min-width: 0; padding: 9px 0; font-size: 12px; border-radius: 12px; border: 1px solid rgba(127,127,127,.25); background: transparent; color: inherit; font-weight: 700; cursor: pointer; }
       .rp-tab.on { background: #6c4bd8; color: #fff; border-color: #6c4bd8; }
       .rp-card h3 { margin: 0 0 6px; }
       .rp-note { font-size: 13px; opacity: .78; margin: 6px 0; line-height: 1.55; }
