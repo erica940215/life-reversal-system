@@ -187,6 +187,12 @@
     if (!hasDb()) return;
     RP.loading = true;
     try {
+      // 彩蛋：條件達成時自動發放（失敗不影響載入）
+      try {
+        const { data: egg } = await db.rpc("rpg_egg_claim");
+        const got = (egg && egg.granted) || [];
+        if (got.length) setTimeout(() => toast(`🥚 發現彩蛋！獲得 ${got.length} 件新裝備，到角色頁看看`), 300);
+      } catch (e) { console.warn("彩蛋檢查失敗：", e); }
       const { data, error } = await db.rpc("rpg_status");
       if (error) throw error;
       RP.status = data;
@@ -290,6 +296,9 @@
         <p class="rp-note">屬性看的是最近 7 天的真實紀錄，越常做事角色越強；一段時間沒做，屬性就會慢慢掉下來。</p>
       </div>
       <div class="card rp-card"><h3>裝備</h3><div class="rp-slots">${slots}</div>${setLine}</div>
+      <div class="card rp-card"><h3>彩蛋</h3>
+        <p class="rp-note">有些彩蛋藏在日常的行為裡，條件達成就會自己出現。另外，你也可以寫一句鼓勵自己的話，換一枚徽章。</p>
+        <div class="rp-row"><button type="button" class="btn btn-small" data-rp="selfnote">寫一句鼓勵自己的話</button></div></div>
       <div class="card rp-card"><h3>換職業</h3>
         <p class="rp-note">${canChange ? "現在可以換職業。換了之後 7 天內不能再換。" : `下次可以換：${next.toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}`}</p>
         <div class="rp-row">${Object.entries(CLASSES).filter(([k]) => k !== st0.class).map(([k, c]) =>
@@ -449,6 +458,12 @@
       const c = CLASSES[el.dataset.v];
       if (RP.status.class && !confirm(`確定換成「${c.name}」？之後 7 天內不能再換。`)) return;
       call("rpg_set_class", { p_class: el.dataset.v }, () => toast(`${c.emoji} 你現在是${c.name}了`));
+      return;
+    }
+    if (act === "selfnote") {
+      const t = prompt("寫一句鼓勵自己的話（6–60 字）");
+      if (!t) return;
+      call("rpg_egg_self_note", { p_text: t }, data => toast(data.granted ? "🎵 獲得「自己寫的歌」徽章" : "你已經寫過囉，這枚徽章只能拿一次"));
       return;
     }
     if (act === "attack") {

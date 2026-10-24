@@ -5,7 +5,7 @@
 --
 --   套裝：星海、工坊、山野藥師、櫻花劍道、書庫（各 3 件，進普通池／特殊池）
 --   職業傳說：每職業 2 件，對應職業穿上戰力 +20%（進普通池／特殊池）
---   季節：月見、霜降、冬至、春分（進普通池／特殊池，稀有度 x）
+--   季節：月見、霜降、冬至、春分（限定池，每季輪替一件，見 2026-10-24_季節與彩蛋.sql）
 --   彩蛋與奇幻：pool = 'event'，不會被召喚抽到，之後用行為發放
 --
 --   做法：把原本的 rpg_catalog() 改名為 rpg_catalog_base()，
@@ -55,10 +55,10 @@ as $$
     "wind_boots":        {"name":"風之靴","slot":"accessory","tier":"s","pool":"base","class":"ranger","emoji":"👢","stat":{"str":14,"vit":12}},
     "mist_cloak":        {"name":"迷霧斗篷","slot":"armor","tier":"s","pool":"base","class":"ranger","emoji":"🌫️","stat":{"wil":14,"int":10}},
 
-    "moon_view":         {"name":"月見","slot":"accessory","tier":"x","pool":"base","emoji":"🥮","stat":{"wil":10,"vit":6}},
-    "frost_descent":     {"name":"霜降","slot":"armor","tier":"x","pool":"base","emoji":"🍁","stat":{"vit":12,"wil":6}},
-    "winter_solstice":   {"name":"冬至","slot":"accessory","tier":"x","pool":"base","emoji":"🍲","stat":{"int":8,"wil":8,"vit":4}},
-    "spring_equinox":    {"name":"春分","slot":"weapon","tier":"x","pool":"base","emoji":"🌸","stat":{"str":10,"int":6}},
+    "moon_view":         {"name":"月見","slot":"accessory","tier":"x","pool":"limited","series":"moon_view","emoji":"🥮","stat":{"wil":10,"vit":6}},
+    "frost_descent":     {"name":"霜降","slot":"armor","tier":"x","pool":"limited","series":"frost_descent","emoji":"🍁","stat":{"vit":12,"wil":6}},
+    "winter_solstice":   {"name":"冬至","slot":"accessory","tier":"x","pool":"limited","series":"winter_solstice","emoji":"🍲","stat":{"int":8,"wil":8,"vit":4}},
+    "spring_equinox":    {"name":"春分","slot":"weapon","tier":"x","pool":"limited","series":"spring_equinox","emoji":"🌸","stat":{"str":10,"int":6}},
 
     "midnight_lamp":     {"name":"深夜的燈","slot":"accessory","tier":"x","pool":"event","emoji":"🏮","stat":{"int":10,"wil":10}},
     "consecutive_medal": {"name":"連續 30 天勳章","slot":"accessory","tier":"x","pool":"event","emoji":"🏅","stat":{"str":8,"vit":8,"wil":8}},
