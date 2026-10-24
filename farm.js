@@ -16,6 +16,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
   "use strict";
 
   const D = window.FARM_DATA;
+  const MAX_LV = 70; // 星露島的滿級（50 之後還有 51–70）
 
   if (!D) {
     console.warn("星露島：找不到 farm-data.js");
@@ -468,7 +469,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
     if (!st.skins || typeof st.skins !== "object") st.skins = {};
     if (!st.subjLv || typeof st.subjLv !== "object") st.subjLv = {};
 
-    st.lv = Math.min(50, Math.max(1, st.lv | 0));
+    st.lv = Math.min(MAX_LV, Math.max(1, st.lv | 0));
 
     return st;
 
@@ -540,13 +541,13 @@ const FARM_JS_VERSION = "2026-10-22 v1";
 
   function addExp(n) {
 
-    if (n <= 0 || S.lv >= 50) return;
+    if (n <= 0 || S.lv >= MAX_LV) return;
 
     S.exp += Math.round(n);
 
     let up = false;
 
-    while (S.lv < 50 && S.exp >= lvNeed(S.lv)) {
+    while (S.lv < MAX_LV && S.exp >= lvNeed(S.lv)) {
 
       S.exp -= lvNeed(S.lv);
       S.lv += 1;
@@ -557,6 +558,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
 
       if (info.wish) pendingLevelClaim = true;
 
+      if (S.lv === 70) S.title = "星露傳說";
       if (S.lv === 50) {
         S.title = "星露島主";
         if (!S.ranch.animals.some(a => a.sp === "deer")) {
@@ -567,7 +569,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
 
     }
 
-    if (S.lv >= 50) S.exp = 0;
+    if (S.lv >= MAX_LV) S.exp = 0;
 
     if (up) {
       /* 水車變大就順便裝滿多出來的那部分 */
@@ -647,6 +649,8 @@ const FARM_JS_VERSION = "2026-10-22 v1";
     ["focus100h", "心流", "專注累計 100 小時", 150, "s:focus", 6000],
     ["checkin100", "百日", "簽到累計 100 天", 150, "s:checkin", 100],
     ["lv50", "星露島主", "島嶼升到 Lv50", 300, "lv", 50],
+    ["lv60", "星露的旅人", "島嶼升到 Lv60", 400, "lv", 60],
+    ["lv70", "星露傳說", "島嶼升到 Lv70（滿級）", 800, "lv", 70],
     ["fish1", "第一條魚", "第一次釣到魚", 5, "fish", 1],
     ["fishdex5", "魚類圖鑑 I", "釣過 5 種魚", 20, "fishdex", 5],
     ["fish50", "釣魚愛好者", "釣魚 50 次", 30, "fish", 50],
@@ -3119,7 +3123,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
       </button>`;
 
     const need = lvNeed(S.lv);
-    const pct = S.lv >= 50 ? 100 : Math.floor((S.exp / need) * 100);
+    const pct = S.lv >= MAX_LV ? 100 : Math.floor((S.exp / need) * 100);
     const ti = S.titleKey && own("t_" + S.titleKey) ? D.titles[S.titleKey] : null;
     const titleName = ti ? ti.name : S.title;
     const name = titleName ? `星露島・${titleName}` : "星露島";
@@ -3133,7 +3137,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
       <div class="fm-prof-r">
         <div class="fm-lvrow">
           <div class="fm-lv ol">${S.lv}</div>
-          <div class="fm-exp"><i style="width:${pct}%"></i><span>${S.lv >= 50 ? "MAX" : `${num(S.exp)} / ${num(need)}`}</span></div>
+          <div class="fm-exp"><i style="width:${pct}%"></i><span>${S.lv >= MAX_LV ? "MAX" : `${num(S.exp)} / ${num(need)}`}</span></div>
         </div>
         <div class="fm-pname ol">${esc(name)}</div>
       </div>`;
@@ -5326,7 +5330,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
           <div class="fm-animals">${tiles}${empty}</div>${breedTxt ? `<p class="fm-note" style="margin:6px 0 0">${breedTxt}</p>` : ""}</div>`;
       }).filter(Boolean).join("");
 
-      const nextAnimal = Object.values(D.animals).find(a => a.lv > S.lv && a.lv < 50);
+      const nextAnimal = Object.values(D.animals).find(a => a.lv > S.lv && a.lv < MAX_LV);
       const tease = nextAnimal ? `<p class="fm-note" style="margin:0 14px 16px;text-align:center">下一種動物：${nextAnimal.emoji} ${esc(nextAnimal.name)}（Lv${nextAnimal.lv}）</p>` : "";
 
       return sheetTop("牧場", `${miniIcon("feed", "🌾")} ${have("feed")}・📦 ${invUsed()}/${storageCap() > 9999 ? "∞" : storageCap()}`) + feedRow + mill + inc + pens + tease;
