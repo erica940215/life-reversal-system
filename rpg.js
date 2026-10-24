@@ -28,6 +28,14 @@
     "gear:academy_staff", "gear:academy_robe", "gear:academy_monocle", "gear:meteor_bow", "gear:meteor_cloak", "gear:meteor_earring",
     "gear:astrolabe", "gear:warlord_axe", "gear:oath_aegis", "gear:sky_bow",
     "gear:jack_staff", "gear:witch_hat",
+    /* 新裝備（2026-10-24） */
+    "gear:starsea_sword", "gear:starsea_garb", "gear:starsea_crown", "gear:mecha_hammer", "gear:mecha_gear_mail",
+    "gear:mecha_goggles", "gear:herbal_sickle", "gear:herbal_coat", "gear:herbal_basket", "gear:sakura_katana",
+    "gear:sakura_gi", "gear:sakura_men", "gear:library_tome", "gear:library_mantle", "gear:library_key",
+    "gear:no_word_tome", "gear:ink_abyss_brush", "gear:dawn_fist", "gear:ruin_shield", "gear:moonlight_candle",
+    "gear:oak_heart", "gear:wind_boots", "gear:mist_cloak", "gear:moon_view", "gear:frost_descent",
+    "gear:winter_solstice", "gear:spring_equinox", "gear:midnight_lamp", "gear:consecutive_medal", "gear:self_written_badge",
+    "gear:failed_souvenir", "gear:paper_lantern_ghost", "gear:talking_skeleton_staff", "gear:under_moon_fox_tail",
     "gear:snow_lantern_staff", "gear:starry_cloak", "gear:snow_crystal", "gear:koi_sword", "gear:red_brocade_robe", "gear:lucky_pouch",
     "boss:sloth_slime", "boss:delay_dragon", "boss:phone_wraith", "boss:fatigue_golem"
     /* 之後有新圖就加進來，沒加的就顯示 emoji */
