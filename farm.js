@@ -556,7 +556,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
       const info = D.levels[S.lv - 1];
       addDew(info.dew);
 
-      if (info.wish) pendingLevelClaim = true;
+      if (info.wish || info.gift) pendingLevelClaim = true;
 
       if (S.lv === 70) S.title = "星露傳說";
       if (S.lv === 50) {

@@ -5,6 +5,7 @@
 --
 --   島嶼等級 51–70：每 5 級有星願瓶獎勵（55、65 普通；60 稀有；70 限定）
 --   新成就：島嶼 Lv60（星露的旅人）、Lv70（星露傳說）
+--   家具禮物：54 向日葵花圃、60 星光噴泉、65 孔雀屏風、68 冰淇淋攤、70 星露傳說雕像
 -- =========================================================
 
 -- ---------- 🏅 成就獎勵目錄：加入 lv60 / lv70 ----------
@@ -52,6 +53,14 @@ begin
 
     if public.grant_item(v_user, v_key, v_qty, 'farm-lv:' || l) then
       v_items := v_items || jsonb_build_object('key', v_key, 'qty', v_qty, 'lv', l);
+    end if;
+  end loop;
+
+  -- 51–70 級的家具禮物（每一個只發一次）
+  for v_key, l in select * from (values ('f_sunflowerbed', 54), ('f_starfountain', 60), ('f_peacockscreen', 65),
+                                     ('f_icecreamstall', 68), ('f_starstatue', 70)) g(k, lvl) loop
+    if v_lv >= l and public.grant_item(v_user, v_key, 1, 'farm-gift:' || l) then
+      v_items := v_items || jsonb_build_object('key', v_key, 'qty', 1, 'lv', l);
     end if;
   end loop;
 
