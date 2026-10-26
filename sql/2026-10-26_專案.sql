@@ -384,3 +384,8 @@ begin
 end;
 $function$;
 grant execute on function public.project_step_makeup(uuid) to authenticated;
+
+-- ---------- 🗂️ 分類（只是分組顯示，每個專案還是各自獨立） ----------
+alter table public.projects add column if not exists category text not null default '';
+grant insert (category) on public.projects to authenticated;
+grant update (category) on public.projects to authenticated;

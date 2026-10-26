@@ -72,6 +72,12 @@
     .pj-makeup{margin:10px 0;padding:8px 12px;border-radius:10px;border:1px dashed rgba(127,127,127,.4)}
     .pj-makeup-h{font-weight:600;font-size:14px}
     .pj-makeup-h small{display:block;font-weight:400;font-size:12px;opacity:.65}
+    .pj-cat-h{font-size:15px;margin:18px 4px 8px;display:flex;justify-content:space-between;align-items:baseline}
+    .pj-cat-h small{font-size:12px;font-weight:400;opacity:.65}
+    .pj-compact{margin:0}
+    .pj-cr .pj-st{cursor:pointer}
+    .pj-cr-m{font-size:12px;opacity:.6;white-space:nowrap}
+    .pj-cr:last-child{border-bottom:0}
     .pj-kind{display:grid;grid-template-columns:1fr 1fr;gap:8px}
     .pj-kind button{border:1px solid #343b4b;background:transparent;color:inherit;font:inherit;font-weight:600;padding:10px;border-radius:10px;cursor:pointer;text-align:left}
     .pj-kind button small{display:block;font-weight:400;font-size:12px;opacity:.65;margin-top:2px}
@@ -239,6 +245,32 @@
           <span class="pj-st">${esc(s.title)}</span></li>`).join("")}</ul></div>`;
   }
 
+  /* 只有一個項目的每日專案：一行就好，點名稱展開 */
+  function compactHtml(p) {
+    const st = (P.steps[p.id] || [])[0];
+    const t = today(), ok = checked(st.id, t), sk = streak(p);
+    return `<li class="pj-cr ${ok ? "done" : ""}">
+      <input type="checkbox" data-a="step" data-id="${st.id}" ${ok ? "checked" : ""}>
+      <span class="pj-st" data-a="expand" data-id="${p.id}">${esc(p.title)}</span>
+      <span class="pj-cr-m">${sk ? "🔥" + sk + " " : ""}Lv ${p.level}</span></li>`;
+  }
+  const isCompact = p => p.kind === "daily" && (P.steps[p.id] || []).length === 1 && !P.open[p.id];
+
+  function groupHtml(list) {
+    const cats = [];
+    list.forEach(p => { const c = p.category || ""; if (!cats.includes(c)) cats.push(c); });
+    cats.sort((a, b) => (a === "") - (b === ""));
+    return cats.map(c => {
+      const ps = list.filter(p => (p.category || "") === c);
+      const compact = ps.filter(isCompact), full = ps.filter(p => !isCompact(p));
+      const t = today();
+      const doneN = ps.filter(p => p.kind === "daily" && dayClear(p, t)).length, dailyN = ps.filter(p => p.kind === "daily").length;
+      return `<div class="pj-cat"><h3 class="pj-cat-h">${esc(c || "未分類")}${dailyN ? `<small>今天 ${doneN}/${dailyN}</small>` : ""}</h3>
+        ${compact.length ? `<section class="card pj-card"><ul class="pj-steps pj-compact">${compact.map(compactHtml).join("")}</ul></section>` : ""}
+        ${full.map(projectHtml).join("")}</div>`;
+    }).join("");
+  }
+
   function dailyHtml(p) {
     const steps = P.steps[p.id] || [];
     const t = today();
@@ -297,9 +329,11 @@
           <button type="button" data-a="kind" data-id="once" class="${daily ? "" : "on"}">🎯 任務制<small>步驟做完就結案</small></button>
         </div>
         <input id="pj-new-title" type="text" maxlength="80" placeholder="${daily ? "例如：早睡早起" : "例如：整理房間"}">
+        <input id="pj-new-cat" type="text" maxlength="20" list="pj-cat-list" placeholder="分類（可不填），例如：☀️ 早晨">
+        <datalist id="pj-cat-list">${[...new Set(P.list.map(p => p.category).filter(Boolean))].map(c => `<option value="${esc(c)}">`).join("")}</datalist>
         <input id="pj-new-def" type="text" maxlength="200" placeholder="${daily ? "目標（例如：12 點前上床、7 點起床）" : "完成定義（怎樣才算做完）"}">
         <button class="btn btn-primary" data-a="add">建立專案</button></div></section>
-      ${active.slice().sort((a, b) => order(a) - order(b)).map(projectHtml).join("") || `<section class="card"><div class="empty-state">還沒有進行中的專案</div></section>`}
+      ${active.length ? groupHtml(active.slice().sort((a, b) => order(a) - order(b))) : `<section class="card"><div class="empty-state">還沒有進行中的專案</div></section>`}
       ${done.length ? `<button class="btn btn-small" data-a="showdone" style="margin:4px 0 12px">${P.showDone ? "收起" : "顯示"}已完成（${done.length}）</button>
         ${P.showDone ? done.map(projectHtml).join("") : ""}` : ""}`;
   }
@@ -308,7 +342,7 @@
     const t = document.getElementById("pj-new-title"), d = document.getElementById("pj-new-def");
     const title = t.value.trim();
     if (!title) { t.focus(); return; }
-    const { data, error } = await db.from("projects").insert({ title, done_def: d.value.trim(), kind: P.newKind }).select().single();
+    const { data, error } = await db.from("projects").insert({ title, done_def: d.value.trim(), kind: P.newKind, category: (document.getElementById("pj-new-cat").value || "").trim() }).select().single();
     if (error) { toast("❌ " + error.message); return; }
     P.open[data.id] = true;
     await load();
@@ -376,6 +410,7 @@
     if (a === "step") { e.preventDefault(); return toggleStep(id); }
     if (a === "complete") return complete(id);
     if (a === "kind") { P.newKind = id; const t = document.getElementById("pj-new-title").value, d = document.getElementById("pj-new-def").value; render(); document.getElementById("pj-new-title").value = t; document.getElementById("pj-new-def").value = d; return; }
+    if (a === "expand") { P.open[id] = true; render(); return; }
     if (a === "makeup") { P.makeup[id] = !P.makeup[id]; render(); return; }
     if (a === "mkstep") {
       e.preventDefault();
@@ -402,9 +437,11 @@
       const p = P.list.find(x => x.id === id);
       const title = prompt("專案名稱", p.title);
       if (title === null) return;
-      const def = prompt("完成定義", p.done_def || "");
+      const def = prompt(p.kind === "daily" ? "目標" : "完成定義", p.done_def || "");
       if (def === null) return;
-      const { error } = await db.from("projects").update({ title: title.trim() || p.title, done_def: def.trim() }).eq("id", id);
+      const cat = prompt("分類（留空 = 未分類）", p.category || "");
+      if (cat === null) return;
+      const { error } = await db.from("projects").update({ title: title.trim() || p.title, done_def: def.trim(), category: cat.trim() }).eq("id", id);
       if (error) toast("❌ " + error.message);
       return load();
     }
