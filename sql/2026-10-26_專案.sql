@@ -335,3 +335,52 @@ begin
 end;
 $function$;
 grant execute on function public.project_lucky_draw() to authenticated;
+
+-- ---------- 📅 補昨天的打卡（每日重複專案） ----------
+-- 只能補「昨天」；補勾給 5 EXP（沒有爆擊、沒有全勤星屑），但會接回連擊和全勤紀錄
+create or replace function public.project_step_makeup(p_step uuid)
+returns json language plpgsql security definer set search_path to 'public'
+as $function$
+declare
+  u uuid := auth.uid();
+  y date := public.app_today() - 1;
+  s public.project_steps%rowtype;
+  pr public.projects%rowtype;
+  lg public.project_step_logs%rowtype;
+  st public.project_stats%rowtype;
+  ups jsonb;
+begin
+  if u is null then raise exception '尚未登入'; end if;
+  select * into s from public.project_steps where id = p_step and user_id = u for update;
+  if not found then raise exception '找不到這個項目'; end if;
+  select * into pr from public.projects where id = s.project_id;
+  if pr.kind <> 'daily' then raise exception '只有每日重複的專案可以補打卡'; end if;
+  if (s.created_at at time zone 'Asia/Taipei' - interval '2 hours')::date > y then
+    raise exception '這個項目是今天才加的，昨天不用補';
+  end if;
+
+  select * into lg from public.project_step_logs where step_id = p_step and day = y;
+  if found then
+    update public.project_step_logs set done = not lg.done where step_id = p_step and day = y;
+    return json_build_object('done', not lg.done, 'xp', 0);
+  end if;
+  insert into public.project_step_logs (step_id, project_id, user_id, day) values (p_step, pr.id, u, y);
+
+  -- 接回連擊：最後一次是前天 → 連到昨天
+  insert into public.project_stats (user_id) values (u) on conflict do nothing;
+  select * into st from public.project_stats where user_id = u for update;
+  if st.last_day is null or st.last_day < y then
+    st.combo := case when st.last_day = y - 1 then st.combo + 1 else 1 end;
+    update public.project_stats
+      set combo = st.combo, best_combo = greatest(best_combo, st.combo), last_day = y
+      where user_id = u;
+  elsif st.last_day = public.app_today() and st.combo = 1 then
+    -- 今天已經勾過、連擊被重設為 1：補了昨天就接回前面的天數
+    update public.project_stats set combo = combo + 1, best_combo = greatest(best_combo, combo + 1) where user_id = u;
+  end if;
+
+  ups := public.project_add_xp(u, pr.id, 5);
+  return json_build_object('done', true, 'xp', 5, 'levelUps', ups);
+end;
+$function$;
+grant execute on function public.project_step_makeup(uuid) to authenticated;

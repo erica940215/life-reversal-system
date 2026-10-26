@@ -4,7 +4,7 @@
    頁面：任務 → 🎯 專案（nav.js 負責子分頁）
 ========================================================= */
 (function () {
-  const P = { list: [], steps: {}, logs: {}, stats: null, open: {}, grid: {}, showDone: false, loaded: false, newKind: "daily" };
+  const P = { list: [], steps: {}, logs: {}, stats: null, open: {}, grid: {}, makeup: {}, showDone: false, loaded: false, newKind: "daily" };
   const today = () => (typeof getToday === "function" ? getToday() : new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Taipei" }));
   const shift = (d, n) => { const t = new Date(d + "T00:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
   const lastDays = n => { const t = today(); return Array.from({ length: n }, (_, i) => shift(t, i - n + 1)); };
@@ -69,6 +69,9 @@
     .pj-row input{flex:1}
     .pj-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
     .pj-done-card{opacity:.75}
+    .pj-makeup{margin:10px 0;padding:8px 12px;border-radius:10px;border:1px dashed rgba(127,127,127,.4)}
+    .pj-makeup-h{font-weight:600;font-size:14px}
+    .pj-makeup-h small{display:block;font-weight:400;font-size:12px;opacity:.65}
     .pj-kind{display:grid;grid-template-columns:1fr 1fr;gap:8px}
     .pj-kind button{border:1px solid #343b4b;background:transparent;color:inherit;font:inherit;font-weight:600;padding:10px;border-radius:10px;cursor:pointer;text-align:left}
     .pj-kind button small{display:block;font-weight:400;font-size:12px;opacity:.65;margin-top:2px}
@@ -225,6 +228,17 @@
     </section>`;
   }
 
+  function makeupHtml(p) {
+    const y = shift(today(), -1);
+    const steps = stepsOn(p, y);
+    const t = new Date(y + "T00:00:00Z");
+    return `<div class="pj-makeup"><div class="pj-makeup-h">📅 補 ${t.getUTCMonth() + 1}/${t.getUTCDate()}（昨天）的打卡<small>補勾 +5 EXP，會接回連擊和全勤紀錄</small></div>
+      <ul class="pj-steps">${steps.map(s => `
+        <li class="${checked(s.id, y) ? "done" : ""}">
+          <input type="checkbox" data-a="mkstep" data-id="${s.id}" ${checked(s.id, y) ? "checked" : ""}>
+          <span class="pj-st">${esc(s.title)}</span></li>`).join("")}</ul></div>`;
+  }
+
   function dailyHtml(p) {
     const steps = P.steps[p.id] || [];
     const t = today();
@@ -253,8 +267,10 @@
           </li>`).join("") || `<li style="opacity:.6">還沒有每天要做的項目，先加一個。</li>`}</ul>
         <div class="pj-row"><input type="text" maxlength="80" placeholder="新增每天要做的項目" data-step-input="${p.id}">
           <button class="btn btn-small" data-a="addstep" data-id="${p.id}">＋</button></div>
+        ${P.makeup[p.id] ? makeupHtml(p) : ""}
         ${P.grid[p.id] ? gridHtml(p) : ""}
         <div class="pj-actions">
+          ${stepsOn(p, shift(t, -1)).length && shift(t, -1) >= startOf(p) ? `<button class="btn btn-small" data-a="makeup" data-id="${p.id}">📅 ${P.makeup[p.id] ? "收起補打卡" : "補昨天" + (dayClear(p, shift(t, -1)) ? " ✓" : "")}</button>` : ""}
           <button class="btn btn-small" data-a="grid" data-id="${p.id}">📊 ${P.grid[p.id] ? "收起紀錄表" : "近 14 天紀錄表"}</button>
           <button class="btn btn-small" data-a="edit" data-id="${p.id}">✏️ 編輯</button>
           <button class="btn btn-small" data-a="del" data-id="${p.id}">🗑️ 刪除</button>
@@ -360,6 +376,14 @@
     if (a === "step") { e.preventDefault(); return toggleStep(id); }
     if (a === "complete") return complete(id);
     if (a === "kind") { P.newKind = id; const t = document.getElementById("pj-new-title").value, d = document.getElementById("pj-new-def").value; render(); document.getElementById("pj-new-title").value = t; document.getElementById("pj-new-def").value = d; return; }
+    if (a === "makeup") { P.makeup[id] = !P.makeup[id]; render(); return; }
+    if (a === "mkstep") {
+      e.preventDefault();
+      const { data, error } = await db.rpc("project_step_makeup", { p_step: id });
+      if (error) { toast("❌ " + error.message); return load(); }
+      if (data.done && data.xp > 0) { pop(`+${data.xp} EXP`, "📅 補打卡"); levelToast(data.levelUps); }
+      return load();
+    }
     if (a === "grid") { P.grid[id] = !P.grid[id]; render(); return; }
     if (a === "showdone") { P.showDone = !P.showDone; render(); return; }
     if (a === "delstep") {
