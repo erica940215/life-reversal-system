@@ -9,6 +9,10 @@
 --   完成專案：額外 EXP＋依步驟數給獎勵（每天前 3 個完成有物品獎勵）
 --   連擊：每天至少完成一個步驟就 +1，斷一天歸零（凌晨 2 點換日）
 --   幸運抽：每天簽到後抽一次，可能什麼都沒有，也可能中限定券
+--
+--   兩種專案：
+--     任務制（once）：步驟打完就能「完成專案」
+--     每日重複（daily）：步驟每天重來；當天全部打勾再加 20 EXP＋星屑；每天的紀錄存在 project_step_logs
 -- =========================================================
 
 create table if not exists public.projects (
@@ -37,6 +41,23 @@ create table if not exists public.project_steps (
 );
 create index if not exists project_steps_project_idx on public.project_steps(project_id);
 
+alter table public.projects add column if not exists kind text not null default 'once';
+do $$ begin
+  alter table public.projects add constraint projects_kind_check check (kind in ('once', 'daily'));
+exception when duplicate_object then null; end $$;
+
+-- 每日重複專案：每個步驟每天一筆
+create table if not exists public.project_step_logs (
+  step_id uuid not null references public.project_steps(id) on delete cascade,
+  project_id uuid not null references public.projects(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  day date not null,
+  done boolean not null default true,
+  created_at timestamptz not null default now(),
+  primary key (step_id, day)
+);
+create index if not exists project_step_logs_user_day on public.project_step_logs(user_id, day);
+
 create table if not exists public.project_stats (
   user_id uuid primary key references auth.users(id) on delete cascade,
   combo integer not null default 0,
@@ -58,6 +79,10 @@ alter table public.projects enable row level security;
 alter table public.project_steps enable row level security;
 alter table public.project_stats enable row level security;
 alter table public.project_draws enable row level security;
+alter table public.project_step_logs enable row level security;
+drop policy if exists "project_step_logs_read" on public.project_step_logs;
+create policy "project_step_logs_read" on public.project_step_logs for select using (user_id = auth.uid());
+grant select on public.project_step_logs to authenticated;
 
 drop policy if exists "projects_own" on public.projects;
 create policy "projects_own" on public.projects for all
@@ -75,7 +100,7 @@ create policy "project_draws_read" on public.project_draws for select using (use
 -- 經驗、等級、狀態只能由下面的函式改
 revoke insert, update on public.projects from authenticated, anon;
 grant select, delete on public.projects to authenticated;
-grant insert (title, done_def, sort) on public.projects to authenticated;
+grant insert (title, done_def, sort, kind) on public.projects to authenticated;
 grant update (title, done_def, sort) on public.projects to authenticated;
 revoke insert, update on public.project_steps from authenticated, anon;
 grant select, delete on public.project_steps to authenticated;
@@ -113,45 +138,25 @@ end;
 $function$;
 revoke all on function public.project_add_xp(uuid, uuid, integer) from public, authenticated, anon;
 
--- 打勾／取消打勾
-create or replace function public.project_step_toggle(p_step uuid)
-returns json language plpgsql security definer set search_path to 'public'
+-- 一個步驟第一次打勾的經驗：連擊、爆擊、升級（內部用）
+create or replace function public.project_award_step(p_user uuid, p_project uuid)
+returns jsonb language plpgsql security definer set search_path to 'public'
 as $function$
 declare
-  u uuid := auth.uid();
   today date := public.app_today();
-  s public.project_steps%rowtype;
   st public.project_stats%rowtype;
   r double precision;
   crit text := null;
   mult numeric;
   gain integer;
-  ups jsonb;
 begin
-  if u is null then raise exception '尚未登入'; end if;
-  select * into s from public.project_steps where id = p_step and user_id = u for update;
-  if not found then raise exception '找不到這個步驟'; end if;
-  if exists (select 1 from public.projects where id = s.project_id and status = 'done') then
-    raise exception '專案已完成，步驟不能再改';
-  end if;
-
-  if s.done then
-    update public.project_steps set done = false, done_at = null where id = p_step;
-    return json_build_object('done', false, 'xp', 0);
-  end if;
-
-  update public.project_steps set done = true, done_at = now(), xp_given = true where id = p_step;
-  if s.xp_given then
-    return json_build_object('done', true, 'xp', 0, 'repeat', true);
-  end if;
-
-  insert into public.project_stats (user_id) values (u) on conflict do nothing;
-  select * into st from public.project_stats where user_id = u for update;
+  insert into public.project_stats (user_id) values (p_user) on conflict do nothing;
+  select * into st from public.project_stats where user_id = p_user for update;
   if st.last_day is distinct from today then
     st.combo := case when st.last_day = today - 1 then st.combo + 1 else 1 end;
     update public.project_stats
       set combo = st.combo, best_combo = greatest(best_combo, st.combo), last_day = today
-      where user_id = u;
+      where user_id = p_user;
   end if;
 
   mult := 1 + least(st.combo - 1, 10) * 0.05;
@@ -160,10 +165,68 @@ begin
   elsif r < 0.12 then crit := 'crit'; mult := mult * 2;
   end if;
   gain := round(10 * mult);
-  if crit is not null then update public.project_stats set crits = crits + 1 where user_id = u; end if;
+  if crit is not null then update public.project_stats set crits = crits + 1 where user_id = p_user; end if;
 
-  ups := public.project_add_xp(u, s.project_id, gain);
-  return json_build_object('done', true, 'xp', gain, 'crit', crit, 'combo', st.combo, 'levelUps', ups);
+  return jsonb_build_object('done', true, 'xp', gain, 'crit', crit, 'combo', st.combo,
+                            'levelUps', public.project_add_xp(p_user, p_project, gain));
+end;
+$function$;
+revoke all on function public.project_award_step(uuid, uuid) from public, authenticated, anon;
+
+-- 打勾／取消打勾（任務制改步驟本身；每日重複改今天的紀錄）
+create or replace function public.project_step_toggle(p_step uuid)
+returns json language plpgsql security definer set search_path to 'public'
+as $function$
+declare
+  u uuid := auth.uid();
+  today date := public.app_today();
+  s public.project_steps%rowtype;
+  pr public.projects%rowtype;
+  lg public.project_step_logs%rowtype;
+  res jsonb;
+  total integer; done_n integer;
+  ups jsonb;
+  dust integer;
+begin
+  if u is null then raise exception '尚未登入'; end if;
+  select * into s from public.project_steps where id = p_step and user_id = u for update;
+  if not found then raise exception '找不到這個步驟'; end if;
+  select * into pr from public.projects where id = s.project_id;
+  if pr.status = 'done' then raise exception '專案已完成，步驟不能再改'; end if;
+
+  if pr.kind = 'daily' then
+    select * into lg from public.project_step_logs where step_id = p_step and day = today;
+    if found then
+      update public.project_step_logs set done = not lg.done where step_id = p_step and day = today;
+      return json_build_object('done', not lg.done, 'xp', 0, 'repeat', not lg.done);
+    end if;
+    insert into public.project_step_logs (step_id, project_id, user_id, day) values (p_step, pr.id, u, today);
+    res := public.project_award_step(u, pr.id);
+
+    -- 今天全部打勾：一天一次的全勤獎勵
+    select count(*), count(*) filter (where l.done) into total, done_n
+      from public.project_steps ps
+      left join public.project_step_logs l on l.step_id = ps.id and l.day = today
+      where ps.project_id = pr.id;
+    dust := 3 + total;
+    if total > 0 and done_n = total
+       and public.grant_item(u, 'stardust', dust, 'proj-day:' || pr.id || ':' || today) then
+      ups := public.project_add_xp(u, pr.id, 20);
+      res := res || jsonb_build_object('dayClear', jsonb_build_object('xp', 20, 'stardust', dust),
+                                       'levelUps', (res->'levelUps') || ups);
+    end if;
+    return res::json;
+  end if;
+
+  if s.done then
+    update public.project_steps set done = false, done_at = null where id = p_step;
+    return json_build_object('done', false, 'xp', 0);
+  end if;
+  update public.project_steps set done = true, done_at = now(), xp_given = true where id = p_step;
+  if s.xp_given then
+    return json_build_object('done', true, 'xp', 0, 'repeat', true);
+  end if;
+  return public.project_award_step(u, pr.id)::json;
 end;
 $function$;
 grant execute on function public.project_step_toggle(uuid) to authenticated;
@@ -188,6 +251,7 @@ begin
   select * into p from public.projects where id = p_project and user_id = u for update;
   if not found then raise exception '找不到這個專案'; end if;
   if p.status = 'done' then raise exception '這個專案已經完成了'; end if;
+  if p.kind = 'daily' then raise exception '每日重複的專案不用完成，每天打勾就好'; end if;
   select count(*), count(*) filter (where not done) into n, left_n
     from public.project_steps where project_id = p_project;
   if left_n > 0 then raise exception '還有 % 個步驟沒完成', left_n; end if;

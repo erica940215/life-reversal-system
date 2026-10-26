@@ -4,7 +4,31 @@
    頁面：任務 → 🎯 專案（nav.js 負責子分頁）
 ========================================================= */
 (function () {
-  const P = { list: [], steps: {}, stats: null, open: {}, showDone: false, loaded: false };
+  const P = { list: [], steps: {}, logs: {}, stats: null, open: {}, grid: {}, showDone: false, loaded: false, newKind: "daily" };
+  const today = () => (typeof getToday === "function" ? getToday() : new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Taipei" }));
+  const shift = (d, n) => { const t = new Date(d + "T00:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
+  const lastDays = n => { const t = today(); return Array.from({ length: n }, (_, i) => shift(t, i - n + 1)); };
+  const dayOf = ts => (typeof appDateOf === "function" ? appDateOf(ts) : String(ts).slice(0, 10));
+  const checked = (sid, d) => !!(P.logs[sid] && P.logs[sid][d]);
+  /* 那一天已經存在的步驟（之後才加的步驟不算進以前的日子） */
+  const stepsOn = (p, d) => (P.steps[p.id] || []).filter(s => dayOf(s.created_at) <= d);
+  const startOf = p => dayOf(p.created_at);
+  function dayClear(p, d) {
+    const st = stepsOn(p, d);
+    return st.length > 0 && st.every(s => checked(s.id, d));
+  }
+  function streak(p) {
+    let d = today(), n = 0;
+    if (!dayClear(p, d)) d = shift(d, -1);
+    while (d >= startOf(p) && dayClear(p, d)) { n++; d = shift(d, -1); }
+    return n;
+  }
+  /* n 天內打勾比例（從建立那天算起） */
+  function rate(p, n) {
+    let all = 0, got = 0;
+    lastDays(n).forEach(d => { if (d < startOf(p)) return; stepsOn(p, d).forEach(s => { all++; if (checked(s.id, d)) got++; }); });
+    return all ? Math.round(got / all * 100) : null;
+  }
   const hasDb = () => typeof db !== "undefined" && typeof currentUser !== "undefined" && currentUser;
   const toast = m => (typeof showToast === "function" ? showToast(m) : alert(m));
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -45,6 +69,20 @@
     .pj-row input{flex:1}
     .pj-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
     .pj-done-card{opacity:.75}
+    .pj-kind{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .pj-kind button{border:1px solid #343b4b;background:transparent;color:inherit;font:inherit;font-weight:600;padding:10px;border-radius:10px;cursor:pointer;text-align:left}
+    .pj-kind button small{display:block;font-weight:400;font-size:12px;opacity:.65;margin-top:2px}
+    .pj-kind button.on{border-color:var(--accent,#6c63ff);background:rgba(108,99,255,.18)}
+    .pj-grid{overflow-x:auto;margin:10px 0 4px}
+    .pj-grid table{border-collapse:collapse;font-size:12px;width:100%}
+    .pj-grid th,.pj-grid td{padding:5px 4px;text-align:center;border-bottom:1px solid rgba(127,127,127,.14);white-space:nowrap}
+    .pj-grid th small{opacity:.6}
+    .pj-grid .nm{text-align:left;max-width:120px;overflow:hidden;text-overflow:ellipsis;position:sticky;left:0;background:var(--card-bg,#171b24)}
+    .pj-grid td.ok{color:#4cd38a;font-weight:700}
+    .pj-grid td.no{opacity:.35}
+    .pj-grid td.rt{font-weight:600}
+    .pj-grid tr.all th,.pj-grid tr.all td{border-bottom:0}
+    .pj-ov td{font-size:13px}
     .pj-pop{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%) scale(.6);z-index:9999;pointer-events:none;
       font-size:30px;font-weight:800;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.45);opacity:0;transition:all .25s;text-align:center;white-space:nowrap}
     .pj-pop.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
@@ -89,16 +127,19 @@
 
   async function load() {
     if (!hasDb()) return;
-    const [pr, st, ss] = await Promise.all([
+    const [pr, st, ss, lg] = await Promise.all([
       db.from("projects").select("*").order("status").order("sort").order("created_at"),
       db.from("project_steps").select("*").order("sort").order("created_at"),
-      db.from("project_stats").select("*").maybeSingle()
+      db.from("project_stats").select("*").maybeSingle(),
+      db.from("project_step_logs").select("step_id,day,done").gte("day", lastDays(60)[0])
     ]);
     if (pr.error) { render(pr.error); return; }
     P.list = pr.data || [];
     P.steps = {};
     (st.data || []).forEach(s => (P.steps[s.project_id] = P.steps[s.project_id] || []).push(s));
     P.stats = ss.data || null;
+    P.logs = {};
+    (lg.data || []).forEach(l => { if (l.done) (P.logs[l.step_id] = P.logs[l.step_id] || {})[l.day] = true; });
     P.loaded = true;
     render();
   }
@@ -107,7 +148,7 @@
     const s = P.stats || {};
     const active = P.list.filter(p => p.status === "active").length;
     return `<section class="card"><div class="pj-stats">
-      <div class="pj-stat"><b>🔥 ${s.combo || 0}</b><span>連擊天數・最高 ${s.best_combo || 0}</span></div>
+      <div class="pj-stat"><b>🔥 ${s.combo || 0}</b><span>連擊（最高 ${s.best_combo || 0}）</span></div>
       <div class="pj-stat"><b>${active}</b><span>進行中</span></div>
       <div class="pj-stat"><b>${s.done_count || 0}</b><span>已完成</span></div>
       <div class="pj-stat"><b>💥 ${s.crits || 0}</b><span>爆擊次數</span></div>
@@ -115,7 +156,41 @@
     <p style="font-size:12px;opacity:.65;margin:10px 0 0">每天完成至少一個步驟，連擊 +1（每天經驗 +5%，最多 +50%）。打勾有 10% 爆擊、2% 超級爆擊。</p></section>`;
   }
 
+  function gridHtml(p) {
+    const days = lastDays(14).filter(d => d >= startOf(p)).reverse();  // 最新的在左邊
+    const steps = P.steps[p.id] || [];
+    if (!days.length || !steps.length) return "";
+    const wk = "日一二三四五六";
+    const head = days.map(d => { const t = new Date(d + "T00:00:00Z"); return `<th>${t.getUTCMonth() + 1}/${t.getUTCDate()}<br><small>${wk[t.getUTCDay()]}</small></th>`; }).join("");
+    const rows = steps.map(s => {
+      let all = 0, got = 0;
+      const cells = days.map(d => {
+        if (dayOf(s.created_at) > d) return `<td class="na"></td>`;
+        all++; const ok = checked(s.id, d); if (ok) got++;
+        return `<td class="${ok ? "ok" : "no"}">${ok ? "✓" : "·"}</td>`;
+      }).join("");
+      return `<tr><th class="nm">${esc(s.title)}</th>${cells}<td class="rt">${all ? Math.round(got / all * 100) + "%" : "—"}</td></tr>`;
+    }).join("");
+    const foot = days.map(d => `<td>${dayClear(p, d) ? "🌟" : ""}</td>`).join("");
+    return `<div class="pj-grid"><table><thead><tr><th class="nm"></th>${head}<th>完成率</th></tr></thead>
+      <tbody>${rows}<tr class="all"><th class="nm">全部完成</th>${foot}<td></td></tr></tbody></table></div>`;
+  }
+
+  function overviewHtml() {
+    const daily = P.list.filter(p => p.kind === "daily" && p.status === "active");
+    if (!daily.length) return "";
+    const t = today();
+    const pc = v => v === null ? "—" : v + "%";
+    return `<section class="card"><h2>📋 每日總覽</h2><div class="pj-grid"><table class="pj-ov">
+      <thead><tr><th class="nm">專案</th><th>今天</th><th>連續全勤</th><th>7 天</th><th>30 天</th></tr></thead><tbody>
+      ${daily.map(p => { const st = P.steps[p.id] || []; const d = st.filter(s => checked(s.id, t)).length;
+        return `<tr><th class="nm">${esc(p.title)}</th><td class="${st.length && d === st.length ? "ok" : ""}">${d}/${st.length}</td>
+          <td>${streak(p) ? "🔥 " + streak(p) : "0"}</td><td>${pc(rate(p, 7))}</td><td>${pc(rate(p, 30))}</td></tr>`; }).join("")}
+      </tbody></table></div><p style="font-size:12px;opacity:.65;margin:8px 0 0">完成率 = 打勾的格數 ÷ 應該打勾的格數，從專案建立那天開始算。</p></section>`;
+  }
+
   function projectHtml(p) {
+    if (p.kind === "daily") return dailyHtml(p);
     const steps = P.steps[p.id] || [];
     const done = steps.filter(s => s.done).length;
     const pct = steps.length ? Math.round(done / steps.length * 100) : 0;
@@ -150,6 +225,43 @@
     </section>`;
   }
 
+  function dailyHtml(p) {
+    const steps = P.steps[p.id] || [];
+    const t = today();
+    const done = steps.filter(s => checked(s.id, t)).length;
+    const pct = steps.length ? Math.round(done / steps.length * 100) : 0;
+    const lo = floorXp(p.level), hi = need(p.level);
+    const xpPct = Math.min(100, Math.round((p.xp - lo) / (hi - lo) * 100));
+    const open = P.open[p.id] ?? true;
+    const sk = streak(p);
+    return `<section class="card pj-card">
+      <div class="pj-head" data-a="toggle" data-id="${p.id}">
+        <div class="pj-lv">Lv ${p.level}</div>
+        <div class="pj-title">🔁 ${esc(p.title)}</div>
+        <div class="pj-count">${sk ? `🔥${sk} ・ ` : ""}${done}/${steps.length}</div>
+      </div>
+      <div class="pj-bar"><i style="width:${pct}%"></i></div>
+      <div class="pj-bar xp"><i style="width:${xpPct}%"></i></div>
+      <div class="pj-meta"><span>今天 ${pct}%${steps.length && done === steps.length ? " 🌟 全部完成" : ""}</span><span>EXP ${p.xp - lo}/${hi - lo}</span></div>
+      ${open ? `
+        ${p.done_def ? `<div class="pj-def">🎯 目標：${esc(p.done_def)}</div>` : ""}
+        <ul class="pj-steps">${steps.map(s => `
+          <li class="${checked(s.id, t) ? "done" : ""}">
+            <input type="checkbox" data-a="step" data-id="${s.id}" ${checked(s.id, t) ? "checked" : ""}>
+            <span class="pj-st">${esc(s.title)}</span>
+            <button class="pj-x" data-a="delstep" data-id="${s.id}" title="刪除項目">✕</button>
+          </li>`).join("") || `<li style="opacity:.6">還沒有每天要做的項目，先加一個。</li>`}</ul>
+        <div class="pj-row"><input type="text" maxlength="80" placeholder="新增每天要做的項目" data-step-input="${p.id}">
+          <button class="btn btn-small" data-a="addstep" data-id="${p.id}">＋</button></div>
+        ${P.grid[p.id] ? gridHtml(p) : ""}
+        <div class="pj-actions">
+          <button class="btn btn-small" data-a="grid" data-id="${p.id}">📊 ${P.grid[p.id] ? "收起紀錄表" : "近 14 天紀錄表"}</button>
+          <button class="btn btn-small" data-a="edit" data-id="${p.id}">✏️ 編輯</button>
+          <button class="btn btn-small" data-a="del" data-id="${p.id}">🗑️ 刪除</button>
+        </div>` : ""}
+    </section>`;
+  }
+
   function render(err) {
     const root = document.getElementById("pj-root");
     if (!root) return;
@@ -160,12 +272,18 @@
     if (!P.loaded) { root.innerHTML = `<section class="card"><div class="empty-state">載入中...</div></section>`; return; }
     const active = P.list.filter(p => p.status === "active");
     const done = P.list.filter(p => p.status === "done");
-    root.innerHTML = statsHtml() + `
+    const daily = P.newKind === "daily";
+    const order = p => (p.kind === "daily" ? 0 : 1);
+    root.innerHTML = statsHtml() + overviewHtml() + `
       <section class="card"><h2>➕ 新專案</h2><div class="pj-add">
-        <input id="pj-new-title" type="text" maxlength="80" placeholder="想改變什麼？例如：整理房間">
-        <input id="pj-new-def" type="text" maxlength="200" placeholder="完成定義（怎樣才算做完）">
+        <div class="pj-kind">
+          <button type="button" data-a="kind" data-id="daily" class="${daily ? "on" : ""}">🔁 每日重複<small>每天重新打勾，會記錄成表格</small></button>
+          <button type="button" data-a="kind" data-id="once" class="${daily ? "" : "on"}">🎯 任務制<small>步驟做完就結案</small></button>
+        </div>
+        <input id="pj-new-title" type="text" maxlength="80" placeholder="${daily ? "例如：早睡早起" : "例如：整理房間"}">
+        <input id="pj-new-def" type="text" maxlength="200" placeholder="${daily ? "目標（例如：12 點前上床、7 點起床）" : "完成定義（怎樣才算做完）"}">
         <button class="btn btn-primary" data-a="add">建立專案</button></div></section>
-      ${active.map(projectHtml).join("") || `<section class="card"><div class="empty-state">還沒有進行中的專案</div></section>`}
+      ${active.slice().sort((a, b) => order(a) - order(b)).map(projectHtml).join("") || `<section class="card"><div class="empty-state">還沒有進行中的專案</div></section>`}
       ${done.length ? `<button class="btn btn-small" data-a="showdone" style="margin:4px 0 12px">${P.showDone ? "收起" : "顯示"}已完成（${done.length}）</button>
         ${P.showDone ? done.map(projectHtml).join("") : ""}` : ""}`;
   }
@@ -174,7 +292,7 @@
     const t = document.getElementById("pj-new-title"), d = document.getElementById("pj-new-def");
     const title = t.value.trim();
     if (!title) { t.focus(); return; }
-    const { data, error } = await db.from("projects").insert({ title, done_def: d.value.trim() }).select().single();
+    const { data, error } = await db.from("projects").insert({ title, done_def: d.value.trim(), kind: P.newKind }).select().single();
     if (error) { toast("❌ " + error.message); return; }
     P.open[data.id] = true;
     await load();
@@ -218,6 +336,7 @@
       else pop(`+${data.xp} EXP`, data.combo > 1 ? `🔥 連擊 ${data.combo} 天` : "");
       levelToast(data.levelUps);
     }
+    if (data.dayClear) setTimeout(() => toast(`🌟 今天全部完成！+${data.dayClear.xp} EXP、✨ 星屑 ×${data.dayClear.stardust}`), 1000);
     load();
   }
 
@@ -240,6 +359,8 @@
     if (a === "addstep") return addStep(id);
     if (a === "step") { e.preventDefault(); return toggleStep(id); }
     if (a === "complete") return complete(id);
+    if (a === "kind") { P.newKind = id; const t = document.getElementById("pj-new-title").value, d = document.getElementById("pj-new-def").value; render(); document.getElementById("pj-new-title").value = t; document.getElementById("pj-new-def").value = d; return; }
+    if (a === "grid") { P.grid[id] = !P.grid[id]; render(); return; }
     if (a === "showdone") { P.showDone = !P.showDone; render(); return; }
     if (a === "delstep") {
       if (!confirm("刪除這個步驟？")) return;
