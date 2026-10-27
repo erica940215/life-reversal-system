@@ -174,6 +174,8 @@
       if (!data) throw new Error("沒有讀到資料");
       FN.status = data;
       FN.error = null;
+      const st = await db.rpc("rpg_store_status");
+      FN.store = st.error ? null : st.data;
     } catch (error) {
       const msg = String(error && (error.message || error.code) || error);
       FN.error = /fun_status|function|schema cache|PGRST/i.test(msg) ? "setup" : msg;
@@ -462,6 +464,35 @@
   }
 
 
+  /* ---------- 🏪 冒險商店（每天都開） ---------- */
+
+  function storeHtml() {
+    const st = FN.store;
+    if (!st || !st.items) return "";
+    const rows = st.items.map(o => {
+      const left = o.limit - o.bought;
+      const can = n => left >= n && st.gold >= o.price * n && !FN.busy;
+      return `<div class="fn-shop-item">
+        <b>${esc(o.name)}</b>
+        <span>🪙 ${o.price}・今天 ${o.bought}/${o.limit}</span>
+        <span class="fn-store-btns">
+          <button type="button" class="btn btn-small btn-primary" data-fn="store" data-v="${o.item}" data-n="1" ${can(1) ? "" : "disabled"}>買 1</button>
+          ${o.limit > 1 && left > 1 ? `<button type="button" class="btn btn-small" data-fn="store" data-v="${o.item}" data-n="${left}" ${can(left) ? "" : "disabled"}>買 ${left}</button>` : ""}
+        </span></div>`;
+    }).join("");
+    return `<div class="card rp-card fn-sec"><div class="fn-sec-top"><div style="font-size:52px;line-height:1">🏪</div>
+        <div><h3>冒險商店</h3><span class="rp-sub">每天都開，用金幣買。每樣每天有購買上限，凌晨 2 點重置</span></div>
+        <div class="rp-power"><span class="rp-sub">金幣</span><b>${st.gold}</b></div></div>
+      <div class="fn-shop">${rows}</div>
+      <p class="rp-note">週末流浪商人還是會來，而且有一樣打 7 折。</p></div>`;
+  }
+
+  async function storeBuy(item, n) {
+    const data = await rpc("rpg_store_buy", { p_item: item, p_qty: n });
+    if (data) { toast(`🏪 買到 ${ITEM_NAME[item] || item} ×${n}！`); await load(); }
+  }
+
+
   /* ---------- 🧳 週末流浪商人 ---------- */
 
   function shopHtml() {
@@ -529,7 +560,7 @@
     if (FN.error) return `<div class="card rp-card"><p class="rp-note">載入失敗：${esc(FN.error)}</p></div>`;
     if (!FN.status) { if (!FN.loading && !FN.tried) { FN.tried = true; load(); } return `<div class="card rp-card"><p class="rp-note">載入中…</p></div>`; }
     setTimeout(setupScratchCanvas, 30);
-    return `<div class="card rp-card fn-sec">${fortuneHtml(false)}</div>${scratchHtml()}${chestHtml()}${gachaHtml()}${frameHtml()}${shopHtml()}
+    return `<div class="card rp-card fn-sec">${fortuneHtml(false)}</div>${scratchHtml()}${chestHtml()}${gachaHtml()}${frameHtml()}${storeHtml()}${shopHtml()}
       <p class="rp-ver">驚喜 ${FUN_JS_VERSION}</p>`;
   }
 
@@ -570,6 +601,7 @@
     else if (act === "gacha") pullGacha();
     else if (act === "gacha-close") { FN.gacha = null; rerender(); }
     else if (act === "buy") buy(el.dataset.v);
+    else if (act === "store") storeBuy(el.dataset.v, Number(el.dataset.n) || 1);
     else if (act === "series") { FN.series = el.dataset.v; rerender(); }
     else if (act === "frame") equipFrame(el.dataset.v);
     else if (act === "goto") {
@@ -653,6 +685,7 @@
       .fn-shelf-item i { position: absolute; top: 0; right: 4px; font-style: normal; font-weight: 800; font-size: 11px; color: #6c4bd8; }
 
       .fn-merchant-img { width: 76px; height: 76px; flex: none; }
+      .fn-store-btns { display: flex; gap: 6px; flex-wrap: wrap; }
       .fn-merchant-img.dim { filter: grayscale(.6); opacity: .55; }
       .fn-av { position: relative; display: inline-flex; align-items: center; justify-content: center; width: var(--s); height: var(--s); flex: none; }
       .fn-av-face, .fn-av-emo { width: 70%; height: 70%; border-radius: 50%; object-fit: cover; background: rgba(127,127,127,.15); display: inline-flex; align-items: center; justify-content: center; font-size: calc(var(--s) * .4); }
