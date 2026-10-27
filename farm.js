@@ -254,8 +254,12 @@ const FARM_JS_VERSION = "2026-10-22 v1";
   function storageCap(lv = S.lv) {
     const base = capRow(D.caps.storage, lv)[1];
     if (base > 9999) return base;
-    return base + 100 + (own("tool_bigbasket") ? 50 : 0) + (own("s_harvestbarn") ? 200 : 0);
+    return base + 100 + (own("tool_bigbasket") ? 50 : 0) + (own("s_harvestbarn") ? 200 : 0) + (S.storeUp || 0) * STORE_UP_SIZE;
   }
+
+  /* 倉庫擴建：花星露，每次 +100 格，越來越貴；Lv46 起倉庫無上限，就不用擴建了 */
+  const STORE_UP_SIZE = 100, STORE_UP_MAX = 20;
+  const storeUpCost = n => 300 + 200 * n;
 
   function sprinklerCap(lv = S.lv) {
     return lv >= D.caps.sprinkler[0][0] ? capRow(D.caps.sprinkler, lv)[1] : 0;
@@ -4551,6 +4555,19 @@ const FARM_JS_VERSION = "2026-10-22 v1";
       after();
     },
 
+    storeup: () => {
+      if (storageCap() > 9999) return;
+      const ups = S.storeUp || 0;
+      if (ups >= STORE_UP_MAX) return toast("倉庫已經擴建到最大了");
+      const cost = storeUpCost(ups);
+      if (S.dew < cost) return toast(`星露不夠，還差 ${num(cost - S.dew)}`);
+      if (!confirm(`花 ${num(cost)} 星露把倉庫擴建 ${STORE_UP_SIZE} 格？`)) return;
+      addDew(-cost);
+      S.storeUp = ups + 1;
+      toast(`📦 倉庫擴建完成！現在 ${storageCap()} 格`);
+      after();
+    },
+
     pickitem: el => {
       if (!UI.sheet) return;
       UI.sheet.item = UI.sheet.item === el.dataset.item ? null : el.dataset.item;
@@ -5035,10 +5052,16 @@ const FARM_JS_VERSION = "2026-10-22 v1";
         }
       }
 
+      const ups = S.storeUp || 0;
+      const upRow = cap > 9999 ? "" : ups >= STORE_UP_MAX
+        ? `<p class="fm-note" style="margin:0 0 10px">倉庫已經擴建到最大（+${ups * STORE_UP_SIZE} 格），Lv46 起倉庫無上限。</p>`
+        : `<div class="fm-row" style="margin:0 0 10px"><div class="fm-row-art">📦</div>
+            <div><div class="fm-row-name">擴建倉庫 +${STORE_UP_SIZE} 格</div><div class="fm-row-sub">已擴建 ${ups}/${STORE_UP_MAX} 次・Lv46 起無上限</div></div>
+            <div class="fm-row-btns"><button type="button" class="fm-btn small ${S.dew >= storeUpCost(ups) ? "green" : ""}" data-act="storeup">${num(storeUpCost(ups))} 星露</button></div></div>`;
       return sheetTop("倉庫", `${used} / ${cap > 9999 ? "∞" : cap}`) +
         tabs([["crop", "作物"], ["animal", "畜產"], ["goods", "加工"], ["dish", "料理"], ["fish", "魚"], ["other", "其他"]], tab) +
         `<div class="fm-panel"><div class="fm-bar" style="margin-bottom:10px"><i style="width:${Math.min(100, (used / cap) * 100)}%"></i></div>
-        <div class="fm-grid">${cards || `<div class="fm-empty">這裡還是空的</div>`}</div>${detail}
+        ${upRow}<div class="fm-grid">${cards || `<div class="fm-empty">這裡還是空的</div>`}</div>${detail}
         ${market ? "" : `<p class="fm-note" style="margin-top:10px">倉庫 ${cap} 格，Lv15 變 200 格。東西太多可以做成料理，或等市集開放後賣掉。</p>`}</div>`;
 
     },
