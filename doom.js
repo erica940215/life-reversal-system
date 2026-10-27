@@ -11,11 +11,11 @@
 
 (function () {
 
-  const DOOM_JS_VERSION = "2026-10-28 v1";
+  const DOOM_JS_VERSION = "2026-10-28 v2";
   const IMG = "img/doom/";
 
   const DM = { cat: null, s: null, error: null, busy: false, tab: "today",
-    reveal: null, news: null, flash: null };
+    reveal: null, news: null, flash: null, zones: null, zoneWeek: 1, zoneLoading: false, zoneOff: false };
 
   /* ---------- 小工具 ---------- */
 
@@ -66,6 +66,13 @@
     return `${r.emoji}${g.n > 0 ? "+" : ""}${g.n}`;
   }).join(" ");
 
+  /* 同一種資源加總起來（同伴、收藏品、設施保持各自一筆） */
+  function mergeGains(arr) {
+    const sum = {}, rest = [];
+    (arr || []).forEach(g => { if (g.n !== undefined && !["companion", "relic", "facility"].includes(g.k)) sum[g.k] = (sum[g.k] || 0) + g.n; else rest.push(g); });
+    return Object.entries(sum).filter(([, n]) => n).map(([k, n]) => ({ k, n })).concat(rest);
+  }
+
   const costText = cost => Object.entries(cost || {}).map(([k, n]) => `${resInfo(k).emoji}${n}`).join(" ");
   function canPay(cost) {
     const st = DM.s && DM.s.state;
@@ -84,9 +91,11 @@
         if (error) throw error;
         DM.cat = data;
       }
+      await retryPending();
       const { data, error } = await db.rpc("doom_status");
       if (error) throw error;
       DM.s = data;
+      if (data.week) DM.zoneWeek = data.week.week;
       DM.error = null;
       try { localStorage.setItem("doomStarted", "1"); } catch (_) {}
       collectNews(data);
@@ -113,6 +122,12 @@
       const h = d.harvest;
       const src = [h.tasks ? `任務 ${h.tasks} 個` : "", h.steps ? `專案打勾 ${h.steps} 個` : "", h.focus_min ? `專注 ${h.focus_min} 分鐘` : ""].filter(Boolean).join("、");
       items.push({ icon: "📦", title: "努力變成了物資", body: src ? `你完成了${src}。` : "", gains: h.gains });
+    }
+    if (d.auto && d.auto.length) {
+      const all = [];
+      d.auto.forEach(r => { (r.drops || []).forEach(x => all.push(...(x.gains || []))); if (r.bonus) all.push(...(r.bonus.gains || [])); });
+      const n = d.auto.reduce((a, r) => a + (r.drops || []).length, 0);
+      items.push({ icon: "🏙️", title: `專注時在街頭搜刮了 ${d.auto.length} 趟`, body: `一共撿到 ${n} 樣。下次專注前可以在專注頁選區域。`, gains: mergeGains(all) });
     }
     if (items.length) DM.news = (DM.news || []).concat(items);
   }
@@ -224,7 +239,7 @@
       <div class="card dm-how"><b>怎麼拿物資？</b>
         <p>✅ 完成任務：🥫+1 💧+1 🎟️+1</p>
         <p>🎯 專案每打勾 2 個：🥫+1 💧+1 🎟️+1</p>
-        <p>⏱️ 專注每 30 分鐘：🔩+2；每 1 小時：🎟️+1</p>
+        <p>⏱️ 專注：開始前選一個區域，每 5～10 分鐘撿到一樣東西，結束時開箱</p>
         <p class="dm-note">做完回來這頁就會自動收。今天做越多事，搜刮越幸運。每天會吃掉 🥫1 💧1。</p></div>
       ${logs ? `<div class="card"><b>📓 最近的紀錄</b><ul class="dm-log">${logs}</ul></div>` : ""}`;
   }
@@ -251,7 +266,7 @@
         <button type="button" class="btn dm-btn" data-dm="draw" data-v="1" ${st.scav >= 1 ? "" : "disabled"}>搜刮 ×1</button>
         <button type="button" class="btn dm-btn gold" data-dm="draw" data-v="10" ${st.scav >= 10 ? "" : "disabled"}>搜刮 ×10</button></div>
       <p class="dm-note">普通 → 精良 → 稀有 → 史詩 → 傳說。可能搜到物資、星屑、金幣、星願券、召喚券、同伴、設施藍圖和收藏品。</p>
-    </div>${res}`;
+    </div>${res}${runsHtml()}`;
   }
 
   function baseHtml() {
@@ -380,6 +395,7 @@
       call("doom_build", { p_fac: el.dataset.v }, d => { vibrate(25); toast(`🏗️ ${f.name}升到 Lv${d.lv}！`); });
       return;
     }
+    if (act === "run") { const r = DM.s.runs[Number(el.dataset.v)]; if (r) showReveal(r); return; }
     if (act === "repair") { call("doom_repair", {}, () => toast("🔧 基地修好了一些")); return; }
     if (act === "trade") { call("doom_trade", {}, () => toast("🔁 換到 1 張搜刮券")); return; }
     if (act === "claim") {
@@ -420,19 +436,275 @@
     db.__doomHooked = true;
     db.rpc = function (name, args, opts) {
       const p = orig(name, args, opts);
-      if (name !== "complete_task" && name !== "project_step_toggle" && name !== "claim_focus_rewards") return p;
+      if (name !== "complete_task" && name !== "project_step_toggle") return p;
       return Promise.resolve(p).then(r => {
         try {
           if (!r.error && gameOn() && started()) {
             const d = r.data || {};
             if (name === "complete_task" && d.success) flash("☢️ 末世：🥫+1 💧+1 🎟️+1<small>點我去搜刮</small>");
             else if (name === "project_step_toggle" && d.done && !d.repeat) flash("☢️ 末世：專案打勾 +1<small>每 2 個換 🥫💧🎟️</small>");
-            else if (name === "claim_focus_rewards" && d.focus_seconds >= 1800) flash(`☢️ 末世：專注 ${Math.floor(d.focus_seconds / 60)} 分鐘，零件累積中 🔩<small>點我去收</small>`);
           }
         } catch (_) {}
         return r;
       });
     };
+  }
+
+
+  /* ---------- ⏱️ 專注搜刮：選區域、計時器旁的「已搜刮 n 樣」、結束開箱 ---------- */
+
+  const ZONE_KEY = "doomZone";
+  const PENDING_KEY = "doomPendingRuns";
+
+  const zoneList = () => (DM.zones && DM.zones.zones) || [];
+  const zoneById = id => zoneList().find(z => z.id === id) || zoneList()[0] || null;
+  function selectedZone() {
+    let id = "street";
+    try { id = localStorage.getItem(ZONE_KEY) || "street"; } catch (_) {}
+    const z = zoneById(id);
+    return z && z.chapter <= DM.zoneWeek ? z.id : "street";
+  }
+  const zoneOn = () => gameOn() && hasDb() && DM.zones && !DM.zoneOff;
+
+  /* 每 5～10 分鐘一樣：用開始時間當種子，畫面上和結算時算出來的數量一樣 */
+  function seedRand(str) {
+    let h = 1779033703 ^ str.length;
+    for (let i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = h << 13 | h >>> 19; }
+    let a = h >>> 0;
+    return () => {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function dropCount(seed, minutes) {
+    const r = seedRand(String(seed));
+    let t = 0, k = 0;
+    while (k < 40) { t += 5 + 5 * r(); if (t > minutes) break; k++; }
+    return k;
+  }
+  function timerMs(t) {
+    if (!t || typeof focusElapsedMs !== "function") return 0;
+    let ms = focusElapsedMs(t);
+    if (t.mode === "down" && t.plannedMinutes) ms = Math.min(ms, t.plannedMinutes * 60000);
+    return ms;
+  }
+  const curTimer = () => (typeof focusTimer !== "undefined" ? focusTimer : null);
+
+  async function ensureZones() {
+    if (DM.zones || DM.zoneLoading || DM.zoneOff || !gameOn() || !hasDb()) return;
+    DM.zoneLoading = true;
+    try {
+      const { data, error } = await db.rpc("doom_zones");
+      if (error) throw error;
+      DM.zones = data;
+      if (!DM.cat) {
+        const c = await db.rpc("doom_catalog");
+        if (!c.error) DM.cat = c.data;
+      }
+      if (!DM.s) {
+        const { data: st } = await db.from("doom_state").select("started_on").maybeSingle();
+        if (st && st.started_on) {
+          const today = new Date(Date.now() - 2 * 3600000);
+          const days = Math.floor((today - new Date(st.started_on + "T00:00:00")) / 86400000);
+          DM.zoneWeek = Math.floor(Math.max(0, days) / 7) + 1;
+        }
+      }
+    } catch (e) {
+      DM.zoneOff = true;
+      console.warn("末世區域載入失敗：", e);
+    }
+    DM.zoneLoading = false;
+    focusUi(true);
+  }
+
+  let lastPickerKey = "", lastCount = -1;
+
+  function focusUi(force) {
+    const card = document.getElementById("focus-card");
+    if (!card) return;
+    const setup = document.getElementById("focus-setup");
+    const clock = document.getElementById("focus-clock");
+    let pick = document.getElementById("dm-zone-box");
+    if (!pick && setup) { pick = document.createElement("div"); pick.id = "dm-zone-box"; setup.appendChild(pick); pick.addEventListener("click", onZoneClick); }
+    let run = document.getElementById("dm-run");
+    if (!run && clock) { run = document.createElement("div"); run.id = "dm-run"; clock.after(run); run.addEventListener("click", () => typeof showPage === "function" && showPage("doom")); }
+
+    /* 區域選擇 */
+    if (pick) {
+      const on = zoneOn();
+      const sel = on ? selectedZone() : "";
+      const key = on + "|" + sel + "|" + DM.zoneWeek;
+      if (force || key !== lastPickerKey) {
+        lastPickerKey = key;
+        if (!on) { pick.innerHTML = ""; pick.hidden = true; }
+        else {
+          pick.hidden = false;
+          const z = zoneById(sel);
+          pick.innerHTML = `<div class="dm-zone-t">☢️ 專注時去哪裡搜刮？</div>
+            <div class="dm-zones">${zoneList().map(x => {
+              const lock = x.chapter > DM.zoneWeek;
+              return `<button type="button" class="dm-zone ${x.id === sel ? "on" : ""}" data-zone="${x.id}" ${lock ? "disabled" : ""}>
+                ${ic("zone", x.id, x.emoji, "sm")} ${esc(x.name)}${lock ? `<small>🔒第${x.chapter}章</small>` : x.min_min ? `<small>≥${x.min_min}分</small>` : ""}</button>`;
+            }).join("")}</div>
+            <div class="dm-zone-d">${z ? esc(z.desc) : ""} 每 5～10 分鐘撿到一樣，結束時開箱。</div>`;
+        }
+      }
+    }
+
+    /* 計時中：已搜刮 n 樣 */
+    if (run) {
+      const t = curTimer();
+      if (!t || !t.doomZone || !zoneOn()) { run.hidden = true; lastCount = -1; return; }
+      const z = zoneById(t.doomZone);
+      const minutes = Math.floor(Math.round(timerMs(t) / 1000) / 60);
+      const n = dropCount(t.startedAt, minutes);
+      run.hidden = false;
+      if (n !== lastCount || force) {
+        const bump = lastCount >= 0 && n > lastCount;
+        lastCount = n;
+        run.innerHTML = `${z ? ic("zone", z.id, z.emoji, "sm") + " " + esc(z.name) : ""}・🎒 已搜刮 <b>${n}</b> 樣${bump ? `<span class="dm-plus">+1</span>` : ""}`;
+        if (bump) { run.classList.remove("bump"); void run.offsetWidth; run.classList.add("bump"); }
+      }
+    }
+  }
+
+  function onZoneClick(e) {
+    const b = e.target.closest("[data-zone]");
+    if (!b || b.disabled) return;
+    try { localStorage.setItem(ZONE_KEY, b.dataset.zone); } catch (_) {}
+    focusUi(true);
+  }
+
+  function savePending(list) { try { localStorage.setItem(PENDING_KEY, JSON.stringify(list.slice(-10))); } catch (_) {} }
+  function loadPending() { try { return JSON.parse(localStorage.getItem(PENDING_KEY) || "[]"); } catch (_) { return []; } }
+
+  async function retryPending() {
+    const list = loadPending();
+    if (!list.length) return;
+    const left = [];
+    for (const p of list) {
+      const { error } = await db.rpc("doom_run_claim", { p_session: p.id, p_zone: p.zone, p_drops: p.drops });
+      if (error && !/找不到|不算/.test(error.message || "")) left.push(p);
+    }
+    savePending(left);
+  }
+
+  async function findSessionId(t, seconds) {
+    let q = await db.from("focus_sessions").select("id").eq("user_id", currentUser.id)
+      .eq("started_at", t.startedAt).order("id", { ascending: false }).limit(1);
+    if (q.data && q.data.length) return q.data[0].id;
+    q = await db.from("focus_sessions").select("id").eq("user_id", currentUser.id)
+      .eq("duration_seconds", seconds).order("id", { ascending: false }).limit(1);
+    return q.data && q.data.length ? q.data[0].id : null;
+  }
+
+  async function claimRun(t, ms) {
+    const seconds = Math.round(ms / 1000);
+    if (seconds < 60) return;
+    const minutes = Math.floor(seconds / 60);
+    const drops = dropCount(t.startedAt, minutes);
+    let id = null;
+    try { id = await findSessionId(t, seconds); } catch (e) { console.warn(e); }
+    if (!id) return;
+    const { data, error } = await db.rpc("doom_run_claim", { p_session: id, p_zone: t.doomZone, p_drops: drops });
+    if (error) {
+      console.warn("專注搜刮開箱失敗：", error);
+      savePending(loadPending().concat([{ id, zone: t.doomZone, drops }]));
+      toast("☢️ 搜刮的東西先放著，進末世頁會再開箱");
+      return;
+    }
+    showReveal(data);
+    if (DM.s) load();
+  }
+
+  function hookFocus() {
+    if (typeof window.startFocus === "function" && !window.startFocus.__doom) {
+      const orig = window.startFocus;
+      window.startFocus = function () {
+        const r = orig.apply(this, arguments);
+        try {
+          const t = curTimer();
+          if (t && !t.doomZone && zoneOn()) {
+            t.doomZone = selectedZone();
+            if (typeof saveFocusTimer === "function") saveFocusTimer();
+          }
+        } catch (e) { console.warn(e); }
+        lastCount = -1;
+        focusUi(true);
+        return r;
+      };
+      window.startFocus.__doom = true;
+    }
+    if (typeof window.finishFocus === "function" && !window.finishFocus.__doom) {
+      const orig = window.finishFocus;
+      window.finishFocus = async function () {
+        const before = curTimer();
+        const snap = before ? Object.assign({}, before) : null;
+        const ms = snap ? timerMs(snap) : 0;
+        const r = await orig.apply(this, arguments);
+        try {
+          if (snap && snap.doomZone && !curTimer() && hasDb()) await claimRun(snap, ms);
+        } catch (e) { console.warn("專注搜刮失敗：", e); }
+        focusUi(true);
+        return r;
+      };
+      window.finishFocus.__doom = true;
+    }
+    setInterval(() => { try { ensureZones(); focusUi(false); } catch (_) {} }, 1000);
+  }
+
+  /* 開箱畫面 */
+  function dropCard(d, i) {
+    const cls = d.kind === "danger" ? "danger" : "tier-" + (d.tier || "c");
+    const img = d.kind === "item" ? ic(d.src === "zone" ? "zone-item" : "loot", d.id, d.emoji, "big") : `<span class="dm-emo big">${esc(d.emoji)}</span>`;
+    const tag = d.kind === "danger" ? "⚠️ 危險" : d.kind === "meet" ? "🤝 奇遇" : tierName(d.tier);
+    return `<div class="dm-card ${cls}" style="animation-delay:${i * 160}ms"><span class="dm-tier">${tag}</span>${img}
+      <b>${esc(d.name)}</b><small>${d.t ? `第 ${d.t} 分鐘・` : ""}${esc(gainsText(d.gains))}</small></div>`;
+  }
+
+  function showReveal(r) {
+    if (!r) return;
+    let box = document.getElementById("dm-reveal");
+    if (!box) {
+      box = document.createElement("div");
+      box.id = "dm-reveal";
+      box.addEventListener("click", e => {
+        if (e.target === box || e.target.closest("[data-close]")) box.classList.remove("show");
+        if (e.target.closest("[data-go]")) { box.classList.remove("show"); if (typeof showPage === "function") showPage("doom"); }
+      });
+      document.body.appendChild(box);
+    }
+    const drops = r.drops || [];
+    const best = drops.concat(r.bonus ? [r.bonus] : []).reduce((b, x) => x.kind !== "danger" && "crlxs".indexOf(x.tier || "c") > "crlxs".indexOf(b) ? x.tier : b, "c");
+    const banner = { s: "🌟 傳說！", x: "💜 史詩！", l: "💙 稀有！" }[best];
+    const all = [];
+    drops.forEach(d => all.push(...(d.gains || [])));
+    if (r.bonus) all.push(...(r.bonus.gains || []));
+    box.innerHTML = `<div class="dm-rv card">
+      <div class="dm-rv-h">${ic("zone", r.zone, r.zone_emoji, "big")}<div><b>${esc(r.zone_name)}搜刮回來了</b>
+        <p>專注 ${r.minutes} 分鐘・帶回 ${drops.length} 樣</p></div></div>
+      ${r.downgraded ? `<p class="dm-warn">${esc(r.downgraded)}</p>` : ""}
+      ${banner ? `<div class="dm-banner tier-${best}">${banner}</div>` : ""}
+      ${drops.length ? `<div class="dm-cards">${drops.map(dropCard).join("")}</div>` : `<p class="dm-note">這次太短，什麼都沒撿到。專注滿 5 分鐘才會開始撿東西。</p>`}
+      ${r.bonus ? `<div class="dm-rv-bonus" style="animation-delay:${drops.length * 160 + 200}ms">🎁 平安歸來寶箱${dropCard(Object.assign({ kind: "item" }, r.bonus), 0)}</div>` : ""}
+      ${all.length ? `<div class="dm-rv-sum"><small>這趟一共</small>${gainsHtml(mergeGains(all))}</div>` : ""}
+      <div class="dm-opts"><button type="button" class="btn dm-btn" data-close>收進基地</button>
+        <button type="button" class="btn dm-btn ghost" data-go>去末世看看</button></div></div>`;
+    box.classList.add("show");
+    vibrate(best !== "c" ? [30, 40, 60] : 20);
+  }
+
+  function runsHtml() {
+    const runs = (DM.s && DM.s.runs) || [];
+    const zones = zoneList().length ? zoneList().map(z => `${z.emoji}${z.name}${z.chapter > (DM.s ? DM.s.week.week : 1) ? `🔒` : ""}`).join("　") : "";
+    return `<div class="card"><h3>⏱️ 專注搜刮</h3>
+      <p class="dm-note">在「專注」頁開始前選區域，每 5～10 分鐘撿到一樣，越久後面越好；照計畫完成還有平安歸來寶箱。</p>
+      ${zones ? `<p class="dm-note">${zones}</p>` : ""}
+      ${runs.length ? runs.map((r, i) => `<button type="button" class="dm-runrow" data-dm="run" data-v="${i}">
+        <span>${esc(r.zone_emoji)} ${esc(r.zone_name)}・${r.minutes} 分</span><span>🎒 ${(r.drops || []).length} 樣${r.rare ? `・✨${r.rare}` : ""}${r.bonus ? "・🎁" : ""} ›</span></button>`).join("")
+        : `<p class="dm-note">還沒有專注搜刮的紀錄。</p>`}</div>`;
   }
 
 
@@ -550,6 +822,30 @@
         box-shadow: 0 8px 24px rgba(0,0,0,.3); text-align: center; transition: all .35s cubic-bezier(.2,1.5,.4,1); cursor: pointer; max-width: 92vw; }
       #dm-flash small { display: block; font-weight: 500; font-size: 11px; opacity: .9; }
       #dm-flash.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+      #dm-zone-box { margin-top: 12px; }
+      .dm-zone-t { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+      .dm-zones { display: flex; flex-wrap: wrap; gap: 6px; }
+      .dm-zone { border: 1px solid rgba(127,127,127,.3); background: transparent; color: inherit; font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 99px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+      .dm-zone small { font-size: 10px; opacity: .7; }
+      .dm-zone.on { background: #e65100; border-color: #e65100; color: #fff; font-weight: 700; }
+      .dm-zone[disabled] { opacity: .4; cursor: default; }
+      .dm-zone-d { font-size: 12px; opacity: .7; margin-top: 6px; }
+      #dm-run { text-align: center; font-size: 14px; margin: 6px auto 0; padding: 5px 14px; border-radius: 99px; background: rgba(230,81,0,.12); width: fit-content; cursor: pointer; position: relative; }
+      #dm-run b { font-size: 17px; color: #e65100; }
+      #dm-run.bump { animation: dm-pop .5s cubic-bezier(.2,1.6,.4,1); }
+      .dm-plus { position: absolute; right: -6px; top: -12px; font-size: 12px; font-weight: 800; color: #e65100; animation: dm-up 1.4s ease forwards; }
+      @keyframes dm-up { from { opacity: 1; transform: translateY(6px); } to { opacity: 0; transform: translateY(-14px); } }
+      #dm-reveal { position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,.6); display: none; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 24px 12px; }
+      #dm-reveal.show { display: flex; }
+      .dm-rv { width: 100%; max-width: 520px; animation: dm-pop .4s cubic-bezier(.2,1.5,.4,1) both; }
+      .dm-rv-h { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+      .dm-rv-h b { font-size: 18px; } .dm-rv-h p { margin: 2px 0 0; font-size: 13px; opacity: .8; }
+      .dm-rv-bonus { margin: 6px 0 10px; font-weight: 800; text-align: center; animation: dm-pop .5s both; }
+      .dm-rv-bonus .dm-card { max-width: 160px; margin: 6px auto 0; }
+      .dm-rv-sum { margin: 8px 0; } .dm-rv-sum small { opacity: .7; }
+      .dm-card.danger { border-color: #ef5350; background: rgba(239,83,80,.1); }
+      .dm-card.danger .dm-tier { color: #ef5350; }
+      .dm-runrow { display: flex; justify-content: space-between; width: 100%; border: 0; background: rgba(127,127,127,.08); color: inherit; font: inherit; font-size: 13px; padding: 9px 10px; border-radius: 10px; margin-top: 6px; cursor: pointer; }
       @keyframes dm-pop { from { transform: scale(.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
       @keyframes dm-flip { from { transform: rotateY(90deg) scale(.8); opacity: 0; } to { transform: none; opacity: 1; } }
       @keyframes dm-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.015); } }
@@ -624,12 +920,13 @@
   function boot() {
     try { syncVisibility(); } catch (e) { console.warn(e); }
     try { hookRpc(); } catch (e) { console.warn(e); }
+    try { hookFocus(); } catch (e) { console.warn(e); }
     if (location.hash === "#doom" && typeof applyPage === "function") setTimeout(() => applyPage("doom"), 0);
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();
 
-  window.DoomGame = { version: DOOM_JS_VERSION, reload: load, render, state: DM, miss };
+  window.DoomGame = { version: DOOM_JS_VERSION, reload: load, render, state: DM, miss, showReveal, dropCount };
 
 })();
