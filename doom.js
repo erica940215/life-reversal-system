@@ -11,10 +11,10 @@
 
 (function () {
 
-  const DOOM_JS_VERSION = "2026-10-28 v2";
+  const DOOM_JS_VERSION = "2026-10-28 v3";
   const IMG = "img/doom/";
 
-  const DM = { cat: null, s: null, error: null, busy: false, tab: "today",
+  const DM = { cat: null, ex: null, diary: null, zoneUnlocked: [], zoneMastery: {}, s: null, error: null, busy: false, tab: "today",
     reveal: null, news: null, flash: null, zones: null, zoneWeek: 1, zoneLoading: false, zoneOff: false };
 
   /* ---------- 小工具 ---------- */
@@ -45,7 +45,7 @@
   }
 
   const find = (list, id) => (DM.cat && DM.cat[list] || []).find(x => x.id === id) || null;
-  const resInfo = k => (DM.cat && DM.cat.res[k]) || { name: k, emoji: "•" };
+  const resInfo = k => (DM.cat && DM.cat.res[k]) || EXTRA_RES[k] || { name: k, emoji: "•" };
   const TIER_COLOR = { c: "#9e9e9e", r: "#4caf50", l: "#42a5f5", x: "#ab47bc", s: "#ffb300" };
   const tierName = t => (DM.cat && DM.cat.tiers[t]) || t;
 
@@ -54,6 +54,7 @@
     if (g.k === "companion") { const c = find("companions", g.id); return `<span class="dm-chip big">${c ? c.emoji + " " + esc(c.name) : "同伴"} 加入了！</span>`; }
     if (g.k === "relic") { const r = find("relics", g.id); return `<span class="dm-chip big tier-${r ? r.tier : "x"}">${r ? r.emoji + " " + esc(r.name) : "收藏品"}</span>`; }
     if (g.k === "facility") { const f = find("facilities", g.id); return `<span class="dm-chip big">${f ? f.emoji + " " + esc(f.name) : "設施"} 升到 Lv${g.lv}</span>`; }
+    if (g.k === "memory") { const m = DM.ex && DM.ex.memories.find(x => x.id === g.id); return `<span class="dm-chip big tier-x">🧩 記憶碎片${m ? "：" + esc(m.title) : ""}</span>`; }
     const r = resInfo(g.k);
     return `<span class="dm-chip ${g.n < 0 ? "neg" : ""}">${r.emoji} ${g.n > 0 ? "+" : ""}${g.n}${g.note ? `<small>（${esc(g.note)}）</small>` : ""}</span>`;
   }
@@ -62,6 +63,7 @@
     if (g.k === "companion") { const c = find("companions", g.id); return c ? `${c.emoji}${c.name}加入` : "新同伴"; }
     if (g.k === "relic") { const r = find("relics", g.id); return r ? `${r.emoji}${r.name}` : "收藏品"; }
     if (g.k === "facility") { const f = find("facilities", g.id); return f ? `${f.emoji}${f.name} Lv${g.lv}` : "設施升級"; }
+    if (g.k === "memory") return "🧩記憶碎片";
     const r = resInfo(g.k);
     return `${r.emoji}${g.n > 0 ? "+" : ""}${g.n}`;
   }).join(" ");
@@ -69,7 +71,7 @@
   /* 同一種資源加總起來（同伴、收藏品、設施保持各自一筆） */
   function mergeGains(arr) {
     const sum = {}, rest = [];
-    (arr || []).forEach(g => { if (g.n !== undefined && !["companion", "relic", "facility"].includes(g.k)) sum[g.k] = (sum[g.k] || 0) + g.n; else rest.push(g); });
+    (arr || []).forEach(g => { if (g.n !== undefined && !["companion", "relic", "facility", "memory"].includes(g.k)) sum[g.k] = (sum[g.k] || 0) + g.n; else rest.push(g); });
     return Object.entries(sum).filter(([, n]) => n).map(([k, n]) => ({ k, n })).concat(rest);
   }
 
@@ -91,11 +93,20 @@
         if (error) throw error;
         DM.cat = data;
       }
+      if (!DM.ex) {
+        const x = await db.rpc("doom_extra");
+        if (!x.error) DM.ex = x.data;
+      }
+      if (!DM.zones) {
+        const z = await db.rpc("doom_zones");
+        if (!z.error) DM.zones = z.data;
+      }
       await retryPending();
       const { data, error } = await db.rpc("doom_status");
       if (error) throw error;
       DM.s = data;
       if (data.week) DM.zoneWeek = data.week.week;
+      syncZoneState(data.state);
       DM.error = null;
       try { localStorage.setItem("doomStarted", "1"); } catch (_) {}
       collectNews(data);
@@ -129,7 +140,14 @@
       const n = d.auto.reduce((a, r) => a + (r.drops || []).length, 0);
       items.push({ icon: "🏙️", title: `專注時在街頭搜刮了 ${d.auto.length} 趟`, body: `一共撿到 ${n} 樣。下次專注前可以在專注頁選區域。`, gains: mergeGains(all) });
     }
+    if (d.harvest && d.harvest.combo_bonus) items.push({ icon: "🔥", title: `連擊獎勵！最高 ×${d.harvest.combo || 3}`, body: "30 分鐘內連續完成事情，每連到 3 次多送 1 張搜刮券。", gains: [{ k: "scav", n: d.harvest.combo_bonus }] });
+    rewardNews(d.rewards, items);
     if (items.length) DM.news = (DM.news || []).concat(items);
+  }
+
+  function rewardNews(list, items) {
+    (list || []).forEach(r => items.push({ icon: r.kind === "day" ? "🏅" : r.kind === "set" ? "📚" : r.kind === "zone" ? "🗺️" : r.kind === "monument" ? "🗿" : "🏚️", title: r.title, body: "", gains: r.gains }));
+    if ((list || []).length) sfx("level");
   }
 
   async function call(name, args, after) {
@@ -138,7 +156,8 @@
     try {
       const { data, error } = await db.rpc(name, args || {});
       if (error) { toast("❌ " + error.message); return; }
-      if (after) after(data);
+      if (after) await after(data);
+      if (data && data.rewards && data.rewards.length) { const it = []; rewardNews(data.rewards, it); DM.news = (DM.news || []).concat(it); }
       const { data: s } = await db.rpc("doom_status");
       if (s) { DM.s = s; collectNews(s); }
     } catch (e) {
@@ -166,7 +185,8 @@
     return `<div class="card dm-head ${st.hp <= 0 ? "broken" : ""}">
       <div class="dm-top"><div><div class="dm-day">☢️ 末世第 ${st.day_no} 天</div>
         <div class="dm-sub">${esc(wk.title)}</div></div>
-        <div class="dm-luck" title="幸運越高，搜刮越容易出好東西">🍀 幸運 ${DM.s.luck}${buff ? `<br><small>${buff.emoji} ${esc(buff.name)}</small>` : ""}</div></div>
+        <div class="dm-luck" title="幸運越高，搜刮越容易出好東西"><button type="button" class="dm-snd" data-dm="sound" title="音效">${soundOn() ? "🔊" : "🔇"}</button> 🍀 幸運 ${DM.s.luck}${buff ? `<br><small>${buff.emoji} ${esc(buff.name)}</small>` : ""}</div></div>
+      ${sceneHtml()}
       <div class="dm-resrow">${res}</div>
       <div class="dm-meters">
         <div>${ic("res", "hp", "🛡️", "sm")} 基地 ${st.hp}/100 ${bar(st.hp, 100, st.hp > 40 ? "#66bb6a" : st.hp > 0 ? "#ffa726" : "#ef5350")}</div>
@@ -231,15 +251,20 @@
     const logs = (DM.s.logs || []).slice(0, 6).map(l =>
       `<li class="${l.tier ? "tier-" + l.tier : ""}">${esc(l.body)}</li>`).join("");
     return `
+      ${progressHtml()}
+      ${talkHtml()}
+      ${spinHtml()}
       ${bc ? `<div class="card dm-radio">${ic("ui", "radio", "📻", "big")}<div><small>序光電台・晨間廣播</small><p>「${esc(bc.text)}」</p>
         ${buff ? `<span class="dm-buff">${buff.emoji} ${esc(buff.name)}</span>` : ""}</div></div>` : ""}
       ${pick}
       ${eventCard("event")}
       ${eventCard("visitor")}
+      ${signalHtml()}
       <div class="card dm-how"><b>怎麼拿物資？</b>
         <p>✅ 完成任務：🥫+1 💧+1 🎟️+1</p>
         <p>🎯 專案每打勾 2 個：🥫+1 💧+1 🎟️+1</p>
         <p>⏱️ 專注：開始前選一個區域，每 5～10 分鐘撿到一樣東西，結束時開箱</p>
+        <p>🔥 30 分鐘內連續完成，每連到 3 次再 +1 🎟️</p>
         <p class="dm-note">做完回來這頁就會自動收。今天做越多事，搜刮越幸運。每天會吃掉 🥫1 💧1。</p></div>
       ${logs ? `<div class="card"><b>📓 最近的紀錄</b><ul class="dm-log">${logs}</ul></div>` : ""}`;
   }
@@ -266,34 +291,32 @@
         <button type="button" class="btn dm-btn" data-dm="draw" data-v="1" ${st.scav >= 1 ? "" : "disabled"}>搜刮 ×1</button>
         <button type="button" class="btn dm-btn gold" data-dm="draw" data-v="10" ${st.scav >= 10 ? "" : "disabled"}>搜刮 ×10</button></div>
       <p class="dm-note">普通 → 精良 → 稀有 → 史詩 → 傳說。可能搜到物資、星屑、金幣、星願券、召喚券、同伴、設施藍圖和收藏品。</p>
-    </div>${res}${runsHtml()}`;
+    </div>${res}${boxesHtml()}${unidHtml()}${shopHtml()}${runsHtml()}${masteryHtml()}`;
   }
 
   function baseHtml() {
     const st = DM.s.state;
     const eng = (st.companions || []).includes("engineer");
+    const engK = bondLv(st, "engineer") >= 5 ? 0.75 : eng ? 0.85 : 1;
     const facs = DM.cat.facilities.map(f => {
       const lv = st.facilities[f.id] || 0;
-      const parts = Math.round((20 + 20 * lv) * (eng ? 0.85 : 1)), food = 2 * lv;
+      const parts = Math.round((20 + 20 * lv) * engK), food = 2 * lv;
       const ok = lv < 10 && st.parts >= parts && st.food >= food;
       return `<div class="dm-fac">${ic("facility", f.id, f.emoji, "big")}<div class="dm-fac-b"><b>${esc(f.name)} <span class="dm-lv">Lv${lv}</span></b>
         <small>${esc(f.desc)}</small>${bar(lv, 10, "#8d6e63")}</div>
         <button type="button" class="btn dm-btn small" data-dm="build" data-v="${f.id}" ${ok ? "" : "disabled"}>${lv >= 10 ? "滿級" : `升級<br><small>🔩${parts}${food ? " 🥫" + food : ""}</small>`}</button></div>`;
     }).join("");
     const merchant = (st.companions || []).includes("merchant");
-    const k = merchant ? 6 : 8;
+    const k = bondLv(st, "merchant") >= 5 ? 5 : merchant ? 6 : 8;
     const traded = (DM.s.today && DM.s.today.traded) || 0;
     const comps = (st.companions || []).map(id => find("companions", id)).filter(Boolean);
-    return `<div class="card"><h3>🏚️ 基地設施</h3><p class="dm-note">設施每天自動生產；每個最高 10 級。</p>${facs}</div>
+    return `${baseLvHtml()}<div class="card"><h3>🏚️ 基地設施</h3><p class="dm-note">設施每天自動生產；每個最高 10 級。</p>${facs}</div>
       <div class="card"><h3>🔧 維修與交換</h3>
         <div class="dm-fac">${ic("ui", "repair", "🔧", "big")}<div class="dm-fac-b"><b>修理基地</b><small>🔩15 → 🛡️+25</small></div>
           <button type="button" class="btn dm-btn small" data-dm="repair" ${st.hp < 100 && st.parts >= 15 ? "" : "disabled"}>修理</button></div>
         <div class="dm-fac">${ic("ui", "trade", "🔁", "big")}<div class="dm-fac-b"><b>換搜刮券</b><small>🥫${k} 💧${k} → 🎟️1（今天還能換 ${5 - traded} 次）</small></div>
           <button type="button" class="btn dm-btn small" data-dm="trade" ${traded < 5 && st.food >= k && st.water >= k ? "" : "disabled"}>交換</button></div></div>
-      <div class="card"><h3>🤝 同伴 ${comps.length}/${DM.cat.companions.length}</h3>
-        ${comps.length ? comps.map(c => `<div class="dm-fac">${ic("companion", c.id, c.emoji, "big")}<div class="dm-fac-b"><b>${esc(c.name)}</b><small>${esc(c.perk)}</small></div></div>`).join("")
-          : `<p class="dm-note">還沒有同伴。訪客、搜刮、事件都可能遇到願意留下來的人（和動物）。</p>`}
-        <p class="dm-note">每 3 個同伴，每天多吃 🥫1 💧1。</p></div>`;
+      ${bondHtml()}`;
   }
 
   function chapterHtml() {
@@ -315,7 +338,8 @@
       <div class="dm-goal"><span>⏱️ 專注</span><b>${pF}</b>${bar(w.focus_min, w.goal_focus, "#42a5f5")}</div>
       ${claim}
       <p class="dm-note">本章寶箱：🥫10 💧10 🔩40 🎟️10 ✨60 🎫1。超額寶箱：🎟️10 🔩30 ✨80 🎟️召喚券 1 ＋ 一個史詩收藏品。</p></div>
-      <div class="card dm-dilemma"><h3>⚖️ 本章抉擇</h3><p>${esc(dl.text)}</p>${choice}</div>`;
+      <div class="card dm-dilemma"><h3>⚖️ 本章抉擇</h3><p>${esc(dl.text)}</p>${choice}</div>
+      ${milestonesHtml()}${memoriesHtml()}${diaryHtml()}`;
   }
 
   function bookHtml() {
@@ -333,7 +357,8 @@
       <div class="card"><h3>🔮 收藏品 ${nRel}/${DM.cat.relics.length}</h3><p class="dm-note">史詩、傳說搜刮，和一些奇怪的事件才找得到。每找到一個，士氣 +10。</p><div class="dm-grid">${rel}</div></div>
       <div class="card"><h3>📊 生存紀錄</h3><div class="dm-stats">
         <div><b>${st.day_no}</b><small>生存天數</small></div><div><b>${st.draws_total}</b><small>總搜刮</small></div>
-        <div><b>${DM.s.week.week}</b><small>章節</small></div><div><b>${nRel}</b><small>收藏品</small></div></div></div>`;
+        <div><b>${DM.s.week.week}</b><small>章節</small></div><div><b>${nRel}</b><small>收藏品</small></div></div></div>
+      ${setsHtml()}`;
   }
 
   function render() {
@@ -369,7 +394,7 @@
     if (act === "newsok") { DM.news = null; render(); return; }
     if (act === "report") { call("doom_report_seen", {}, () => {}); return; }
     if (act === "pickup") {
-      call("doom_pickup", {}, d => { vibrate(20); toast(`🧺 撿到了 ${gainsText(d.gains)}`); });
+      call("doom_pickup", {}, d => { vibrate(20); sfx("open"); toast(`🧺 撿到了 ${gainsText(d.gains)}`); });
       return;
     }
     if (act === "resolve") {
@@ -384,6 +409,7 @@
       DM.reveal = null;
       call("doom_draw", { p_n: n }, d => {
         DM.reveal = d.results;
+        sfxTier(bestTier(d.results));
         const best = d.results.some(r => r.tier === "s") ? "s" : d.results.some(r => r.tier === "x") ? "x" : d.results.some(r => r.tier === "l") ? "l" : "";
         vibrate(best ? [30, 40, 60] : 15);
         setTimeout(() => { const c = document.querySelector("#dm-root .dm-banner, #dm-root .dm-cards"); if (c) c.scrollIntoView({ behavior: "smooth", block: "center" }); }, 60);
@@ -392,14 +418,58 @@
     }
     if (act === "build") {
       const f = find("facilities", el.dataset.v);
-      call("doom_build", { p_fac: el.dataset.v }, d => { vibrate(25); toast(`🏗️ ${f.name}升到 Lv${d.lv}！`); });
+      call("doom_build", { p_fac: el.dataset.v }, d => { vibrate(25); sfx("level"); toast(`🏗️ ${f.name}升到 Lv${d.lv}！`); });
+      return;
+    }
+    if (act === "sound") { try { localStorage.setItem("doomSound", soundOn() ? "0" : "1"); } catch (_) {} if (soundOn()) sfx("tap"); render(); return; }
+    if (act === "chest") { call("doom_daily_chest", {}, d => { sfx("rare"); vibrate([30, 40, 60]); DM.news = (DM.news || []).concat([{ icon: "🎁", title: "今日生存度寶箱", body: "收進補給箱了，到「搜刮」打開它！", gains: d.gains }]); }); return; }
+    if (act === "spin") {
+      call("doom_spin", {}, async d => {
+        const w = document.querySelector("#dm-root .dm-wheel");
+        const seg = 360 / DM.ex.spin.length;
+        if (w) {
+          w.style.transition = "transform 3.2s cubic-bezier(.15,.85,.2,1)";
+          w.style.transform = `rotate(${360 * 6 - (d.index + .5) * seg}deg)`;
+          for (let i = 0; i < 12; i++) setTimeout(() => sfx("tap"), i * i * 22);
+          await new Promise(r => setTimeout(r, 3300));
+        }
+        sfx(["gold", "ten", "silver"].includes(d.id) ? "epic" : "rare");
+        vibrate([30, 40, 60]);
+        toast(`🎡 轉到 ${d.emoji} ${d.name}！`);
+      });
+      return;
+    }
+    if (act === "pet" || act === "gift") {
+      call("doom_pet", { p_id: el.dataset.v, p_gift: act === "gift" }, d => {
+        const c = find("companions", d.id);
+        sfx(d.up ? "level" : "coin");
+        toast(d.up ? `❤️ ${c.name}的好感升到 Lv${d.lv}！${d.story ? "解鎖了牠的故事" : ""}${d.perk ? "，能力加倍！" : ""}` : `❤️ ${c.name}很開心（${d.bond}/100）`);
+      });
+      return;
+    }
+    if (act === "shop") { call("doom_shop_buy", { p_i: Number(el.dataset.v) }, d => { sfx("coin"); toast(`🛒 買到 ${d.name}：${gainsText(d.gains)}`); }); return; }
+    if (act === "box") {
+      DM.reveal = null;
+      call("doom_box_open", { p_kind: el.dataset.v }, d => {
+        DM.reveal = d.results; const b = bestTier(d.results); sfxTier(b); vibrate(b !== "c" ? [30, 40, 60] : 20);
+        setTimeout(() => { const c = document.querySelector("#dm-root .dm-banner, #dm-root .dm-cards"); if (c) c.scrollIntoView({ behavior: "smooth", block: "center" }); }, 60);
+      });
+      return;
+    }
+    if (act === "identify") {
+      DM.reveal = null;
+      call("doom_identify", { p_uid: el.dataset.v }, d => {
+        DM.reveal = [d]; sfxTier(d.tier); vibrate(20);
+        toast(`❓ 鑑定結果：${tierName(d.tier)}・${d.name}`);
+        setTimeout(() => { const c = document.querySelector("#dm-root .dm-cards"); if (c) c.scrollIntoView({ behavior: "smooth", block: "center" }); }, 60);
+      });
       return;
     }
     if (act === "run") { const r = DM.s.runs[Number(el.dataset.v)]; if (r) showReveal(r); return; }
     if (act === "repair") { call("doom_repair", {}, () => toast("🔧 基地修好了一些")); return; }
     if (act === "trade") { call("doom_trade", {}, () => toast("🔁 換到 1 張搜刮券")); return; }
     if (act === "claim") {
-      call("doom_week_claim", {}, d => { vibrate([30, 40, 60]); DM.news = [{ icon: "🎁", title: d.claimed === 1 ? "本章寶箱" : "超額寶箱", body: "打開了！", gains: d.gains }]; });
+      call("doom_week_claim", {}, d => { vibrate([30, 40, 60]); sfx("epic"); DM.news = [{ icon: "🎁", title: d.claimed === 1 ? "本章寶箱" : "超額寶箱", body: "打開了！", gains: d.gains }]; });
       return;
     }
     if (act === "dilemma") {
@@ -428,6 +498,10 @@
     el._t = setTimeout(() => el.classList.remove("show"), 3200);
   }
 
+  /* 🔥 連擊：30 分鐘內連續完成 */
+  function comboNow() { try { const c = JSON.parse(localStorage.getItem("doomCombo") || "{}"); return Date.now() - (c.t || 0) <= 30 * 60000 ? (c.n || 0) : 0; } catch (_) { return 0; } }
+  function bumpCombo() { const n = comboNow() + 1; try { localStorage.setItem("doomCombo", JSON.stringify({ n, t: Date.now() })); } catch (_) {} return n; }
+
   function started() { try { return localStorage.getItem("doomStarted") === "1"; } catch (_) { return false; } }
 
   function hookRpc() {
@@ -441,7 +515,12 @@
         try {
           if (!r.error && gameOn() && started()) {
             const d = r.data || {};
-            if (name === "complete_task" && d.success) flash("☢️ 末世：🥫+1 💧+1 🎟️+1<small>點我去搜刮</small>");
+            if (name === "complete_task" && d.success) {
+              const n = bumpCombo();
+              flash(n >= 2 ? `🔥 ×${n} 連擊！${n % 3 === 0 ? " +1 🎟️" : ""}<small>☢️ 末世：🥫+1 💧+1 🎟️+1</small>` : "☢️ 末世：🥫+1 💧+1 🎟️+1<small>點我去搜刮</small>");
+              sfx(n >= 3 ? "rare" : "coin");
+            }
+            else if (name === "project_step_toggle" && d.done && !d.repeat && bumpCombo() >= 2) flash(`🔥 ×${comboNow()} 連擊！<small>☢️ 末世：專案打勾 +1</small>`);
             else if (name === "project_step_toggle" && d.done && !d.repeat) flash("☢️ 末世：專案打勾 +1<small>每 2 個換 🥫💧🎟️</small>");
           }
         } catch (_) {}
@@ -462,7 +541,13 @@
     let id = "street";
     try { id = localStorage.getItem(ZONE_KEY) || "street"; } catch (_) {}
     const z = zoneById(id);
-    return z && z.chapter <= DM.zoneWeek ? z.id : "street";
+    return z && zoneOpen(z) ? z.id : "street";
+  }
+  const zoneOpen = z => z.hidden ? DM.zoneUnlocked.includes(z.id) : z.chapter <= DM.zoneWeek;
+  function syncZoneState(st) {
+    if (!st) return;
+    DM.zoneUnlocked = st.zones_unlocked || [];
+    DM.zoneMastery = st.mastery || {};
   }
   const zoneOn = () => gameOn() && hasDb() && DM.zones && !DM.zoneOff;
 
@@ -503,8 +588,13 @@
         const c = await db.rpc("doom_catalog");
         if (!c.error) DM.cat = c.data;
       }
+      if (!DM.ex) {
+        const x = await db.rpc("doom_extra");
+        if (!x.error) DM.ex = x.data;
+      }
       if (!DM.s) {
-        const { data: st } = await db.from("doom_state").select("started_on").maybeSingle();
+        const { data: st } = await db.from("doom_state").select("started_on,zones_unlocked,mastery").maybeSingle();
+        if (st) syncZoneState(st);
         if (st && st.started_on) {
           const today = new Date(Date.now() - 2 * 3600000);
           const days = Math.floor((today - new Date(st.started_on + "T00:00:00")) / 86400000);
@@ -535,7 +625,7 @@
     if (pick) {
       const on = zoneOn();
       const sel = on ? selectedZone() : "";
-      const key = on + "|" + sel + "|" + DM.zoneWeek;
+      const key = on + "|" + sel + "|" + DM.zoneWeek + "|" + DM.zoneUnlocked.join(",");
       if (force || key !== lastPickerKey) {
         lastPickerKey = key;
         if (!on) { pick.innerHTML = ""; pick.hidden = true; }
@@ -544,9 +634,14 @@
           const z = zoneById(sel);
           pick.innerHTML = `<div class="dm-zone-t">☢️ 專注時去哪裡搜刮？</div>
             <div class="dm-zones">${zoneList().map(x => {
-              const lock = x.chapter > DM.zoneWeek;
-              return `<button type="button" class="dm-zone ${x.id === sel ? "on" : ""}" data-zone="${x.id}" ${lock ? "disabled" : ""}>
-                ${ic("zone", x.id, x.emoji, "sm")} ${esc(x.name)}${lock ? `<small>🔒第${x.chapter}章</small>` : x.min_min ? `<small>≥${x.min_min}分</small>` : ""}</button>`;
+              if (x.hidden && !zoneOpen(x)) {
+                const hint = DM.ex && DM.ex.hidden ? DM.ex.hidden[x.id] : "";
+                return `<button type="button" class="dm-zone secret" disabled title="${esc(hint)}">❔ ？？？<small>${esc(hint)}</small></button>`;
+              }
+              const lock = !zoneOpen(x);
+              const mlv = masteryLv((DM.zoneMastery || {})[x.id] || 0);
+              return `<button type="button" class="dm-zone ${x.id === sel ? "on" : ""} ${x.hidden ? "hidden-zone" : ""}" data-zone="${x.id}" ${lock ? "disabled" : ""}>
+                ${ic("zone", x.id, x.emoji, "sm")} ${esc(x.name)}${lock ? `<small>🔒第${x.chapter}章</small>` : x.min_min ? `<small>≥${x.min_min}分</small>` : ""}${mlv ? `<small>★${mlv}</small>` : ""}</button>`;
             }).join("")}</div>
             <div class="dm-zone-d">${z ? esc(z.desc) : ""} 每 5～10 分鐘撿到一樣，結束時開箱。</div>`;
         }
@@ -659,8 +754,8 @@
   function dropCard(d, i) {
     const cls = d.kind === "danger" ? "danger" : "tier-" + (d.tier || "c");
     const img = d.kind === "item" ? ic(d.src === "zone" ? "zone-item" : "loot", d.id, d.emoji, "big") : `<span class="dm-emo big">${esc(d.emoji)}</span>`;
-    const tag = d.kind === "danger" ? "⚠️ 危險" : d.kind === "meet" ? "🤝 奇遇" : tierName(d.tier);
-    return `<div class="dm-card ${cls}" style="animation-delay:${i * 160}ms"><span class="dm-tier">${tag}</span>${img}
+    const tag = d.kind === "danger" ? "⚠️ 危險" : d.kind === "meet" ? "🤝 奇遇" : d.kind === "unid" ? "❓ 未鑑定" : d.kind === "memory" ? "🧩 記憶" : tierName(d.tier);
+    return `<div class="dm-card ${cls}" style="animation-delay:${i * 160}ms"><span class="dm-tier">${tag}</span>${d.label ? `<span class="dm-label">${esc(d.label)}</span>` : ""}${img}
       <b>${esc(d.name)}</b><small>${d.t ? `第 ${d.t} 分鐘・` : ""}${esc(gainsText(d.gains))}</small></div>`;
   }
 
@@ -686,6 +781,11 @@
       <div class="dm-rv-h">${ic("zone", r.zone, r.zone_emoji, "big")}<div><b>${esc(r.zone_name)}搜刮回來了</b>
         <p>專注 ${r.minutes} 分鐘・帶回 ${drops.length} 樣</p></div></div>
       ${r.downgraded ? `<p class="dm-warn">${esc(r.downgraded)}</p>` : ""}
+      ${r.unlocked ? `<div class="dm-rv-news">🗺️ 發現隱藏區域：<b>${esc((zoneById(r.unlocked) || {}).name || r.unlocked)}</b>！下次專注可以去了。</div>` : ""}
+      ${r.signal ? `<div class="dm-rv-news">📡 解開第 ${r.signal.no} 段神秘訊號：「${esc(r.signal.cipher)}」${r.signal.unlock ? `<br>找到新地方：<b>${esc((zoneById(r.signal.unlock) || {}).name || "")}</b>` : ""}${gainsHtml(r.signal.gains)}</div>` : ""}
+      ${r.double ? `<div class="dm-rv-tag">✖️ 翻倍卡生效：這趟的東西翻倍</div>` : ""}
+      ${r.mastery ? `<div class="dm-rv-tag">${esc(r.zone_emoji)} ${esc(r.zone_name)}熟練度 Lv${masteryLv(r.mastery.minutes)}（累積 ${r.mastery.minutes} 分鐘）</div>` : ""}
+      ${(r.rewards || []).map(x => `<div class="dm-rv-news">${esc(x.title)}${gainsHtml(x.gains)}</div>`).join("")}
       ${banner ? `<div class="dm-banner tier-${best}">${banner}</div>` : ""}
       ${drops.length ? `<div class="dm-cards">${drops.map(dropCard).join("")}</div>` : `<p class="dm-note">這次太短，什麼都沒撿到。專注滿 5 分鐘才會開始撿東西。</p>`}
       ${r.bonus ? `<div class="dm-rv-bonus" style="animation-delay:${drops.length * 160 + 200}ms">🎁 平安歸來寶箱${dropCard(Object.assign({ kind: "item" }, r.bonus), 0)}</div>` : ""}
@@ -694,11 +794,12 @@
         <button type="button" class="btn dm-btn ghost" data-go>去末世看看</button></div></div>`;
     box.classList.add("show");
     vibrate(best !== "c" ? [30, 40, 60] : 20);
+    if (!r.already) sfxTier(best);
   }
 
   function runsHtml() {
     const runs = (DM.s && DM.s.runs) || [];
-    const zones = zoneList().length ? zoneList().map(z => `${z.emoji}${z.name}${z.chapter > (DM.s ? DM.s.week.week : 1) ? `🔒` : ""}`).join("　") : "";
+    const zones = zoneList().length ? zoneList().map(z => z.hidden && !zoneOpen(z) ? "❔？？？" : `${z.emoji}${z.name}${!zoneOpen(z) ? "🔒" : ""}`).join("　") : "";
     return `<div class="card"><h3>⏱️ 專注搜刮</h3>
       <p class="dm-note">在「專注」頁開始前選區域，每 5～10 分鐘撿到一樣，越久後面越好；照計畫完成還有平安歸來寶箱。</p>
       ${zones ? `<p class="dm-note">${zones}</p>` : ""}
@@ -707,6 +808,320 @@
         : `<p class="dm-note">還沒有專注搜刮的紀錄。</p>`}</div>`;
   }
 
+
+  /* =========================================================
+     ✨ 擴充：音效、基地畫面、生存度、轉盤、同伴、訊號、補給箱、
+        未鑑定、商人貨架、熟練度、里程碑、記憶碎片、日記、收藏組合
+  ========================================================= */
+
+  const EXTRA_RES = {
+    box_bronze: { name: "銅補給箱", emoji: "📦" }, box_silver: { name: "銀補給箱", emoji: "🎁" },
+    box_gold: { name: "金補給箱", emoji: "👑" }, double: { name: "翻倍卡", emoji: "✖️" },
+    unid: { name: "未鑑定物品", emoji: "❓" }
+  };
+  const BOX_KINDS = ["bronze", "silver", "gold"];
+
+  /* ---------- 🔊 音效（用程式合成，不用素材） ---------- */
+  let AC = null;
+  const soundOn = () => { try { return localStorage.getItem("doomSound") !== "0"; } catch (_) { return true; } };
+  function sfx(kind) {
+    if (!soundOn()) return;
+    try {
+      AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+      if (AC.state === "suspended") AC.resume();
+      const seq = {
+        tap: [[660, .05]], coin: [[880, .05], [1320, .08]],
+        open: [[523, .08], [659, .08], [784, .12]],
+        rare: [[523, .07], [659, .07], [784, .07], [1047, .22]],
+        epic: [[440, .08], [554, .08], [659, .08], [880, .08], [1109, .32]],
+        legend: [[523, .09], [659, .09], [784, .09], [1047, .09], [1319, .09], [1568, .45]],
+        bad: [[240, .14], [180, .22]], level: [[392, .08], [523, .08], [659, .16]],
+        spin: [[700, .03], [760, .03], [820, .03], [880, .03], [940, .03]]
+      }[kind] || [[600, .05]];
+      let t = AC.currentTime;
+      seq.forEach(([f, d]) => {
+        const o = AC.createOscillator(), g = AC.createGain();
+        o.type = kind === "bad" ? "sawtooth" : "triangle";
+        o.frequency.value = f;
+        g.gain.setValueAtTime(.0001, t);
+        g.gain.exponentialRampToValueAtTime(.16, t + .01);
+        g.gain.exponentialRampToValueAtTime(.0001, t + d);
+        o.connect(g).connect(AC.destination);
+        o.start(t); o.stop(t + d + .03);
+        t += d * .9;
+      });
+    } catch (_) {}
+  }
+  const bestTier = list => (list || []).reduce((b, r) => r && r.kind !== "danger" && "crlxs".indexOf(r.tier || "c") > "crlxs".indexOf(b) ? r.tier : b, "c");
+  const sfxTier = t => sfx({ s: "legend", x: "epic", l: "rare" }[t] || "open");
+
+  /* ---------- 🏚️ 基地畫面：跟著時間、天氣、設施變化 ---------- */
+  const baseLevel = st => 1 + Math.floor(Object.values(st.facilities || {}).reduce((a, b) => a + Number(b || 0), 0) / 4);
+  function sceneHtml() {
+    const st = DM.s.state;
+    const h = new Date().getHours();
+    const sky = h >= 5 && h < 8 ? "dawn" : h >= 8 && h < 17 ? "day" : h >= 17 && h < 19 ? "dusk" : "night";
+    const bc = find("broadcasts", DM.s.today && DM.s.today.broadcast);
+    const rain = bc && bc.buff === "rain";
+    const f = st.facilities || {};
+    const blv = baseLevel(st);
+    const house = blv >= 8 ? "🏡" : blv >= 4 ? "🏠" : "🛖";
+    const mon = monumentNow(st);
+    const comps = (st.companions || []).map(id => find("companions", id)).filter(Boolean);
+    const plants = "🌱🥬🌽🍅🥕".slice(0, 0) + Array.from({ length: Math.min(5, f.garden || 0) }, (_, i) => ["🌱", "🥬", "🌽", "🍅", "🥕"][i]).join("");
+    const wall = "🧱".repeat(Math.min(4, f.wall || 0));
+    return `<div class="dm-scene ${sky} ${rain ? "rain" : ""}" title="基地 ${blv} 級">
+      <span class="dm-sky">${sky === "night" ? "🌙" : sky === "dusk" ? "🌇" : rain ? "🌧️" : "☀️"}</span>
+      ${sky === "night" ? `<span class="dm-stars">✦　·　✧　　·　✦　　✧</span>` : `<span class="dm-cloud">☁️</span>`}
+      ${rain ? `<span class="dm-rain"></span>` : ""}
+      <div class="dm-ground">
+        ${f.radio ? `<span class="dm-prop">📡</span>` : ""}
+        <span class="dm-house">${house}${sky === "night" && f.bed ? `<i class="dm-light">💡</i>` : ""}</span>
+        ${f.purifier ? `<span class="dm-prop">🚰</span>` : ""}
+        ${plants ? `<span class="dm-prop">${plants}</span>` : ""}
+        ${wall ? `<span class="dm-prop">${wall}</span>` : ""}
+        ${mon ? `<span class="dm-prop" title="${esc(mon.name)}">${mon.emoji}</span>` : ""}
+        ${comps.slice(0, 5).map((c, i) => `<span class="dm-walker" style="animation-delay:${i * 1.3}s">${c.emoji}</span>`).join("")}
+      </div>
+      <span class="dm-blv">🏚️ 基地 Lv${blv}</span>
+    </div>`;
+  }
+
+  /* ---------- 📊 今日生存度 ---------- */
+  function progressHtml() {
+    const p = DM.s.progress;
+    if (!p) return "";
+    const tiers = p.tiers || [100, 200, 300];
+    const c = p.chests || 0;
+    const next = tiers[Math.min(c, tiers.length - 1)];
+    const ready = c < tiers.length && p.pts >= tiers[c];
+    const box = c < tiers.length ? EXTRA_RES["box_" + p.boxes[c]] : null;
+    const max = tiers[tiers.length - 1];
+    return `<div class="card dm-prog ${ready ? "ready" : ""}">
+      <div class="dm-prog-h"><b>📊 今日生存度 ${p.pts}</b><small>任務 10・專案打勾 5・專注每分鐘 1</small></div>
+      <div class="dm-prog-bar"><i style="width:${Math.min(100, p.pts / max * 100)}%"></i>
+        ${tiers.map((t, i) => `<span class="dm-prog-mark ${i < c ? "done" : p.pts >= t ? "ready" : ""}" style="left:${t / max * 100}%">${EXTRA_RES["box_" + p.boxes[i]].emoji}</span>`).join("")}</div>
+      ${c >= tiers.length ? `<p class="dm-ok">✅ 今天三個寶箱都開了，太強了！</p>`
+        : `<button type="button" class="btn dm-btn ${ready ? "gold" : "ghost"} wide" data-dm="chest" ${ready ? "" : "disabled"}>${ready ? `🎁 打開${box.name}` : `再 ${next - p.pts} 分開${box.name}`}</button>`}
+    </div>`;
+  }
+
+  /* ---------- 🎡 每日轉盤 ---------- */
+  function wheelHtml(rot) {
+    const list = (DM.ex && DM.ex.spin) || [];
+    const n = list.length || 1, seg = 360 / n;
+    const colors = ["#ff8f00", "#5c6bc0", "#26a69a", "#ef5350", "#ab47bc", "#66bb6a", "#ffa726", "#29b6f6", "#ffd54f", "#ec407a"];
+    const grad = list.map((_, i) => `${colors[i % colors.length]} ${i * seg}deg ${(i + 1) * seg}deg`).join(",");
+    return `<div class="dm-wheel-wrap"><div class="dm-pin">▼</div>
+      <div class="dm-wheel" style="background:conic-gradient(${grad});transform:rotate(${rot || 0}deg)">
+        ${list.map((p, i) => `<span style="transform:rotate(${(i + .5) * seg}deg) translateY(-62px)">${p.emoji}</span>`).join("")}
+      </div></div>`;
+  }
+  function spinHtml() {
+    const t = DM.s.today || {};
+    if (!DM.ex) return "";
+    if (t.spin) {
+      const seg = 360 / DM.ex.spin.length;
+      return `<div class="card dm-spin"><div class="dm-spin-row">${wheelHtml(-(t.spin.index + .5) * seg)}
+        <div><b>🎡 今日轉盤</b><p>今天轉到：${esc(t.spin.emoji)} <b>${esc(t.spin.name)}</b></p><small class="dm-note">明天再來轉一次</small></div></div></div>`;
+    }
+    const p = DM.s.progress || {};
+    const ok = (p.tasks || 0) + (p.steps || 0) > 0 || (p.focus_min || 0) >= 25;
+    return `<div class="card dm-spin"><div class="dm-spin-row">${wheelHtml(0)}
+      <div><b>🎡 今日轉盤</b><p>${ok ? "今天已經開工了，轉一次吧！" : "完成今天第一件事（任務、專案打勾或專注 25 分鐘）就能轉。"}</p>
+        <button type="button" class="btn dm-btn ${ok ? "gold" : "ghost"}" data-dm="spin" ${ok ? "" : "disabled"}>轉！</button></div></div></div>`;
+  }
+
+  /* ---------- 💬 同伴說話 ---------- */
+  function dayHash(s) { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); }
+  function talkHtml() {
+    const st = DM.s.state;
+    const comps = (st.companions || []).map(id => find("companions", id)).filter(Boolean);
+    if (!comps.length || !DM.ex) return "";
+    const p = DM.s.progress || {};
+    const c = comps[dayHash(DM.s.date + (new Date().getHours() >> 2)) % comps.length];
+    const lines = (DM.ex.talk && DM.ex.talk[c.id]) || ["……"];
+    let line = lines[dayHash(DM.s.date + c.id) % lines.length];
+    if ((p.focus_min || 0) >= 120) line = `你今天專注了 ${Math.floor(p.focus_min / 60)} 小時多，${c.id === "cat" ? "可以摸我了。" : "好厲害。"}` + "　" + line;
+    else if ((p.tasks || 0) + (p.steps || 0) === 0 && new Date().getHours() >= 18) line = `今天還沒做事喔……${c.id === "dog" ? "我陪你一起開始！" : "一件就好，先做一件。"}`;
+    const lv = bondLv(st, c.id);
+    return `<div class="card dm-talk">${ic("companion", c.id, c.emoji, "big")}<div><small>${esc(c.name)}${lv ? `・好感 Lv${lv}` : ""}</small><p>「${esc(line)}」</p></div></div>`;
+  }
+
+  /* ---------- 📡 神秘訊號 ---------- */
+  function signalHtml() {
+    const st = DM.s.state;
+    if (!DM.ex) return "";
+    const no = st.signal_no || 0;
+    if (no >= 3) return `<div class="card dm-signal done"><b>📡 神秘訊號</b><p>三段訊號都解開了。「倖存者，你不是一個人。」</p></div>`;
+    const sg = DM.ex.signals[no];
+    const ratio = Math.min(1, (st.signal_min || 0) / sg.need);
+    const chars = [...sg.cipher];
+    const shown = Math.floor(chars.length * ratio);
+    const order = chars.map((_, i) => i).sort((a, b) => dayHash("s" + no + a) - dayHash("s" + no + b));
+    const reveal = new Set(order.slice(0, shown));
+    const text = chars.map((ch, i) => reveal.has(i) || /[，。……「」]/.test(ch) ? ch : "▓").join("");
+    return `<div class="card dm-signal"><b>📡 神秘訊號 第 ${no + 1} 段</b>
+      <p class="dm-cipher">${esc(text)}</p>${bar(st.signal_min || 0, sg.need, "#26a69a")}
+      <small class="dm-note">專注搜刮 ${st.signal_min || 0} / ${sg.need} 分鐘。解開後${sg.unlock ? "會找到新的地方" : "會有很棒的東西"}。</small></div>`;
+  }
+
+  /* ---------- 📦 補給箱、✖️ 翻倍卡、❓ 未鑑定 ---------- */
+  function boxesHtml() {
+    const st = DM.s.state;
+    const b = st.boxes || {};
+    const ex = DM.ex && DM.ex.boxes;
+    if (!ex) return "";
+    return `<div class="card"><h3>📦 補給箱</h3><div class="dm-boxes">${BOX_KINDS.map(k => `
+      <button type="button" class="dm-boxbtn ${k}" data-dm="box" data-v="${k}" ${b[k] > 0 ? "" : "disabled"}>
+        ${ic("ui", "box_" + k, ex[k].emoji, "big")}<b>${esc(ex[k].name)}</b><small>×${b[k] || 0}・開出 ${ex[k].n} 樣</small></button>`).join("")}</div>
+      <p class="dm-note">銀箱至少一個精良，金箱至少一個稀有。今日生存度、轉盤、商人、里程碑都拿得到。</p>
+      ${st.double_cards ? `<p class="dm-chip big" style="display:inline-block">✖️ 翻倍卡 ×${st.double_cards}：下一趟專注搜刮的東西自動翻倍</p>` : ""}</div>`;
+  }
+  function unidHtml() {
+    const st = DM.s.state;
+    const list = st.unid || [];
+    if (!list.length) return "";
+    return `<div class="card"><h3>❓ 未鑑定物品 ${list.length}</h3><p class="dm-note">撿回來時看不出是什麼。再專注搜刮 30 分鐘就能鑑定：可能是普通的，也可能是傳說。</p>
+      <div class="dm-boxes">${list.map(it => {
+        const left = it.at + it.need - (st.focus_total || 0);
+        return `<button type="button" class="dm-boxbtn unid" data-dm="identify" data-v="${esc(it.uid)}" ${left <= 0 ? "" : "disabled"}>
+          ${ic("ui", "unid", "❓", "big")}<b>${left <= 0 ? "可以鑑定！" : "鑑定中"}</b><small>${left <= 0 ? "點一下打開" : `再專注 ${left} 分鐘`}</small></button>`;
+      }).join("")}</div></div>`;
+  }
+
+  /* ---------- 🛒 神秘商人限時貨架 ---------- */
+  function shopHtml() {
+    const t = DM.s.today || {};
+    const list = t.shop || [];
+    if (!list.length) return "";
+    const bought = new Set((t.shop_bought || []).map(String));
+    const st = DM.s.state;
+    const afford = price => Object.entries(price).every(([k, n]) => k === "gold" ? (DM.s.gold || 0) >= n : (st[k] || 0) >= n);
+    return `<div class="card dm-shop"><h3>🛒 神秘商人的限時貨架</h3><p class="dm-note">每天換 3 樣，明天就不見了。你有 🪙${DM.s.gold || 0}</p>
+      ${list.map((o, i) => `<div class="dm-fac">${ic("shop", o.id, o.emoji, "big")}<div class="dm-fac-b"><b>${esc(o.name)}</b><small>${costText(o.price)}</small></div>
+        <button type="button" class="btn dm-btn small" data-dm="shop" data-v="${i}" ${!bought.has(String(i)) && afford(o.price) ? "" : "disabled"}>${bought.has(String(i)) ? "已買" : "買"}</button></div>`).join("")}</div>`;
+  }
+
+  /* ---------- 🗺️ 區域熟練度 ---------- */
+  const masteryLv = mins => ((DM.ex && DM.ex.mastery) || [60, 180, 420, 900, 1800]).filter(t => mins >= t).length;
+  function masteryHtml() {
+    const st = DM.s.state;
+    const m = st.mastery || {};
+    const th = (DM.ex && DM.ex.mastery) || [60, 180, 420, 900, 1800];
+    const zs = zoneList().filter(z => !z.hidden || (st.zones_unlocked || []).includes(z.id));
+    if (!zs.length) return "";
+    return `<div class="card"><h3>🗺️ 區域熟練度</h3><p class="dm-note">同一個區域專注越久越熟：每級幸運 +3，3 級起多撿東西，5 級每趟必出稀有以上。</p>
+      ${zs.map(z => { const mins = m[z.id] || 0, lv = masteryLv(mins), nx = th[lv];
+        return `<div class="dm-goal"><span>${ic("zone", z.id, z.emoji, "sm")} ${esc(z.name)} <span class="dm-lv">Lv${lv}</span></span><b>${nx ? `${mins}/${nx} 分` : "滿級"}</b>${bar(nx ? mins : 1, nx || 1, "#8d6e63")}</div>`; }).join("")}</div>`;
+  }
+
+  /* ---------- 🐾 同伴好感 ---------- */
+  const bondLv = (st, id) => (st.companions || []).includes(id) ? Math.min(5, Math.floor(((st.bond || {})[id] || 0) / 20)) : 0;
+  function bondHtml() {
+    const st = DM.s.state;
+    const comps = (st.companions || []).map(id => find("companions", id)).filter(Boolean);
+    const today = new Set((DM.s.today && DM.s.today.bonded) || []);
+    return `<div class="card"><h3>🤝 同伴 ${comps.length}/${DM.cat.companions.length}</h3>
+      ${comps.length ? comps.map(c => {
+        const pts = (st.bond || {})[c.id] || 0, lv = bondLv(st, c.id), done = today.has(c.id);
+        return `<div class="dm-comp"><div class="dm-fac">${ic("companion", c.id, c.emoji, "big")}<div class="dm-fac-b"><b>${esc(c.name)} <span class="dm-lv">❤️ Lv${lv}</span></b>
+          <small>${esc(c.perk)}</small>${bar(pts, 100, "#ec407a")}</div>
+          <div class="dm-pet"><button type="button" class="btn dm-btn small ghost" data-dm="pet" data-v="${c.id}" ${done ? "disabled" : ""}>摸摸<br><small>+5</small></button>
+          <button type="button" class="btn dm-btn small" data-dm="gift" data-v="${c.id}" ${done || st.food < 3 ? "disabled" : ""}>餵食<br><small>🥫3 +12</small></button></div></div>
+          ${lv >= 3 && DM.ex ? `<p class="dm-story">📖 ${esc(DM.ex.stories[c.id] || "")}</p>` : `<p class="dm-note">好感 3 級解鎖牠的故事</p>`}
+          ${DM.ex ? `<p class="dm-note">${lv >= 5 ? "✨ 能力加倍：" : "好感 5 級："}${esc(DM.ex.bond_perk[c.id] || "")}</p>` : ""}</div>`;
+      }).join("") : `<p class="dm-note">還沒有同伴。訪客、搜刮、事件都可能遇到願意留下來的人（和動物）。</p>`}
+      <p class="dm-note">每個同伴每天可以陪一次。每 3 個同伴，每天多吃 🥫1 💧1。</p></div>`;
+  }
+
+  /* ---------- 🏆 基地等級、紀念碑、里程碑 ---------- */
+  function monumentNow(st) {
+    const list = (DM.ex && DM.ex.monument) || [];
+    const h = (st.focus_total || 0) / 60;
+    return list.filter(m => h >= m.h).pop() || null;
+  }
+  function baseLvHtml() {
+    const st = DM.s.state;
+    const sum = Object.values(st.facilities || {}).reduce((a, b) => a + Number(b || 0), 0);
+    const blv = baseLevel(st);
+    const list = (DM.ex && DM.ex.monument) || [];
+    const h = (st.focus_total || 0) / 60;
+    const mon = monumentNow(st), nx = list.find(m => h < m.h);
+    return `<div class="card"><h3>🏚️ 基地 Lv${blv}</h3>
+      <div class="dm-goal"><span>設施等級加總 ${sum}，每 4 級基地升一級（送補給箱）</span><b>${sum % 4}/4</b>${bar(sum % 4, 4, "#8d6e63")}</div>
+      <h3 style="margin-top:12px">${mon ? mon.emoji : "🪧"} 專注紀念碑${mon ? `：${esc(mon.name)}` : ""}</h3>
+      <div class="dm-goal"><span>專注搜刮累積 ${Math.floor(h)} 小時${nx ? `，${nx.h} 小時升級成 ${nx.emoji} ${esc(nx.name)}` : "，已經是最高級"}</span>
+        <b>${nx ? `${Math.floor(h)}/${nx.h}` : "MAX"}</b>${bar(nx ? h : 1, nx ? nx.h : 1, "#ffb300")}</div></div>`;
+  }
+  function milestonesHtml() {
+    const st = DM.s.state;
+    const list = (DM.ex && DM.ex.days) || [];
+    if (!list.length) return "";
+    const rw = st.rewards || {};
+    return `<div class="card"><h3>🏅 生存天數里程碑</h3><div class="dm-miles">${list.map(m => {
+      const got = rw["day:" + m.d];
+      return `<div class="dm-mile ${got ? "got" : ""}"><b>第 ${m.d} 天</b><small>${esc(m.title)}</small><span>${got ? "✅" : st.day_no >= m.d ? "🎁" : `還差 ${m.d - st.day_no} 天`}</span></div>`;
+    }).join("")}</div></div>`;
+  }
+  function memoriesHtml() {
+    const st = DM.s.state;
+    const list = (DM.ex && DM.ex.memories) || [];
+    if (!list.length) return "";
+    const own = new Set(st.memories || []);
+    return `<div class="card"><h3>🧩 前世記憶碎片 ${own.size}/${list.length}</h3>
+      <p class="dm-note">專注搜刮、算命攤、商人、里程碑都可能找到。收齊就能看完前世的故事。</p>
+      ${list.map((m, i) => own.has(m.id)
+        ? `<div class="dm-mem"><b>${i + 1}．${esc(m.title)}</b><p>${esc(m.text)}</p></div>`
+        : `<div class="dm-mem off"><b>${i + 1}．？？？</b><p>這段記憶還很模糊……</p></div>`).join("")}</div>`;
+  }
+
+  /* ---------- 📔 倖存者日記 ---------- */
+  async function loadDiary() {
+    if (DM.diaryLoading) return;
+    DM.diaryLoading = true;
+    try { const { data, error } = await db.rpc("doom_diary"); if (!error) DM.diary = data; } catch (_) {}
+    DM.diaryLoading = false;
+    render();
+  }
+  function diaryText(d) {
+    const parts = [];
+    if (d.tasks) parts.push(`完成了 ${d.tasks} 件任務`);
+    if (d.steps) parts.push(`在專案上打了 ${d.steps} 個勾`);
+    if (d.focus_min) parts.push(`專注了 ${d.focus_min >= 60 ? Math.floor(d.focus_min / 60) + " 小時 " : ""}${d.focus_min % 60} 分鐘`);
+    let s = parts.length ? `今天我${parts.join("，")}。` : "今天什麼都沒做，只是靜靜地待在基地裡，聽著收音機的雜音。";
+    (d.runs || []).forEach(r => { s += `我去了${r.zone}，待了 ${r.min} 分鐘，帶回 ${r.n} 樣東西${r.rare ? `，其中 ${r.rare} 樣很稀有` : ""}。`; });
+    const finds = (d.logs || []).filter(l => l.kind === "draw" && (l.tier === "x" || l.tier === "s")).map(l => l.body.replace(/！$/, ""));
+    if (finds.length) s += `最開心的是${finds.slice(0, 2).join("，還有")}！`;
+    const ev = (d.logs || []).filter(l => l.kind === "event" || l.kind === "visitor" || l.kind === "zone" || l.kind === "signal").map(l => l.body);
+    if (ev.length) s += ev.slice(0, 2).join(" ");
+    const busy = d.tasks + d.steps + d.focus_min / 30;
+    s += busy >= 10 ? " 累了，但很踏實。明天也要繼續。" : busy >= 3 ? " 一點一點來，基地越來越像樣了。" : busy > 0 ? " 至少今天有往前走一步。" : " 明天，再試一次吧。";
+    return s;
+  }
+  function diaryHtml() {
+    if (!DM.diary) { loadDiary(); return `<div class="card"><h3>📔 倖存者日記</h3><p class="dm-note">翻開日記中…</p></div>`; }
+    return `<div class="card"><h3>📔 倖存者日記</h3>${DM.diary.map(d => `<div class="dm-diary"><b>末世第 ${d.day_no} 天</b><small>${d.day}</small><p>${esc(diaryText(d))}</p></div>`).join("")}</div>`;
+  }
+
+  /* ---------- 📚 收藏組合 ---------- */
+  function setsHtml() {
+    const st = DM.s.state;
+    const sets = (DM.ex && DM.ex.sets) || [];
+    if (!sets.length) return "";
+    const seen = st.seen || {}, rw = st.rewards || {};
+    const prog = s => {
+      let ids = [], have = x => !!seen[x];
+      if (s.src === "loot") ids = DM.cat.loot.filter(x => x.tier === s.tier).map(x => x.id);
+      else if (s.src === "zone") { const z = zoneList().find(z => z.id === s.zone); ids = z ? z.items.map(x => x.id) : []; }
+      else if (s.src === "relic") { ids = DM.cat.relics.filter(x => x.tier === s.tier).map(x => x.id); have = x => !!(st.relics || {})[x]; }
+      else if (s.src === "companion") { ids = DM.cat.companions.map(x => x.id); have = x => (st.companions || []).includes(x); }
+      return [ids.filter(have).length, ids.length];
+    };
+    return `<div class="card"><h3>📚 收藏組合</h3><p class="dm-note">收齊一組送補給箱，而且幸運永久 +2。</p>
+      ${sets.map(s => { const [a, b] = prog(s), done = rw["set:" + s.id];
+        return `<div class="dm-goal"><span>${s.emoji} ${esc(s.name)}${done ? " ✅" : ""}</span><b>${a}/${b}</b>${bar(a, b || 1, done ? "#66bb6a" : "#ab47bc")}</div>`; }).join("")}</div>`;
+  }
 
   /* ---------- 樣式 ---------- */
 
@@ -848,6 +1263,70 @@
       .dm-card.danger { border-color: #ef5350; background: rgba(239,83,80,.1); }
       .dm-card.danger .dm-tier { color: #ef5350; }
       .dm-runrow { display: flex; justify-content: space-between; width: 100%; border: 0; background: rgba(127,127,127,.08); color: inherit; font: inherit; font-size: 13px; padding: 9px 10px; border-radius: 10px; margin-top: 6px; cursor: pointer; }
+      .dm-snd { border: 0; background: transparent; font-size: 16px; cursor: pointer; padding: 0 4px; vertical-align: -2px; }
+      .dm-scene { position: relative; height: 112px; margin: 10px 0 4px; border-radius: 14px; overflow: hidden; }
+      .dm-scene.day { background: linear-gradient(#7ec8f2, #c9ecff 70%); }
+      .dm-scene.dawn { background: linear-gradient(#f6b38c, #ffe0b2 70%); }
+      .dm-scene.dusk { background: linear-gradient(#ff8a65, #ffcc80 70%); }
+      .dm-scene.night { background: linear-gradient(#0d1b3d, #26355e 75%); }
+      .dm-scene.rain { filter: saturate(.7) brightness(.9); }
+      .dm-sky { position: absolute; right: 18px; top: 8px; font-size: 26px; }
+      .dm-stars { position: absolute; left: 14px; top: 10px; color: #fff8; font-size: 12px; letter-spacing: 4px; animation: dm-twinkle 3s ease-in-out infinite; }
+      .dm-cloud { position: absolute; top: 10px; left: -40px; font-size: 24px; opacity: .85; animation: dm-drift 26s linear infinite; }
+      .dm-rain { position: absolute; inset: 0; background: repeating-linear-gradient(105deg, transparent 0 9px, rgba(255,255,255,.35) 9px 10px); background-size: 40px 40px; animation: dm-rainfall .6s linear infinite; }
+      .dm-ground { position: absolute; left: 0; right: 0; bottom: 0; height: 46px; background: linear-gradient(#8bc34a, #689f38); display: flex; align-items: flex-end; gap: 6px; padding: 0 10px 6px; font-size: 22px; }
+      .dm-scene.night .dm-ground { background: linear-gradient(#33502a, #23391d); }
+      .dm-house { font-size: 40px; line-height: 1; position: relative; }
+      .dm-light { position: absolute; right: -4px; top: -4px; font-size: 14px; font-style: normal; animation: dm-twinkle 2s ease-in-out infinite; }
+      .dm-prop { line-height: 1; }
+      .dm-walker { position: absolute; bottom: 6px; left: 0; font-size: 20px; animation: dm-walk 18s linear infinite; }
+      .dm-blv { position: absolute; left: 8px; top: 6px; font-size: 11px; font-weight: 800; background: rgba(0,0,0,.35); color: #fff; padding: 1px 8px; border-radius: 99px; }
+      @keyframes dm-drift { from { transform: translateX(0); } to { transform: translateX(460px); } }
+      @keyframes dm-rainfall { from { background-position: 0 0; } to { background-position: -8px 40px; } }
+      @keyframes dm-twinkle { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+      @keyframes dm-walk { 0% { left: 4%; transform: scaleX(-1); } 48% { left: 88%; transform: scaleX(-1); } 50% { left: 88%; transform: scaleX(1); } 98% { left: 4%; transform: scaleX(1); } 100% { left: 4%; transform: scaleX(-1); } }
+      .dm-prog.ready { border: 2px solid #ffb300; animation: dm-breathe 2s ease-in-out infinite; }
+      .dm-prog-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+      .dm-prog-h small { font-size: 11px; opacity: .65; }
+      .dm-prog-bar { position: relative; height: 14px; border-radius: 99px; background: rgba(127,127,127,.18); margin: 16px 12px 8px 0; }
+      .dm-prog-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #66bb6a, #ffb300); transition: width .6s; }
+      .dm-prog-mark { position: absolute; top: -12px; transform: translateX(-50%); font-size: 20px; filter: grayscale(1); opacity: .6; }
+      .dm-prog-mark.ready { filter: none; opacity: 1; animation: dm-pop .8s ease infinite alternate; }
+      .dm-prog-mark.done { filter: none; opacity: .4; }
+      .dm-spin-row { display: flex; gap: 14px; align-items: center; }
+      .dm-spin-row p { font-size: 13px; margin: 4px 0 8px; }
+      .dm-wheel-wrap { position: relative; flex: 0 0 150px; height: 150px; }
+      .dm-pin { position: absolute; left: 50%; top: -6px; transform: translateX(-50%); z-index: 2; color: #e65100; font-size: 18px; }
+      .dm-wheel { width: 150px; height: 150px; border-radius: 50%; border: 4px solid #fff3; position: relative; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
+      .dm-wheel span { position: absolute; left: 50%; top: 50%; width: 24px; height: 24px; margin: -12px 0 0 -12px; text-align: center; font-size: 18px; line-height: 24px; }
+      .dm-talk { display: flex; gap: 12px; align-items: center; background: linear-gradient(135deg, rgba(236,64,122,.1), rgba(255,183,77,.1)); }
+      .dm-talk small { opacity: .7; font-size: 11px; } .dm-talk p { margin: 2px 0 0; font-size: 14px; }
+      .dm-signal { background: linear-gradient(135deg, rgba(38,166,154,.12), rgba(13,27,61,.12)); }
+      .dm-cipher { font-family: ui-monospace, monospace; letter-spacing: 1px; line-height: 1.7; font-size: 14px; }
+      .dm-boxes { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; margin: 8px 0; }
+      .dm-boxbtn { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 6px; border-radius: 14px; border: 2px solid rgba(127,127,127,.25); background: rgba(127,127,127,.06); color: inherit; font: inherit; cursor: pointer; }
+      .dm-boxbtn b { font-size: 13px; } .dm-boxbtn small { font-size: 11px; opacity: .7; }
+      .dm-boxbtn.bronze { border-color: #a1887f; } .dm-boxbtn.silver { border-color: #90a4ae; } .dm-boxbtn.gold { border-color: #ffb300; } .dm-boxbtn.unid { border-color: #7e57c2; }
+      .dm-boxbtn:not([disabled]) { animation: dm-breathe 2.2s ease-in-out infinite; }
+      .dm-boxbtn[disabled] { opacity: .45; cursor: default; }
+      .dm-comp { border-bottom: 1px solid rgba(127,127,127,.12); padding-bottom: 6px; }
+      .dm-comp .dm-fac { border-bottom: 0; }
+      .dm-pet { display: flex; flex-direction: column; gap: 4px; }
+      .dm-story { font-size: 13px; margin: 2px 0 4px; padding: 8px 10px; border-radius: 10px; background: rgba(236,64,122,.08); }
+      .dm-miles { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 6px; }
+      .dm-mile { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 8px 4px; border-radius: 12px; background: rgba(127,127,127,.08); font-size: 12px; }
+      .dm-mile b { font-size: 14px; } .dm-mile small { opacity: .7; } .dm-mile.got { background: rgba(102,187,106,.18); }
+      .dm-mem { padding: 8px 10px; border-radius: 10px; background: rgba(171,71,188,.08); margin-top: 6px; }
+      .dm-mem p { font-size: 13px; margin: 2px 0 0; } .dm-mem.off { opacity: .45; }
+      .dm-diary { padding: 8px 0; border-bottom: 1px solid rgba(127,127,127,.12); }
+      .dm-diary small { margin-left: 8px; opacity: .6; } .dm-diary p { font-size: 13px; line-height: 1.7; margin: 4px 0 0; }
+      .dm-label { position: absolute; top: -8px; right: -4px; font-size: 10px; font-weight: 800; background: #e65100; color: #fff; padding: 1px 6px; border-radius: 99px; }
+      .dm-card { position: relative; }
+      .dm-rv-news { margin: 8px 0; padding: 10px 12px; border-radius: 12px; background: linear-gradient(135deg, rgba(255,179,0,.18), rgba(171,71,188,.12)); font-size: 14px; animation: dm-pop .5s both; }
+      .dm-rv-tag { display: inline-block; margin: 4px 6px 4px 0; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 99px; background: rgba(127,127,127,.14); }
+      .dm-zone.secret { border-style: dashed; opacity: .55; max-width: 100%; }
+      .dm-zone.secret small { white-space: normal; }
+      .dm-zone.hidden-zone { border-color: #ab47bc; }
       @keyframes dm-pop { from { transform: scale(.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
       @keyframes dm-flip { from { transform: rotateY(90deg) scale(.8); opacity: 0; } to { transform: none; opacity: 1; } }
       @keyframes dm-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.015); } }
@@ -929,6 +1408,6 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();
 
-  window.DoomGame = { version: DOOM_JS_VERSION, reload: load, render, state: DM, miss, showReveal, dropCount };
+  window.DoomGame = { version: DOOM_JS_VERSION, reload: load, render, state: DM, miss, showReveal, dropCount, sfx };
 
 })();
