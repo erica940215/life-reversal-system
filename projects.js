@@ -162,7 +162,7 @@
       <div class="pj-stat"><b>${s.done_count || 0}</b><span>已完成</span></div>
       <div class="pj-stat"><b>💥 ${s.crits || 0}</b><span>爆擊次數</span></div>
     </div>
-    <p style="font-size:12px;opacity:.65;margin:10px 0 0">每天完成至少一個步驟，連擊 +1（每天經驗 +5%，最多 +50%）。打勾有 10% 爆擊、2% 超級爆擊。</p></section>`;
+    <p style="font-size:12px;opacity:.65;margin:10px 0 0">每天完成至少一個步驟，連擊 +1（每天經驗 +5%，最多 +50%）。每次打勾 ✨5 星屑，10% 爆擊（×2）、2% 超級爆擊（×5）。</p></section>`;
   }
 
   function gridHtml(p) {
@@ -381,9 +381,10 @@
     const { data, error } = await db.rpc("project_step_toggle", { p_step: id });
     if (error) { toast("❌ " + error.message); load(); return; }
     if (data.done && data.xp > 0) {
-      if (data.crit === "super") pop(`超級爆擊！+${data.xp} EXP`, "×5", "super");
-      else if (data.crit === "crit") pop(`爆擊！+${data.xp} EXP`, "×2", "crit");
-      else pop(`+${data.xp} EXP`, data.combo > 1 ? `🔥 連擊 ${data.combo} 天` : "");
+      const dust = data.stardust ? `✨ +${data.stardust} 星屑` : "";
+      if (data.crit === "super") pop(`超級爆擊！+${data.xp} EXP`, `×5　${dust}`, "super");
+      else if (data.crit === "crit") pop(`爆擊！+${data.xp} EXP`, `×2　${dust}`, "crit");
+      else pop(`+${data.xp} EXP`, [dust, data.combo > 1 ? `🔥 連擊 ${data.combo} 天` : ""].filter(Boolean).join("　"));
       levelToast(data.levelUps);
     }
     if (data.dayClear) setTimeout(() => toast(`🌟 今天全部完成！+${data.dayClear.xp} EXP、✨ 星屑 ×${data.dayClear.stardust}`), 1000);
@@ -395,7 +396,7 @@
     if (error) { toast("❌ " + error.message); return; }
     pop(`🏆 專案完成！+${data.xp} EXP`, "", "crit");
     const items = (data.items || []).map(i => `${ITEM[i.key] || i.key} ×${i.qty}${i.lucky ? "（驚喜！）" : ""}`);
-    setTimeout(() => toast(items.length ? "獲得：" + items.join("、") : "今天的完成獎勵已經拿滿 3 次，經驗照樣有算"), 600);
+    setTimeout(() => toast(items.length ? "獲得：" + items.join("、") : "今天的完成獎勵已經拿滿 10 次，經驗照樣有算"), 600);
     levelToast(data.levelUps);
     load();
   }
@@ -416,7 +417,7 @@
       e.preventDefault();
       const { data, error } = await db.rpc("project_step_makeup", { p_step: id });
       if (error) { toast("❌ " + error.message); return load(); }
-      if (data.done && data.xp > 0) { pop(`+${data.xp} EXP`, "📅 補打卡"); levelToast(data.levelUps); }
+      if (data.done && data.xp > 0) { pop(`+${data.xp} EXP`, `📅 補打卡　✨ +${data.stardust || 0} 星屑`); levelToast(data.levelUps); }
       return load();
     }
     if (a === "grid") { P.grid[id] = !P.grid[id]; render(); return; }
@@ -450,7 +451,7 @@
   /* ---------- 🎰 簽到幸運抽 ---------- */
   const DRAW = {
     none: ["🍃", "今天沒中", "明天再來試試手氣"],
-    c: ["✨", "小獎勵", ""], r: ["🎁", "不錯喔", ""], x: ["💎", "稀有！", ""], s: ["🌟", "大獎！！", "限定召喚券＋限定星願瓶"]
+    c: ["✨", "小獎勵", ""], r: ["🎁", "不錯喔", ""], x: ["💎", "稀有！", ""], s: ["🌟", "大獎！！", "再加限定星願瓶和 300 星屑"]
   };
   async function luckyDraw() {
     if (!hasDb()) return;

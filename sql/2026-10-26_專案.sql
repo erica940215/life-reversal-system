@@ -5,8 +5,9 @@
 --
 --   每個步驟第一次打勾：10 EXP × 連擊加成（每天 +5%，最多 +50%）
 --     爆擊 10%：×2　超級爆擊 2%：×5
---   專案升級：第 L 級升到 L+1 要 50×L EXP；升級給星屑，每 5 級加召喚券＋星願瓶
---   完成專案：額外 EXP＋依步驟數給獎勵（每天前 3 個完成有物品獎勵）
+--   每次打勾 5 星屑（爆擊 10、超級爆擊 25）
+--   專案升級：第 L 級升到 L+1 要 50×L EXP；升級給 20×L 星屑，每 5 級加召喚券＋星願瓶
+--   完成專案：額外 EXP＋依步驟數給獎勵（每天前 10 個完成有物品獎勵）
 --   連擊：每天至少完成一個步驟就 +1，斷一天歸零（凌晨 2 點換日）
 --   幸運抽：每天簽到後抽一次，可能什麼都沒有，也可能中限定券
 --
@@ -124,12 +125,12 @@ begin
   while v_xp >= 25 * v_lv * (v_lv + 1) and v_lv < 99 loop
     v_lv := v_lv + 1;
     src := 'proj-lv:' || p_project || ':' || v_lv;
-    perform public.grant_item(p_user, 'stardust', 5 * v_lv, src);
+    perform public.grant_item(p_user, 'stardust', 20 * v_lv, src);
     if v_lv % 5 = 0 then
       perform public.grant_item(p_user, 'ticket_normal', 1, src);
       perform public.grant_item(p_user, 'wish_normal', 1, src);
     end if;
-    ups := ups || jsonb_build_object('level', v_lv, 'stardust', 5 * v_lv, 'bonus', v_lv % 5 = 0);
+    ups := ups || jsonb_build_object('level', v_lv, 'stardust', 20 * v_lv, 'bonus', v_lv % 5 = 0);
   end loop;
   if v_lv <> v_old then update public.projects set level = v_lv where id = p_project; end if;
   update public.project_stats set total_xp = total_xp + p_xp where user_id = p_user;
@@ -173,6 +174,20 @@ end;
 $function$;
 revoke all on function public.project_award_step(uuid, uuid) from public, authenticated, anon;
 
+-- 每次打勾的星屑：5，爆擊 ×2、超級爆擊 ×5（內部用）
+create or replace function public.project_step_dust(p_user uuid, p_step uuid, p_day date, p_crit text)
+returns jsonb language plpgsql security definer set search_path to 'public'
+as $function$
+declare d integer := case p_crit when 'super' then 25 when 'crit' then 10 else 5 end;
+begin
+  if public.grant_item(p_user, 'stardust', d, 'proj-step:' || p_step || ':' || p_day) then
+    return jsonb_build_object('stardust', d);
+  end if;
+  return '{}'::jsonb;
+end;
+$function$;
+revoke all on function public.project_step_dust(uuid, uuid, date, text) from public, authenticated, anon;
+
 -- 打勾／取消打勾（任務制改步驟本身；每日重複改今天的紀錄）
 create or replace function public.project_step_toggle(p_step uuid)
 returns json language plpgsql security definer set search_path to 'public'
@@ -202,13 +217,14 @@ begin
     end if;
     insert into public.project_step_logs (step_id, project_id, user_id, day) values (p_step, pr.id, u, today);
     res := public.project_award_step(u, pr.id);
+    res := res || public.project_step_dust(u, p_step, today, res->>'crit');
 
     -- 今天全部打勾：一天一次的全勤獎勵
     select count(*), count(*) filter (where l.done) into total, done_n
       from public.project_steps ps
       left join public.project_step_logs l on l.step_id = ps.id and l.day = today
       where ps.project_id = pr.id;
-    dust := 3 + total;
+    dust := 15 + 5 * total;
     if total > 0 and done_n = total
        and public.grant_item(u, 'stardust', dust, 'proj-day:' || pr.id || ':' || today) then
       ups := public.project_add_xp(u, pr.id, 20);
@@ -226,7 +242,8 @@ begin
   if s.xp_given then
     return json_build_object('done', true, 'xp', 0, 'repeat', true);
   end if;
-  return public.project_award_step(u, pr.id)::json;
+  res := public.project_award_step(u, pr.id);
+  return (res || public.project_step_dust(u, p_step, today, res->>'crit'))::json;
 end;
 $function$;
 grant execute on function public.project_step_toggle(uuid) to authenticated;
@@ -267,10 +284,10 @@ begin
   bonus := greatest(30, 20 * n);
   ups := public.project_add_xp(u, p_project, bonus);
 
-  -- 物品獎勵：每天前 3 個完成的專案才有（避免灌專案）
-  if today_done < 3 then
+  -- 物品獎勵：每天前 10 個完成的專案才有（避免灌專案）
+  if today_done < 10 then
     src := 'proj-done:' || p_project;
-    dust := 10 + 5 * n;
+    dust := 40 + 20 * n;
     perform public.grant_item(u, 'stardust', dust, src);
     items := items || jsonb_build_object('key', 'stardust', 'qty', dust);
     if n >= 3 then
@@ -285,14 +302,14 @@ begin
       items := items || jsonb_build_object('key', 'ticket_special', 'qty', 1)
                      || jsonb_build_object('key', 'wish_rare', 'qty', 1);
     end if;
-    -- 驚喜：20% 多一張召喚券
-    if random() < 0.2 then
+    -- 驚喜：40% 多一張召喚券
+    if random() < 0.4 then
       perform public.grant_item(u, 'ticket_normal', 1, src || ':lucky');
       items := items || jsonb_build_object('key', 'ticket_normal', 'qty', 1, 'lucky', true);
     end if;
   end if;
 
-  return json_build_object('xp', bonus, 'levelUps', ups, 'items', items, 'capped', today_done >= 3);
+  return json_build_object('xp', bonus, 'levelUps', ups, 'items', items, 'capped', today_done >= 10);
 end;
 $function$;
 grant execute on function public.project_complete(uuid) to authenticated;
@@ -316,18 +333,23 @@ begin
     return json_build_object('ready', false);
   end if;
 
-  if r < 0.35 then k := null; tier := 'none';
-  elsif r < 0.70 then k := 'stardust'; q := 5 + floor(random() * 11)::integer; tier := 'c';
-  elsif r < 0.85 then k := 'wish_normal'; tier := 'r';
-  elsif r < 0.93 then k := 'ticket_normal'; tier := 'r';
-  elsif r < 0.97 then k := 'makeup_card'; tier := 'r';
-  elsif r < 0.99 then k := 'wish_rare'; tier := 'x';
-  elsif r < 0.997 then k := 'ticket_special'; tier := 'x';
+  if r < 0.10 then k := null; tier := 'none';
+  elsif r < 0.45 then k := 'stardust'; q := 30 + floor(random() * 51)::integer; tier := 'c';
+  elsif r < 0.62 then k := 'wish_normal'; q := 2; tier := 'r';
+  elsif r < 0.74 then k := 'ticket_normal'; q := 2; tier := 'r';
+  elsif r < 0.80 then k := 'makeup_card'; tier := 'r';
+  elsif r < 0.86 then k := 'stardust'; q := 150; tier := 'r';
+  elsif r < 0.93 then k := 'wish_rare'; tier := 'x';
+  elsif r < 0.97 then k := 'ticket_special'; tier := 'x';
+  elsif r < 0.99 then k := 'wish_limited'; tier := 'x';
   else k := 'ticket_limited'; tier := 's';
   end if;
 
   if k is not null then perform public.grant_item(u, k, q, 'lucky:' || today); end if;
-  if tier = 's' then perform public.grant_item(u, 'wish_limited', 1, 'lucky:' || today); end if;
+  if tier = 's' then
+    perform public.grant_item(u, 'wish_limited', 1, 'lucky:' || today);
+    perform public.grant_item(u, 'stardust', 300, 'lucky:' || today);
+  end if;
 
   res := jsonb_build_object('tier', tier, 'key', k, 'qty', q);
   insert into public.project_draws (user_id, day, result) values (u, today, res);
@@ -380,7 +402,8 @@ begin
   end if;
 
   ups := public.project_add_xp(u, pr.id, 5);
-  return json_build_object('done', true, 'xp', 5, 'levelUps', ups);
+  perform public.grant_item(u, 'stardust', 3, 'proj-mk:' || p_step || ':' || y);
+  return json_build_object('done', true, 'xp', 5, 'stardust', 3, 'levelUps', ups);
 end;
 $function$;
 grant execute on function public.project_step_makeup(uuid) to authenticated;
