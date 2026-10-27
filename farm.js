@@ -2002,10 +2002,11 @@ const FARM_JS_VERSION = "2026-10-22 v1";
     return { r: 50 - 2 * (n - 1), l: 35, x: 12 + 1.5 * (n - 1), s: 3 + 0.5 * (n - 1) };
   }
 
-  /* 限定池：沒中主角每瓶 仙 +5%；第 10 瓶一定中 */
+  /* 限定池：主角 25% 起，沒中每瓶 +15%；第 6 瓶一定中 */
   function limitedOdds(n) {
-    if (n >= 10) return { l: 0, x: 0, s: 100 };
-    return { l: 50 - 5 * (n - 1), x: 35, s: 15 + 5 * (n - 1) };
+    if (n >= 6) return { l: 0, x: 0, s: 100 };
+    const s = 25 + 15 * (n - 1), x = Math.min(35, 100 - s);
+    return { l: 100 - s - x, x, s };
   }
 
   function pct(v) {
@@ -5479,7 +5480,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
         <div class="fm-theme-art r-${hero ? rewardInfo(hero).tier : "s"}">${hero ? rewardArt(hero) : `<img src="${IMG}item/wish_limited.webp" alt="">`}</div>
         <div style="min-width:0"><div class="fm-row-name">本月主題：${esc(theme.name || "星光精選")}</div>
         <div class="fm-row-sub">${hero ? `仙品主角 <b>${esc(rewardInfo(hero).name)}</b>・` : "仙品從所有仙品裡抽・"}還剩 ${st.days_left} 天</div>
-        <div class="fm-row-sub">限定瓶：距離上次主角第 ${st.limited_n} 瓶，主角 ${pct(lo.s)}（第 10 瓶一定中）</div></div></div>`;
+        <div class="fm-row-sub">限定瓶：距離上次主角第 ${st.limited_n} 瓶，主角 ${pct(lo.s)}（第 6 瓶一定中）</div></div></div>`;
 
       const ro = rareOdds(st.rare_n);
       const bottle = (k, sub) => {
@@ -5632,7 +5633,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
         const o = rareOdds(n);
         return `<tr${n === st.rare_n ? ` class="now"` : ""}><td>第 ${n} 瓶</td><td>—</td>${["r", "l", "x", "s"].map(t => `<td>${pct(o[t])}</td>`).join("")}</tr>`;
       }).join("");
-      const rowsL = [1, 3, 5, 8, 10].map(n => {
+      const rowsL = [1, 2, 3, 4, 5, 6].map(n => {
         const o = limitedOdds(n);
         return `<tr${n === st.limited_n ? ` class="now"` : ""}><td>第 ${n} 瓶</td><td>—</td><td>—</td>${["l", "x", "s"].map(t => `<td>${pct(o[t])}</td>`).join("")}</tr>`;
       }).join("");
@@ -5642,7 +5643,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
         <div class="fm-panel"><div class="fm-sec ol">稀有池</div><table class="fm-odds">${head.replace("幸運值", "距上次大獎")}${rowsR}</table>
         <p class="fm-note">每開一瓶沒中華品或仙品，華品 +1.5%、仙品 +0.5%；第 20 瓶一定中。</p></div>
         <div class="fm-panel"><div class="fm-sec ol">每月限定池</div><table class="fm-odds">${head.replace("幸運值", "距上次主角")}${rowsL}</table>
-        <p class="fm-note">仙品就是當月主角。每開一瓶沒中主角，主角 +5%；第 10 瓶一定中，這個進度會帶到下個月。</p></div>
+        <p class="fm-note">仙品就是當月主角。主角 25% 起，每開一瓶沒中 +15%；第 6 瓶一定中，這個進度會帶到下個月。沒有主題的月份，仙品會優先給你還沒有的。</p></div>
         <div class="fm-panel"><div class="fm-sec ol">五個品階</div><div class="fm-list">${TIERS.map(t => `<div class="fm-row r-${t}"><div class="fm-row-art"><span class="fm-emo">${{ c: "🌱", r: "💧", l: "🔮", x: "👑", s: "🔥" }[t]}</span></div>
           <div><div class="fm-row-name">${RARITY_NAME[t]}</div><div class="fm-row-sub">作物 ${hoursText(W.tierHours[t])}成熟・重複換 ${W.dust[t]} 星屑・獎池裡 ${(W.pool[t] || []).length} 種</div></div><div></div></div>`).join("")}</div></div>`;
     }
