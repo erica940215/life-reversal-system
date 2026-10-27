@@ -3939,16 +3939,17 @@ const FARM_JS_VERSION = "2026-10-22 v1";
     const n = orchardSlots();
     const cols = 4;
     const tw = 34, th = 17;
-    let fence = `<g pointer-events="none">${pad(x, y - 40, 150, 72, "#b9dc8a")}</g>`;
+    let fence = `<g pointer-events="none">${pad(x, y - 40, 168, 80, "#b9dc8a")}</g>`;
     if (BLD.orchardfence) fence += `<g pointer-events="none">${building("orchardfence", x - 150, y - 6, 92)}</g>`;
     items.push({ y: y - 120, svg: fence + nameplate(x - 120, y - 2, "果園") });
     for (let i = 0; i < n; i++) {
       const r = Math.floor(i / cols), c = i % cols;
-      const tx = x + (c - r) * tw * 1.25 - 20;
-      const ty = y - 110 + (r + c) * th * 1.25 + 10;
+      /* 間距拉開一點，後排的樹才點得到 */
+      const tx = x + (c - r) * tw * 1.4 - 20;
+      const ty = y - 116 + (r + c) * th * 1.4 + 10;
       const tr = S.orchard.trees[i];
       const st = treeState(tr);
-      HITS.push({ y: ty, svg: `<ellipse class="tap fm-hit" data-act="tree" data-key="${i}" role="button" tabindex="0" aria-label="${tr ? `${D.crops[tr.c].name}樹，${st === "ripe" ? "結果了" : st === "growing" ? "樹苗長大中" : "等結果"}` : "空的樹位，點一下種樹"}" cx="${tx}" cy="${ty - 14}" rx="${tw * 0.85}" ry="${th * 1.6}" fill="#fff" fill-opacity="0" pointer-events="all"/>` });
+      HITS.push({ y: ty, svg: `<ellipse class="tap fm-hit" data-act="tree" data-key="${i}" role="button" tabindex="0" aria-label="${tr ? `${D.crops[tr.c].name}樹，${st === "ripe" ? "結果了" : st === "growing" ? "樹苗長大中" : "等結果"}` : "空的樹位，點一下種樹"}" cx="${tx}" cy="${ty - 12}" rx="${tw * 0.62}" ry="${th * 1.05}" fill="#fff" fill-opacity="0" pointer-events="all"/>` });
       let s = `<g pointer-events="none">`;
       s += `<ellipse cx="${tx}" cy="${ty}" rx="${tw * 0.8}" ry="${th * 0.8}" fill="#8fbf5a" stroke="#fff" stroke-width="1.5" ${tr ? "" : 'stroke-dasharray="5 4"'}/>`;
       if (!tr) {
