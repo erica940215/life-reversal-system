@@ -723,7 +723,7 @@
       #dm-root h3 { margin: 0 0 6px; font-size: 16px; }
       #dm-root p { margin: 4px 0; }
       .dm-img { width: 28px; height: 28px; object-fit: contain; vertical-align: middle; }
-      .dm-img.sm, .dm-emo.sm { width: 18px; height: 18px; font-size: 15px; }
+      .dm-img.sm, .dm-emo.sm { width: 24px; height: 24px; font-size: 18px; vertical-align: -6px; }
       .dm-img.big { width: 48px; height: 48px; flex: 0 0 48px; }
       .dm-img.banner { width: 100%; height: auto; max-height: 160px; object-fit: cover; border-radius: 12px; margin-bottom: 8px; }
       .dm-emo { font-size: 22px; line-height: 1; display: inline-block; text-align: center; }
@@ -739,6 +739,8 @@
       .dm-luck small { font-weight: 600; opacity: .85; }
       .dm-resrow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 10px 0; }
       .dm-res { display: flex; flex-direction: column; align-items: center; padding: 6px 2px; border-radius: 12px; background: rgba(127,127,127,.1); cursor: pointer; }
+      .dm-res .dm-img { width: 46px; height: 46px; margin-bottom: 2px; }
+      .dm-res .dm-emo { font-size: 34px; }
       .dm-res b { font-size: 18px; }
       .dm-res small { font-size: 11px; opacity: .7; }
       .dm-meters { display: grid; gap: 6px; font-size: 13px; }
