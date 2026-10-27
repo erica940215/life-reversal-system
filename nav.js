@@ -1,7 +1,7 @@
 /* =========================================================
    🧭 分頁分組：底部只留 5 個，其他放在頁面上方的子分頁
    今日｜任務（任務・日曆・專案）｜專注（專注・單字）
-   ｜生活（生活・紀錄・想法）｜遊戲（冒險・星露島）
+   ｜生活（生活・紀錄・想法）｜遊戲（冒險・星露島・末世）
    要放在所有會加分頁的 js（farm、rpg、vocab、projects）之後載入
 ========================================================= */
 (function () {
@@ -10,12 +10,12 @@
     { key: "tasks", pages: ["tasks", "calendar", "projects"] },
     { key: "focus", pages: ["focus", "vocab"] },
     { key: "life", pages: ["life", "records", "ideas"] },
-    { key: "game", icon: "🎮", label: "遊戲", pages: ["rpg", "farm"] }
+    { key: "game", icon: "🎮", label: "遊戲", pages: ["rpg", "farm", "doom"] }
   ];
   const LABEL = {
     today: "🏠 今日", tasks: "📋 任務", calendar: "📅 日曆", projects: "🎯 專案",
     focus: "⏱️ 專注", vocab: "📖 單字", life: "🌿 生活", records: "📊 紀錄",
-    ideas: "💡 想法", rpg: "⚔️ 冒險", farm: "🏝️ 星露島"
+    ideas: "💡 想法", rpg: "⚔️ 冒險", farm: "🏝️ 星露島", doom: "☢️ 末世"
   };
   const groupOf = p => GROUPS.find(g => g.pages.includes(p));
   const lastKey = g => "navLast:" + g.key;
