@@ -474,14 +474,14 @@
       const can = n => left >= n && st.gold >= o.price * n && !FN.busy;
       return `<div class="fn-shop-item">
         <b>${esc(o.name)}</b>
-        <span>🪙 ${o.price}・今天 ${o.bought}/${o.limit}</span>
+        <span>${o.was && o.was > o.price ? `<s>${o.was}</s> ` : ""}🪙 ${o.price}・今天 ${o.bought}/${o.limit}</span>
         <span class="fn-store-btns">
           <button type="button" class="btn btn-small btn-primary" data-fn="store" data-v="${o.item}" data-n="1" ${can(1) ? "" : "disabled"}>買 1</button>
           ${o.limit > 1 && left > 1 ? `<button type="button" class="btn btn-small" data-fn="store" data-v="${o.item}" data-n="${left}" ${can(left) ? "" : "disabled"}>買 ${left}</button>` : ""}
         </span></div>`;
     }).join("");
     return `<div class="card rp-card fn-sec"><div class="fn-sec-top"><div style="font-size:52px;line-height:1">🏪</div>
-        <div><h3>冒險商店</h3><span class="rp-sub">每天都開，用金幣買。每樣每天有購買上限，凌晨 2 點重置</span></div>
+        <div><h3>冒險商店</h3><span class="rp-sub">每天都開，用金幣買。每樣每天有購買上限，凌晨 2 點重置${st.bargain ? `・🏷️ 砍價 -${st.bargain * 3}%` : ""}</span></div>
         <div class="rp-power"><span class="rp-sub">金幣</span><b>${st.gold}</b></div></div>
       <div class="fn-shop">${rows}</div>
       <p class="rp-note">週末流浪商人還是會來，而且有一樣打 7 折。</p></div>`;

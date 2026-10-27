@@ -277,12 +277,12 @@
     const branches = {};
     (s.catalog || []).forEach(k => { (branches[k.branch] = branches[k.branch] || []).push(k); });
     return `<div class="card rp-card"><div class="st-row"><h3 class="st-grow">🌳 技能樹</h3><span class="st-pts">技能點 <b>${s.points}</b></span></div>
-      <p class="rp-note">每升 1 級拿 1 點（現在 Lv${s.level}，用了 ${s.spent} 點）。每個技能最多 3 級。</p>
+      <p class="rp-note">每升 1 級拿 1 點（現在 Lv${s.level}，用了 ${s.spent} 點）。每個技能最多 10 級，共 ${(s.catalog || []).length} 個技能。</p>
       ${Object.entries(branches).map(([b, list]) => `<div class="st-sec">${esc(b)}</div><div class="st-skills">${list.map(k => {
-        const lv = (s.skills || {})[k.key] || 0;
+        const lv = (s.skills || {})[k.key] || 0, mx = k.max || 10;
         return `<div class="st-skill ${lv ? "on" : ""}"><span class="st-skill-emo">${k.emoji}</span><b>${esc(k.name)}</b><span class="st-sub">${esc(k.desc)}</span>
-          <div class="st-dots">${[1, 2, 3].map(i => `<i class="${i <= lv ? "on" : ""}"></i>`).join("")}</div>
-          <button type="button" class="btn btn-small ${s.points && lv < 3 ? "btn-primary" : ""}" data-st="skillup" data-v="${k.key}" ${s.points && lv < 3 ? "" : "disabled"}>${lv >= 3 ? "滿級" : "＋1"}</button></div>`;
+          <div class="st-bar"><i style="width:${lv / mx * 100}%"></i></div><span class="st-sub" style="min-height:0">Lv ${lv} / ${mx}</span>
+          <button type="button" class="btn btn-small ${s.points && lv < mx ? "btn-primary" : ""}" data-st="skillup" data-v="${k.key}" ${s.points && lv < mx ? "" : "disabled"}>${lv >= mx ? "滿級" : "＋1"}</button></div>`;
       }).join("")}</div>`).join("")}
       ${s.spent ? `<button type="button" class="btn btn-small" data-st="skillreset">重置技能（20 星屑）</button>` : ""}</div>`;
   }
@@ -393,6 +393,8 @@
       .st-skill.on { background: rgba(108,75,216,.12); }
       .st-skill .st-sub { font-size: 10px; line-height: 1.3; min-height: 26px; }
       .st-skill-emo { font-size: 26px; }
+      .st-bar { width: 80%; height: 5px; border-radius: 3px; background: rgba(127,127,127,.2); overflow: hidden; }
+      .st-bar i { display: block; height: 100%; background: linear-gradient(90deg, #8a6cff, #ffb347); }
       .st-dots { display: flex; gap: 4px; } .st-dots i { width: 9px; height: 9px; border-radius: 50%; background: rgba(127,127,127,.3); } .st-dots i.on { background: #6c4bd8; }
 
       .st-world { background: linear-gradient(160deg, rgba(66,165,245,.12), rgba(171,71,188,.12)); }
