@@ -381,7 +381,7 @@
     const { data, error } = await db.rpc("project_step_toggle", { p_step: id });
     if (error) { toast("❌ " + error.message); load(); return; }
     if (data.done && data.xp > 0) {
-      const dust = data.stardust ? `✨ +${data.stardust} 星屑` : "";
+      const dust = [data.stardust ? `✨ +${data.stardust} 星屑` : "", data.gold ? `🪙 +${data.gold}` : ""].filter(Boolean).join(" ");
       if (data.crit === "super") pop(`超級爆擊！+${data.xp} EXP`, `×5　${dust}`, "super");
       else if (data.crit === "crit") pop(`爆擊！+${data.xp} EXP`, `×2　${dust}`, "crit");
       else pop(`+${data.xp} EXP`, [dust, data.combo > 1 ? `🔥 連擊 ${data.combo} 天` : ""].filter(Boolean).join("　"));
