@@ -2,8 +2,8 @@
 -- 序光計畫：星露兌換星屑（市集）
 -- 可以重複執行。要先執行過「簽到發券與背包」（需要 grant_item）。
 --
--- 匯率：1 星屑 = 100 星露（星露在農場裡扣，這裡只負責發星屑）
--- 每天最多兌換 20 個星屑（以遊戲日計算，跟任務一樣 2 點換日）。
+-- 匯率：1 星屑 = 10 星露（2026-10-27 從 100 調降）（星露在農場裡扣，這裡只負責發星屑）
+-- 每天最多兌換 200 個星屑（以遊戲日計算，跟任務一樣 2 點換日）。
 -- =========================================================
 
 
@@ -13,7 +13,7 @@ as $function$
 declare
   v_user uuid := auth.uid();
   v_day date := public.app_today();
-  v_cap constant integer := 20;
+  v_cap constant integer := 200;
   v_used integer;
 begin
   if v_user is null then raise exception '尚未登入'; end if;

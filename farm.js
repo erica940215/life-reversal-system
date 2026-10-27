@@ -1933,7 +1933,8 @@ const FARM_JS_VERSION = "2026-10-22 v1";
   const tankList = () => Object.entries(S.tank || {}).filter(([, n]) => n > 0)
     .sort((a, b) => TIERS.indexOf(D.fish[b[0]]?.tier) - TIERS.indexOf(D.fish[a[0]]?.tier));
 
-  const STARDUST_RATE = 100;
+  const STARDUST_RATE = 10;   // 1 星屑 = 10 星露
+  const STARDUST_CAP = 200;   // 每天最多兌換
   const MARKET_TABS = [["buy", "買東西"], ["sell", "賣東西"], ["exch", "兌換星屑"]];
 
   function sellPrice(key) {
@@ -4499,6 +4500,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
       if (error) return toast("兌換失敗：" + error.message);
       addDew(-cost);
       toast(`⭐ 兌換 ${n} 個星屑（今天 ${data.used}/${data.cap}）`);
+      await loadWishStatus();   // 重新讀星屑數量，畫面才會更新
       after();
     },
 
@@ -5177,8 +5179,8 @@ const FARM_JS_VERSION = "2026-10-22 v1";
         const btn = n => `<button type="button" class="fm-btn small green" data-act="exchstar" data-n="${n}" ${S.dew >= n * STARDUST_RATE ? "" : "disabled"}>兌換 ${n} 個（${num(n * STARDUST_RATE)} 星露）</button>`;
         return sheetTop("市集", `🌟 ${num(S.dew)}`) + tabs(MARKET_TABS, tab) +
           `<div class="fm-panel"><div class="fm-row"><div class="fm-row-art">${miniIcon("stardust", "⭐")}</div>
-            <div><div class="fm-row-name">星露兌換星屑</div><div class="fm-row-sub">1 個星屑 = ${num(one)} 星露・每天最多兌換 20 個</div></div></div>
-            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">${btn(1)}${btn(5)}${btn(10)}${btn(20)}</div>
+            <div><div class="fm-row-name">星露兌換星屑</div><div class="fm-row-sub">1 個星屑 = ${num(one)} 星露・每天最多兌換 ${STARDUST_CAP} 個・現在有 ⭐ ${num(stardust())}</div></div></div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">${btn(10)}${btn(20)}${btn(50)}${btn(100)}${btn(200)}</div>
             ${net.mode === "server" ? "" : `<p class="fm-note" style="margin-top:8px">資料庫設定好之後才能兌換。</p>`}</div>`;
       }
 
