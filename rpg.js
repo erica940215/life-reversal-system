@@ -401,6 +401,7 @@
         <button type="button" class="btn btn-primary rp-attack" data-rp="attack" ${(killed && !raidAlive) || !remain ? "disabled" : ""}>
           ${killed && !raidAlive ? "這週打倒了，下週一出新的王" : !remain ? "今天的出擊次數用完了"
             : killed ? `🐲 出擊團隊王（今天還有 ${remain} 次）` : `⚔️ 出擊（今天還有 ${remain} 次）`}</button>
+        <label class="rp-auto"><input type="checkbox" data-rp="autoatk" ${autoOn() ? "checked" : ""}> 🤖 自動出擊：打開網站、完成任務或專注後，有次數就自動幫你打</label>
         ${ts && ts.cheers_unused ? `<p class="rp-note">📣 有 ${ts.cheers_unused} 個好友幫你加油，下一次出擊傷害 +${Math.min(ts.cheers_unused, 3) * 10}%</p>` : ""}
         <p class="rp-note">一次大約打出你的戰力 ${(b.power || {}).power || 0} 點傷害。今天的出擊次數：</p>
         <ul class="rp-checks">${chk(true, "每天基本 1 次")}${chk(a.focus_min >= 60, `專注滿 60 分（今天 ${a.focus_min || 0} 分）`)}
@@ -465,6 +466,7 @@
     if (!el || el.tagName === "SELECT") return;
     const act = el.dataset.rp;
     if (act === "tab") { RP.tab = el.dataset.v; render(); return; }
+    if (act === "autoatk") { try { localStorage.setItem(AUTO_KEY, el.checked ? "1" : "0"); } catch (_) {} if (el.checked) autoAttack(true); return; }
     if (act === "class") {
       const c = CLASSES[el.dataset.v];
       if (RP.status.class && !confirm(`確定換成「${c.name}」？之後 7 天內不能再換。`)) return;
@@ -535,6 +537,7 @@
       .rp-class:hover { border-color: #6c4bd8; }
       .rp-hero-top, .rp-pool-top { display: flex; align-items: center; gap: 12px; }
       .rp-hero-top > div:nth-child(2), .rp-pool-top > div:nth-child(2) { flex: 1; min-width: 0; }
+      .rp-auto { display: flex; gap: 6px; align-items: center; font-size: 13px; margin: 8px 0 2px; cursor: pointer; }
       .rp-power { text-align: right; display: flex; flex-direction: column; }
       .rp-exp { margin: 8px 0 4px; font-size: 13px; } .rp-exp-top { display: flex; justify-content: space-between; gap: 8px; } .rp-exp-top b { color: #f9a825; }
       .rp-exp-bar { height: 8px; border-radius: 99px; background: rgba(127,127,127,.2); overflow: hidden; margin-top: 4px; } .rp-exp-bar i { display: block; height: 100%; background: linear-gradient(90deg,#ffca28,#ff9800); border-radius: 99px; }
@@ -661,6 +664,50 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();
 
-  window.RpgGame = { version: RPG_JS_VERSION, reload: load, render, state: RP };
+  /* ---------- 🤖 自動出擊：有剩下的出擊次數就自動打掉，不會因為忘記而浪費 ---------- */
+  const AUTO_KEY = "rpgAutoAttack";
+  function autoOn() { try { return localStorage.getItem(AUTO_KEY) !== "0"; } catch (_) { return true; } }
+  let autoBusy = false, autoLast = 0;
+  async function autoAttack(force) {
+    if (autoBusy || !autoOn() || !gameOn() || typeof db === "undefined" || typeof currentUser === "undefined" || !currentUser) return;
+    if (!force && Date.now() - autoLast < 60000) return;
+    autoBusy = true; autoLast = Date.now();
+    try {
+      const { data: b, error } = await db.rpc("rpg_boss_status");
+      if (error || !b) return;
+      const a = b.attacks || {};
+      let remain = Math.max(0, (a.total || 0) - (a.used || 0));
+      let n = 0, dmg = 0, chests = 0, killed = false, last = null;
+      while (remain-- > 0 && n < 10) {
+        const r = await db.rpc("rpg_boss_attack");
+        if (r.error || !r.data) break;
+        n++; last = r.data; dmg += r.data.dmg || 0;
+        if (r.data.chest) chests++;
+        if (r.data.killed || r.data.raid_killed) killed = true;
+      }
+      if (!n) return;
+      RP.hit = last;
+      toast(`🤖 自動出擊 ${n} 次，造成 ${dmg} 傷害${chests ? `・掉了 ${chests} 個寶箱` : ""}${killed ? "・打倒了！🎉" : ""}`);
+      if (RP.status) loadBoss().then(render);
+      if (window.FunGame) window.FunGame.reload();
+      if (window.TeamGame) window.TeamGame.reload();
+    } catch (e) { console.warn("自動出擊失敗：", e); }
+    finally { autoBusy = false; }
+  }
+  /* 開網站幾秒後、回到分頁、每 10 分鐘、專注結束、完成任務後都檢查一次 */
+  setTimeout(() => autoAttack(true), 5000);
+  setInterval(() => autoAttack(false), 10 * 60000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) autoAttack(false); });
+  document.addEventListener("click", e => {
+    if (e.target.closest('.task-checkbox, [data-act="complete"], .complete-btn, input[type="checkbox"]')) setTimeout(() => autoAttack(true), 2500);
+  }, true);
+  if (typeof window.finishFocus === "function" && !window.finishFocus.__rpgAuto) {
+    const orig = window.finishFocus;
+    window.finishFocus = async function () { const r = await orig.apply(this, arguments); setTimeout(() => autoAttack(true), 3000); return r; };
+    window.finishFocus.__rpgAuto = true;
+    Object.keys(orig).forEach(k => { window.finishFocus[k] = orig[k]; });
+  }
+
+  window.RpgGame = { version: RPG_JS_VERSION, reload: load, render, state: RP, autoAttack };
 
 })();
