@@ -366,6 +366,9 @@
     const ts = window.TeamGame && window.TeamGame.state && window.TeamGame.state.status;
     const inTeam = !!(ts && ts.team);
     const raidAlive = inTeam && ts.raid && !ts.raid.killed_at;
+    const sw = window.StudyGame && window.StudyGame.state && window.StudyGame.state.world;
+    const worldAlive = !(sw && sw.boss && sw.boss.killed_at);
+    const canHit = !killed || raidAlive || worldAlive;
     const a = b.attacks || {};
     const remain = Math.max(0, (a.total || 0) - (a.used || 0));
     const weak = CLASSES[info.weak];
@@ -398,9 +401,9 @@
         <p class="rp-note">${esc(info.desc)}</p>
         <div class="rp-hp"><div class="rp-hp-bar" style="width:${pct}%"></div><span>${killed ? "已打倒 🎉" : `${left} / ${run.hp}`}</span></div>
         ${hit}
-        <button type="button" class="btn btn-primary rp-attack" data-rp="attack" ${(killed && !raidAlive) || !remain ? "disabled" : ""}>
-          ${killed && !raidAlive ? "這週打倒了，下週一出新的王" : !remain ? "今天的出擊次數用完了"
-            : killed ? `🐲 出擊團隊王（今天還有 ${remain} 次）` : `⚔️ 出擊（今天還有 ${remain} 次）`}</button>
+        <button type="button" class="btn btn-primary rp-attack" data-rp="attack" ${!canHit || !remain ? "disabled" : ""}>
+          ${!canHit ? "這週打倒了，下週一出新的王" : !remain ? "今天的出擊次數用完了"
+            : killed && raidAlive ? `🐲 出擊團隊王（今天還有 ${remain} 次）` : killed ? `🌍 出擊世界王（今天還有 ${remain} 次）` : `⚔️ 出擊（今天還有 ${remain} 次）`}</button>
         <label class="rp-auto"><input type="checkbox" data-rp="autoatk" ${autoOn() ? "checked" : ""}> 🤖 自動出擊：打開網站、完成任務或專注後，有次數就自動幫你打</label>
         ${ts && ts.cheers_unused ? `<p class="rp-note">📣 有 ${ts.cheers_unused} 個好友幫你加油，下一次出擊傷害 +${Math.min(ts.cheers_unused, 3) * 10}%</p>` : ""}
         <p class="rp-note">一次大約打出你的戰力 ${(b.power || {}).power || 0} 點傷害。今天的出擊次數：</p>
