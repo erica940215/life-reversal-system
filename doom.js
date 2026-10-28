@@ -342,6 +342,28 @@
       ${milestonesHtml()}${memoriesHtml()}${diaryHtml()}`;
   }
 
+  /* ---------- 🎒 物資收藏：搜刮、抽到過的東西（seen 記著次數） ---------- */
+  function stashHtml() {
+    const seen = DM.s.state.seen || {};
+    const cell = (kind, x) => seen[x.id]
+      ? `<div class="dm-book tier-${x.tier || "c"}" title="${esc(x.text || "")}">${ic(kind, x.id, x.emoji, "big")}<b>${esc(x.name)}</b><small>${tierName(x.tier || "c")}・×${seen[x.id]}</small></div>`
+      : `<div class="dm-book off tier-${x.tier || "c"}"><span class="dm-emo big">❔</span><b>？？？</b><small>${tierName(x.tier || "c")}</small></div>`;
+    const order = ["c", "r", "l", "x", "s"];
+    const sortT = list => list.slice().sort((a, b) => order.indexOf(a.tier || "c") - order.indexOf(b.tier || "c"));
+    const groups = [{ name: "🎟️ 搜刮抽到的", kind: "loot", items: sortT(DM.cat.loot || []) }];
+    for (const z of zoneList()) {
+      const known = !z.hidden || zoneOpen(z);
+      groups.push({ name: known ? `📍 ${z.name}` : "📍 ？？？（隱藏區域）", kind: "zone-item", items: sortT(z.items || []) });
+    }
+    let got = 0, all = 0;
+    const body = groups.map(g => {
+      const a = g.items.filter(x => seen[x.id]).length;
+      got += a; all += g.items.length;
+      return `<details class="dm-stash"${a ? " open" : ""}><summary>${esc(g.name)} <b>${a}/${g.items.length}</b></summary><div class="dm-grid">${g.items.map(x => cell(g.kind, x)).join("")}</div></details>`;
+    }).join("");
+    return `<div class="card"><h3>🎒 物資收藏 ${got}/${all}</h3><p class="dm-note">抽到、搜刮到的東西都會記在這裡，數字是拿到過幾次。</p>${body}</div>`;
+  }
+
   function bookHtml() {
     const st = DM.s.state;
     const own = new Set(st.companions || []);
@@ -353,7 +375,7 @@
       ? `<div class="dm-book tier-${r.tier}">${ic("relic", r.id, r.emoji, "big")}<b>${esc(r.name)}</b><small>${esc(r.text)}</small></div>`
       : `<div class="dm-book off tier-${r.tier}"><span class="dm-emo big">❔</span><b>${tierName(r.tier)}收藏品</b><small>還沒找到</small></div>`).join("");
     const nRel = Object.keys(relics).length;
-    return `<div class="card"><h3>🤝 同伴圖鑑 ${own.size}/${DM.cat.companions.length}</h3><div class="dm-grid">${comps}</div></div>
+    return stashHtml() + `<div class="card"><h3>🤝 同伴圖鑑 ${own.size}/${DM.cat.companions.length}</h3><div class="dm-grid">${comps}</div></div>
       <div class="card"><h3>🔮 收藏品 ${nRel}/${DM.cat.relics.length}</h3><p class="dm-note">史詩、傳說搜刮，和一些奇怪的事件才找得到。每找到一個，士氣 +10。</p><div class="dm-grid">${rel}</div></div>
       <div class="card"><h3>📊 生存紀錄</h3><div class="dm-stats">
         <div><b>${st.day_no}</b><small>生存天數</small></div><div><b>${st.draws_total}</b><small>總搜刮</small></div>
@@ -1266,6 +1288,7 @@
       .dm-book { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 3px; padding: 10px 6px; border-radius: 12px; background: rgba(127,127,127,.08); border: 1px solid var(--tc, transparent); }
       .dm-book b { font-size: 13px; } .dm-book small { font-size: 11px; opacity: .75; }
       .dm-book.off { opacity: .45; }
+      .dm-stash { margin-top: 8px; } .dm-stash summary { cursor: pointer; font-weight: 700; padding: 6px 0; } .dm-stash summary b { opacity: .7; font-weight: 600; margin-left: 4px; }
       .dm-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center; margin: 8px 0; }
       .dm-stats b { display: block; font-size: 20px; } .dm-stats small { font-size: 11px; opacity: .7; }
       .dm-report { border: 2px solid rgba(66,165,245,.5); }
