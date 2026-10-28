@@ -379,7 +379,12 @@
 
   function chestHtml() {
     const c = FN.chest;
-    const show = c ? `<div class="fn-chest-show">
+    const show = c && c.all ? `<div class="fn-chest-show">${chestImg("chest_star_open", "fn-chest-big pop")}
+        <div class="fn-result">🎁 一口氣開了 ${c.n} 個寶箱！<div>獲得：${rewardText(c.reward) || "—"}</div>
+          ${(c.frames || []).map(f => `<div class="fn-got-frame">${frameImg(f, "fn-frame-ic")}<b>🖼️ 新的頭像框：${esc((FRAMES.find(x => x[0] === f) || [])[1])}！</b></div>`).join("")}</div>
+          <button type="button" class="btn btn-small" data-fn="chest-close">好</button></div>`
+      : c && c.phase === "all" ? `<div class="fn-chest-show">${chestImg("chest_star", "fn-chest-big shake")}<p class="fn-note">喀啦喀啦……開到第 ${c.n} 個</p></div>`
+      : c ? `<div class="fn-chest-show">
         ${chestImg(c.phase === "open" ? c.chest + "_open" : c.chest, "fn-chest-big " + (c.phase === "shake" ? "shake" : "pop"))}
         ${c.phase === "open" ? `<div class="fn-result">🎁 ${esc((CHESTS.find(x => x[0] === c.chest) || [])[1])}打開了！<div>獲得：${rewardText(c.reward)}</div>
           ${c.frame ? `<div class="fn-got-frame">${frameImg(c.frame, "fn-frame-ic")}<b>🖼️ 新的頭像框：${esc((FRAMES.find(f => f[0] === c.frame) || [])[1])}！</b></div>` : ""}</div>
@@ -391,8 +396,35 @@
         <button type="button" class="btn btn-small ${n ? "btn-primary" : ""}" data-fn="chest" data-v="${k}" ${n && !FN.busy && !c ? "" : "disabled"}>開（${n}）</button></div>`;
     }).join("");
 
-    return `<div class="card rp-card fn-sec"><h3>🎁 冒險寶箱</h3>${show}<div class="fn-chests">${list}</div>
+    const total = CHESTS.reduce((a, [k]) => a + qty(k), 0);
+    const allBtn = total > 1 ? `<button type="button" class="btn btn-primary btn-small" data-fn="chest-all" ${!FN.busy && !c ? "" : "disabled"} style="margin-bottom:8px">🎁 一鍵全開（${total} 個）</button>` : "";
+    return `<div class="card rp-card fn-sec"><h3>🎁 冒險寶箱</h3>${show}${allBtn}<div class="fn-chests">${list}</div>
       <p class="rp-note">每週王每次出擊 25% 掉寶箱、打倒王必掉金寶箱、完成史詩任務必掉鐵寶箱。</p></div>`;
+  }
+
+  /* 一鍵全開：一個一個開，最後合在一起給你看 */
+  async function openAllChests() {
+    const keys = [];
+    for (const [k] of CHESTS) for (let i = 0; i < qty(k); i++) keys.push(k);
+    if (!keys.length) return;
+    const reward = {}, frames = [];
+    let n = 0;
+    FN.chest = { phase: "all", n: 0 };
+    rerender();
+    for (const k of keys) {
+      const data = await rpc("fun_chest_open", { p_chest: k });
+      if (!data) break;
+      n++;
+      for (const [rk, v] of Object.entries(data.reward || {})) if (typeof v === "number") reward[rk] = (reward[rk] || 0) + v;
+      if (data.frame) frames.push(data.frame);
+      FN.chest = { phase: "all", n };
+      rerender();
+    }
+    if (!n) { FN.chest = null; rerender(); return; }
+    FN.chest = { all: true, n, reward, frames };
+    if (frames.length) toast("🖼️ 拿到新的頭像框！");
+    rerender();
+    load();
   }
 
   async function openChest(key) {
@@ -597,6 +629,7 @@
     else if (act === "scratch-all") revealScratch();
     else if (act === "scratch-close") { FN.scratch = null; rerender(); }
     else if (act === "chest") openChest(el.dataset.v);
+    else if (act === "chest-all") openAllChests();
     else if (act === "chest-close") { FN.chest = null; rerender(); }
     else if (act === "gacha") pullGacha();
     else if (act === "gacha-close") { FN.gacha = null; rerender(); }

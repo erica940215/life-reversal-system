@@ -100,6 +100,16 @@
   }
 
   /* 裝備每升 1 級，數值 +20% */
+  /* 升級還差多少經驗（跟主頁經驗條同一套：Lv1→100，每級 +50） */
+  function expLine(level) {
+    const p = typeof currentProfile !== "undefined" && currentProfile ? currentProfile : null;
+    const lv = (p && p.level) || level || 1;
+    const need = 100 + (lv - 1) * 50;
+    const cur = Math.max(0, Math.min(need, (p && p.exp) || 0));
+    return `<div class="rp-exp"><div class="rp-exp-top"><span>⭐ 經驗 ${cur} / ${need}</span><b>還差 ${need - cur} 升 Lv${lv + 1}</b></div>
+      <div class="rp-exp-bar"><i style="width:${(cur / need) * 100}%"></i></div></div>`;
+  }
+
   function gearStats(key, level) {
     const g = gearInfo(key);
     const out = { str: 0, int: 0, vit: 0, wil: 0 };
@@ -291,6 +301,7 @@
         <div class="rp-hero-top">${classIcon(st0.class, true)}
           <div><h3>${cls.name}・Lv${st0.level}</h3><span class="rp-sub">主屬性：${cls.main}</span></div>
           <div class="rp-power"><span class="rp-sub">戰力</span><b>${pw}</b></div></div>
+        ${expLine(st0.level)}
         <p class="rp-note">${cls.desc}</p>
         <div class="rp-stats">${stats}</div>
         <p class="rp-note">屬性看的是最近 7 天的真實紀錄，越常做事角色越強；一段時間沒做，屬性就會慢慢掉下來。</p>
@@ -525,6 +536,8 @@
       .rp-hero-top, .rp-pool-top { display: flex; align-items: center; gap: 12px; }
       .rp-hero-top > div:nth-child(2), .rp-pool-top > div:nth-child(2) { flex: 1; min-width: 0; }
       .rp-power { text-align: right; display: flex; flex-direction: column; }
+      .rp-exp { margin: 8px 0 4px; font-size: 13px; } .rp-exp-top { display: flex; justify-content: space-between; gap: 8px; } .rp-exp-top b { color: #f9a825; }
+      .rp-exp-bar { height: 8px; border-radius: 99px; background: rgba(127,127,127,.2); overflow: hidden; margin-top: 4px; } .rp-exp-bar i { display: block; height: 100%; background: linear-gradient(90deg,#ffca28,#ff9800); border-radius: 99px; }
       .rp-power b { font-size: 26px; color: #6c4bd8; }
       .rp-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
       .rp-stat { display: flex; flex-direction: column; padding: 10px; border-radius: 12px; background: rgba(127,127,127,.08); }
