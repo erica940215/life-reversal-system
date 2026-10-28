@@ -12,6 +12,7 @@
 --   生存天數里程碑、區域熟練度、基地等級、收藏組合、專注紀念碑
 --   倖存者日記（最近 7 天）
 --   生活小物 38 種、6 個系列（搜刮、抽獎時額外撿到）
+--   區域物資擴充：街頭 8、超市 6、其他區域各 4（共 118 樣）
 -- =========================================================
 
 alter table public.doom_state
@@ -133,6 +134,7 @@ select $j${
 "sets": [
   {"id":"loot_c","name":"末世日常","emoji":"🥫","src":"loot","tier":"c","gain":{"box_silver":1}},
   {"id":"loot_r","name":"好東西","emoji":"🎒","src":"loot","tier":"r","gain":{"box_gold":1}},
+  {"id":"zone_street","name":"街頭全收集","emoji":"🏙️","src":"zone","zone":"street","gain":{"box_silver":1}},
   {"id":"zone_market","name":"超市全收集","emoji":"🏪","src":"zone","zone":"market","gain":{"box_silver":1}},
   {"id":"zone_waterworks","name":"水廠全收集","emoji":"🚰","src":"zone","zone":"waterworks","gain":{"box_silver":1}},
   {"id":"zone_hardware","name":"五金行全收集","emoji":"🔧","src":"zone","zone":"hardware","gain":{"box_silver":1}},
@@ -172,8 +174,22 @@ returns jsonb language sql immutable
 as $zones$
 select $j${
 "zones": [
-  {"id":"street","name":"街頭","emoji":"🏙️","desc":"什麼都可能撿到，最平均。","chapter":1,"min_min":0,"luck":0,"danger":0.03,"items":[]},
+  {"id":"street","name":"街頭","emoji":"🏙️","desc":"什麼都可能撿到，最平均。","chapter":1,"min_min":0,"luck":0,"danger":0.03,"items":[
+    {"id":"t_umbrella","tier":"c","name":"破雨傘","emoji":"☂️","gain":{"morale":2,"parts":1}},
+    {"id":"t_bike","tier":"c","name":"腳踏車鈴","emoji":"🔔","gain":{"parts":2}},
+    {"id":"t_sign","tier":"c","name":"路牌","emoji":"🪧","gain":{"parts":2,"stardust":1}},
+    {"id":"t_cone","tier":"c","name":"三角錐","emoji":"🚧","gain":{"parts":1,"morale":1}},
+    {"id":"t_scooter","tier":"r","name":"機車零件","emoji":"🛵","gain":{"parts":6}},
+    {"id":"t_vending","tier":"r","name":"路邊販賣機","emoji":"🥤","gain":{"water":3,"food":2}},
+    {"id":"t_mailbox","tier":"r","name":"郵筒","emoji":"📮","gain":{"morale":6,"stardust":5}},
+    {"id":"t_car","tier":"l","name":"廢棄轎車","emoji":"🚗","gain":{"food":5,"water":5,"parts":8,"scav":1}}]},
   {"id":"market","name":"超市","emoji":"🏪","desc":"食物最多。","chapter":1,"min_min":0,"luck":0,"danger":0.02,"items":[
+    {"id":"z_onigiri","tier":"c","name":"御飯糰","emoji":"🍙","gain":{"food":2}},
+    {"id":"z_teaegg","tier":"c","name":"茶葉蛋","emoji":"🥚","gain":{"food":2,"morale":1}},
+    {"id":"z_milk","tier":"c","name":"保久乳","emoji":"🥛","gain":{"food":1,"water":1}},
+    {"id":"z_bread","tier":"c","name":"菠蘿麵包","emoji":"🍞","gain":{"food":2,"morale":1}},
+    {"id":"z_bento","tier":"r","name":"微波便當","emoji":"🍱","gain":{"food":5,"morale":3}},
+    {"id":"z_fridge","tier":"l","name":"飲料冰櫃","emoji":"🧊","gain":{"water":10,"morale":6}},
     {"id":"z_rice","tier":"c","name":"一袋米","emoji":"🍚","gain":{"food":3}},
     {"id":"z_snack","tier":"c","name":"零食","emoji":"🍿","gain":{"food":2,"morale":2}},
     {"id":"z_dumpling","tier":"c","name":"冷凍水餃","emoji":"🥟","gain":{"food":4}},
@@ -181,6 +197,10 @@ select $j${
     {"id":"z_coffee","tier":"r","name":"咖啡豆","emoji":"☕","gain":{"morale":8,"food":1}},
     {"id":"z_storeroom","tier":"l","name":"超市倉庫","emoji":"📦","gain":{"food":12,"water":6,"scav":1}}]},
   {"id":"waterworks","name":"水廠","emoji":"🚰","desc":"水最多。","chapter":1,"min_min":0,"luck":0,"danger":0.02,"items":[
+    {"id":"w_hose","tier":"c","name":"消防水帶","emoji":"🧯","gain":{"water":2,"parts":1}},
+    {"id":"w_valve","tier":"c","name":"大閥門","emoji":"🔴","gain":{"parts":2,"water":1}},
+    {"id":"w_tablet","tier":"r","name":"淨水錠","emoji":"💊","gain":{"water":6}},
+    {"id":"w_tower","tier":"l","name":"水塔","emoji":"🗼","gain":{"water":15,"parts":3}},
     {"id":"w_jug","tier":"c","name":"水壺","emoji":"🫗","gain":{"water":3}},
     {"id":"w_filter","tier":"c","name":"濾芯","emoji":"🧽","gain":{"water":2,"parts":1}},
     {"id":"w_bottles","tier":"c","name":"一箱瓶裝水","emoji":"🍶","gain":{"water":4}},
@@ -188,6 +208,10 @@ select $j${
     {"id":"w_pump","tier":"r","name":"手搖幫浦","emoji":"⛽","gain":{"water":4,"parts":4}},
     {"id":"w_reservoir","tier":"l","name":"地下蓄水池","emoji":"🌊","gain":{"water":15,"scav":1}}]},
   {"id":"hardware","name":"五金行","emoji":"🔧","desc":"零件最多，蓋設施就靠這裡。","chapter":1,"min_min":0,"luck":0,"danger":0.03,"items":[
+    {"id":"h_hammer","tier":"c","name":"鐵鎚","emoji":"🔨","gain":{"parts":2}},
+    {"id":"h_paint","tier":"c","name":"油漆桶","emoji":"🪣","gain":{"parts":1,"morale":2}},
+    {"id":"h_ladder","tier":"r","name":"鋁梯","emoji":"🪜","gain":{"parts":6}},
+    {"id":"h_welder","tier":"l","name":"電焊機","emoji":"⚡","gain":{"parts":15,"stardust":5}},
     {"id":"h_nails","tier":"c","name":"一盒釘子","emoji":"📌","gain":{"parts":3}},
     {"id":"h_tape","tier":"c","name":"強力膠帶","emoji":"🎞️","gain":{"parts":2,"hp":2}},
     {"id":"h_pipe","tier":"c","name":"水管","emoji":"🪠","gain":{"parts":3,"water":1}},
@@ -196,6 +220,10 @@ select $j${
     {"id":"h_crate","tier":"l","name":"一整箱建材","emoji":"🏗️","gain":{"parts":20}},
     {"id":"h_plan","tier":"l","name":"施工藍圖","emoji":"📐","gain":{"facility":"random"}}]},
   {"id":"hospital","name":"醫院","emoji":"🏥","desc":"修基地、補士氣。","chapter":2,"min_min":0,"luck":2,"danger":0.04,"items":[
+    {"id":"m_thermo","tier":"c","name":"體溫計","emoji":"🌡️","gain":{"hp":2,"morale":1}},
+    {"id":"m_crutch","tier":"c","name":"拐杖","emoji":"🦯","gain":{"hp":3}},
+    {"id":"m_wheelchair","tier":"r","name":"輪椅","emoji":"♿","gain":{"hp":8,"parts":3}},
+    {"id":"m_defib","tier":"l","name":"電擊器","emoji":"💓","gain":{"hp":20,"morale":8}},
     {"id":"m_bandage","tier":"c","name":"繃帶","emoji":"🩹","gain":{"hp":5}},
     {"id":"m_vitamin","tier":"c","name":"維他命","emoji":"💊","gain":{"hp":3,"morale":2}},
     {"id":"m_mask","tier":"c","name":"口罩","emoji":"😷","gain":{"hp":2,"parts":1}},
@@ -203,6 +231,10 @@ select $j${
     {"id":"m_bed","tier":"r","name":"病床零件","emoji":"🛏️","gain":{"parts":5,"hp":5}},
     {"id":"m_pharmacy","tier":"l","name":"藥局庫存","emoji":"💉","gain":{"hp":25,"morale":10}}]},
   {"id":"library","name":"圖書館","emoji":"📚","desc":"星屑多，有機會找到收藏品。讀書時最適合。","chapter":1,"min_min":0,"luck":3,"danger":0.01,"items":[
+    {"id":"l_glasses","tier":"c","name":"老花眼鏡","emoji":"👓","gain":{"stardust":3}},
+    {"id":"l_globe","tier":"r","name":"地球儀","emoji":"🌍","gain":{"stardust":8,"morale":3}},
+    {"id":"l_typewriter","tier":"r","name":"打字機","emoji":"⌨️","gain":{"stardust":6,"parts":3}},
+    {"id":"l_encyclo","tier":"l","name":"百科全書","emoji":"📚","gain":{"stardust":20}},
     {"id":"l_book","tier":"c","name":"一本好書","emoji":"📖","gain":{"morale":3,"stardust":2}},
     {"id":"l_notes","tier":"c","name":"前人的筆記","emoji":"📝","gain":{"stardust":4}},
     {"id":"l_candle","tier":"c","name":"蠟燭","emoji":"🕯️","gain":{"morale":2,"parts":1}},
@@ -211,6 +243,10 @@ select $j${
     {"id":"l_wish","tier":"l","name":"夾在書裡的星願券","emoji":"🎫","gain":{"wish_normal":1}},
     {"id":"l_archive","tier":"l","name":"秘密檔案室","emoji":"🗄️","gain":{"relic":"x"}}]},
   {"id":"subway","name":"地鐵站","emoji":"🚇","desc":"什麼都有、稀有率高，但有點危險。","chapter":3,"min_min":0,"luck":10,"danger":0.10,"items":[
+    {"id":"s_card","tier":"c","name":"悠遊卡","emoji":"💳","gain":{"stardust":2,"morale":1}},
+    {"id":"s_poster","tier":"c","name":"舊海報","emoji":"📜","gain":{"morale":3}},
+    {"id":"s_lostfound","tier":"r","name":"失物招領箱","emoji":"📦","gain":{"food":3,"water":3,"stardust":4}},
+    {"id":"s_train","tier":"l","name":"停駛的車廂","emoji":"🚃","gain":{"scav":3,"parts":8}},
     {"id":"s_token","tier":"c","name":"舊車票","emoji":"🎟️","gain":{"gold":15}},
     {"id":"s_bag","tier":"c","name":"遺落的包包","emoji":"👜","gain":{"food":2,"water":2}},
     {"id":"s_vending","tier":"c","name":"月台販賣機","emoji":"🥤","gain":{"water":3,"food":1}},
@@ -218,6 +254,10 @@ select $j${
     {"id":"s_cash","tier":"r","name":"收銀機","emoji":"💰","gain":{"gold":40}},
     {"id":"s_tunnel","tier":"l","name":"隧道深處","emoji":"🔦","gain":{"scav":4,"stardust":15}}]},
   {"id":"military","name":"軍事基地","emoji":"🪖","desc":"史詩、傳說機率最高。專注要滿 60 分鐘才走得到，危險。","chapter":4,"min_min":60,"luck":20,"danger":0.15,"items":[
+    {"id":"x_helmet","tier":"c","name":"鋼盔","emoji":"⛑️","gain":{"hp":3,"parts":1}},
+    {"id":"x_canteen","tier":"c","name":"軍用水壺","emoji":"🫗","gain":{"water":3}},
+    {"id":"x_tent","tier":"r","name":"軍用帳篷","emoji":"⛺","gain":{"hp":6,"morale":4}},
+    {"id":"x_jeep","tier":"l","name":"吉普車","emoji":"🚙","gain":{"parts":15,"scav":2}},
     {"id":"x_mre","tier":"c","name":"軍糧","emoji":"🍱","gain":{"food":4,"water":2}},
     {"id":"x_ammo","tier":"c","name":"空彈藥箱","emoji":"🗃️","gain":{"parts":5}},
     {"id":"x_radio","tier":"c","name":"軍用無線電","emoji":"📻","gain":{"parts":3,"morale":3}},
@@ -225,24 +265,40 @@ select $j${
     {"id":"x_generator","tier":"r","name":"軍用發電機","emoji":"⚡","gain":{"parts":15}},
     {"id":"x_depot","tier":"l","name":"補給庫","emoji":"🪖","gain":{"food":10,"water":10,"parts":15,"scav":2}}]},
   {"id":"night_market","name":"夜市廢墟","emoji":"🏮","desc":"深夜才找得到的地方，什麼都有一點，常有好運。","chapter":1,"hidden":true,"min_min":0,"luck":8,"danger":0.05,"items":[
+    {"id":"n_sausage","tier":"c","name":"大腸包小腸","emoji":"🌭","gain":{"food":3,"morale":1}},
+    {"id":"n_balloon","tier":"c","name":"射氣球攤","emoji":"🎈","gain":{"morale":3,"stardust":1}},
+    {"id":"n_doll","tier":"r","name":"夾娃娃機","emoji":"🧸","gain":{"morale":8,"stardust":4}},
+    {"id":"n_ferris","tier":"l","name":"小摩天輪","emoji":"🎡","gain":{"morale":15,"scav":2}},
     {"id":"n_skewer","tier":"c","name":"烤串攤","emoji":"🍢","gain":{"food":3,"morale":1}},
     {"id":"n_lantern","tier":"c","name":"紙燈籠","emoji":"🏮","gain":{"morale":3,"parts":1}},
     {"id":"n_tea","tier":"r","name":"珍珠奶茶","emoji":"🧋","gain":{"food":3,"water":3,"morale":4}},
     {"id":"n_game","tier":"r","name":"夜市遊戲攤","emoji":"🎯","gain":{"scav":3}},
     {"id":"n_fortune","tier":"l","name":"算命攤的籤","emoji":"🧧","gain":{"memory":"random"}}]},
   {"id":"rooftop","name":"天台花園","emoji":"🌻","desc":"安靜又安全，食物和水都多，偶爾有種子保險箱。","chapter":1,"hidden":true,"min_min":0,"luck":6,"danger":0.01,"items":[
+    {"id":"r_tomato","tier":"c","name":"小番茄盆","emoji":"🍅","gain":{"food":3}},
+    {"id":"r_chair","tier":"c","name":"躺椅","emoji":"🪑","gain":{"morale":3}},
+    {"id":"r_pigeon","tier":"r","name":"鴿子籠","emoji":"🕊️","gain":{"morale":6,"food":2}},
+    {"id":"r_greenhouse","tier":"l","name":"迷你溫室","emoji":"🌱","gain":{"food":12,"water":4}},
     {"id":"r_herb","tier":"c","name":"香草盆栽","emoji":"🌿","gain":{"food":2,"hp":2}},
     {"id":"r_rain","tier":"c","name":"雨水收集桶","emoji":"🛢️","gain":{"water":4}},
     {"id":"r_bee","tier":"r","name":"蜂箱","emoji":"🐝","gain":{"food":5,"morale":3}},
     {"id":"r_solar","tier":"r","name":"太陽能陣列","emoji":"🔆","gain":{"parts":10}},
     {"id":"r_seed","tier":"l","name":"種子保險箱","emoji":"🌱","gain":{"facility":"garden"}}]},
   {"id":"bunker","name":"地下碉堡","emoji":"🔐","desc":"神秘訊號指向的地方，金幣和補給箱很多。","chapter":1,"hidden":true,"min_min":0,"luck":15,"danger":0.08,"items":[
+    {"id":"b_bunkbed","tier":"c","name":"上下舖","emoji":"🛏️","gain":{"hp":3,"morale":1}},
+    {"id":"b_gasmask","tier":"c","name":"防毒面具","emoji":"😷","gain":{"hp":3}},
+    {"id":"b_periscope","tier":"r","name":"潛望鏡","emoji":"🔭","gain":{"parts":5,"stardust":4}},
+    {"id":"b_blastdoor","tier":"l","name":"防爆門","emoji":"🚪","gain":{"hp":15,"parts":10}},
     {"id":"k_canned","tier":"c","name":"一整排罐頭","emoji":"🥫","gain":{"food":5}},
     {"id":"k_filter","tier":"c","name":"軍規濾水器","emoji":"🚰","gain":{"water":5}},
     {"id":"k_map","tier":"r","name":"作戰地圖","emoji":"🗺️","gain":{"scav":4}},
     {"id":"k_vault","tier":"r","name":"保險庫","emoji":"🏦","gain":{"gold":60,"parts":8}},
     {"id":"k_core","tier":"l","name":"碉堡能源核心","emoji":"⚛️","gain":{"box_gold":1}}]},
   {"id":"observatory","name":"天文台","emoji":"🔭","desc":"離星星最近的地方，星屑最多，傳說機率最高。","chapter":1,"hidden":true,"min_min":0,"luck":25,"danger":0.03,"items":[
+    {"id":"o_planisphere","tier":"c","name":"星座盤","emoji":"🌌","gain":{"stardust":4}},
+    {"id":"o_moonrock","tier":"r","name":"月球岩石","emoji":"🌑","gain":{"stardust":10}},
+    {"id":"o_orrery","tier":"r","name":"太陽系儀","emoji":"🪐","gain":{"stardust":8,"morale":3}},
+    {"id":"o_comet","tier":"l","name":"彗星碎片","emoji":"☄️","gain":{"stardust":25,"morale":5}},
     {"id":"o_lens","tier":"c","name":"望遠鏡鏡片","emoji":"🔭","gain":{"stardust":6}},
     {"id":"o_chart","tier":"c","name":"星圖","emoji":"🌌","gain":{"stardust":4,"morale":2}},
     {"id":"o_meteor","tier":"r","name":"隕石碎片","emoji":"☄️","gain":{"stardust":20,"parts":5}},
