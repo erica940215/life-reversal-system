@@ -18,7 +18,8 @@
     busy: false,
     msg: "",
     timer: null,
-    tick: null
+    tick: null,
+    view: null            // 正在看的主頁：{ id, name, data, err }
   };
 
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -188,7 +189,16 @@
         .fr-msg { font-size: 13px; color: #ffd76a; margin: 8px 2px 0; min-height: 1em; }
         .fr-note { font-size: 12.5px; color: #8f98b6; line-height: 1.6; margin: 6px 2px 0; }
         .fr-toggle { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: #c9cfe4; margin-top: 10px; cursor: pointer; }
-        .fr-friend { display: grid; grid-template-columns: 44px 1fr auto; gap: 12px; align-items: center; }
+        .fr-friend { display: grid; grid-template-columns: 44px 1fr auto auto; gap: 8px 12px; align-items: center; }
+        .fr-pbtn { padding: 6px 10px; font-size: 13px; }
+        .fr-pf-head { display: flex; gap: 12px; align-items: center; margin-bottom: 4px; }
+        .fr-pf-head .fr-ava { width: 52px; height: 52px; font-size: 22px; }
+        .fr-pf-name { font-size: 18px; font-weight: 800; } .fr-pf-sub { font-size: 13px; opacity: .75; }
+        .fr-pf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+        .fr-pf-grid div { background: rgba(127,127,127,.1); border-radius: 10px; padding: 8px 4px; text-align: center; }
+        .fr-pf-grid b { display: block; font-size: 17px; } .fr-pf-grid span { font-size: 11px; opacity: .75; }
+        .fr-pf-t { font-weight: 800; margin-bottom: 2px; }
+        .fr-pf-bar { height: 8px; border-radius: 99px; background: rgba(127,127,127,.2); overflow: hidden; margin-top: 6px; } .fr-pf-bar i { display: block; height: 100%; background: linear-gradient(90deg,#ef5350,#ff9800); }
         .fr-ava { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-size: 19px; font-weight: 700; background: #2a3047; color: #fff; position: relative; }
         .fr-ava.on::after { content: ""; position: absolute; right: -1px; bottom: -1px; width: 13px; height: 13px; border-radius: 50%; background: #42d392; border: 2px solid #1c2133; }
         .fr-ava.pause::after { content: ""; position: absolute; right: -1px; bottom: -1px; width: 13px; height: 13px; border-radius: 50%; background: #ffb547; border: 2px solid #1c2133; }
@@ -281,6 +291,8 @@
       body = `<div class="fr-card"><div class="fr-note">⚠️ 好友功能的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-10-19_好友.sql</b>，重新整理網頁之後就能用。</div></div>`;
     } else if (FR.ready === null) {
       body = `<div class="fr-empty">載入中…</div>`;
+    } else if (FR.view) {
+      body = profileHtml(FR.view);
     } else {
       const me = FR.me || {};
       const incoming = FR.list.filter(f => f.status === "pending" && f.incoming);
@@ -290,6 +302,7 @@
       body += `<div class="fr-card">
         <div class="fr-code"><span>我的好友碼</span><b>${esc(me.code || "------")}</b>
           <button type="button" class="fr-btn ghost" data-fr="copy">複製</button></div>
+        <button type="button" class="fr-btn ghost" data-fr="profile" data-id="${typeof currentUser !== "undefined" && currentUser ? currentUser.id : ""}" data-name="我" style="margin:6px 0">👤 看我的主頁長怎樣</button>
         <label class="fr-toggle"><input type="checkbox" data-fr="share" ${me.share !== false ? "checked" : ""}> 讓好友看到我今天完成幾個任務、有沒有在專注</label>
       </div>`;
 
@@ -315,12 +328,12 @@
           if (f.hidden) {
             return `<div class="fr-card"><div class="fr-friend"><div class="fr-ava">${esc(f.name.slice(0, 1))}</div>
               <div><div class="fr-name">${esc(f.name)}</div><div class="fr-sub">沒有公開今天的狀態</div></div>
-              <button type="button" class="fr-more" data-fr="remove" data-id="${f.id}" data-name="${esc(f.name)}" aria-label="刪除好友">⋯</button></div></div>`;
+              <button type="button" class="fr-btn ghost fr-pbtn" data-fr="profile" data-id="${f.id}" data-name="${esc(f.name)}">主頁</button><button type="button" class="fr-more" data-fr="remove" data-id="${f.id}" data-name="${esc(f.name)}" aria-label="刪除好友">⋯</button></div></div>`;
           }
           return `<div class="fr-card"><div class="fr-friend">
               <div class="fr-ava">${esc(f.name.slice(0, 1))}</div>
               <div><div class="fr-name">${esc(f.name)}</div><div class="fr-sub">最後活動：${ago(f.last_active)}</div></div>
-              <button type="button" class="fr-more" data-fr="remove" data-id="${f.id}" data-name="${esc(f.name)}" aria-label="刪除好友">⋯</button></div>
+              <button type="button" class="fr-btn ghost fr-pbtn" data-fr="profile" data-id="${f.id}" data-name="${esc(f.name)}">主頁</button><button type="button" class="fr-more" data-fr="remove" data-id="${f.id}" data-name="${esc(f.name)}" aria-label="刪除好友">⋯</button></div>
             <div class="fr-stats">
               <div class="fr-stat"><b>${f.tasks_today}</b><span>今天完成任務</span></div>
             </div></div>`;
@@ -367,10 +380,54 @@
     call("friend_request", { p_code: code }, d => d && d.status === "accepted" ? "已經成為好友了！" : "邀請已送出，等對方同意");
   }
 
+  /* ---------- 👤 好友主頁 ---------- */
+  const CLASS = { scholar: "📚 學者", warrior: "⚔️ 戰士", guardian: "🛡️ 守護者", ranger: "🏹 遊俠" };
+  const BOSS = { sloth_slime: "怠惰史萊姆王", delay_dragon: "拖延巨龍", phone_wraith: "手機幽靈", fatigue_golem: "疲憊石像" };
+  const num = n => (n == null ? "—" : Number(n).toLocaleString());
+
+  async function openProfile(id, name) {
+    if (!id) return;
+    FR.view = { id, name, data: null, err: null };
+    render();
+    const { data, error } = await db.rpc("friend_profile", { p_friend: id });
+    if (!FR.view || FR.view.id !== id) return;
+    if (error) FR.view.err = /friend_profile|PGRST202|42883/.test(error.message || "") ? "setup" : (error.message || "載入失敗");
+    else FR.view.data = data;
+    render();
+  }
+
+  function profileHtml(v) {
+    const back = `<button type="button" class="fr-btn ghost" data-fr="back" style="margin-bottom:10px">← 回好友列表</button>`;
+    if (v.err === "setup") return back + `<div class="fr-card"><div class="fr-note">⚠️ 好友主頁的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-10-29_好友主頁.sql</b>。</div></div>`;
+    if (v.err) return back + `<div class="fr-card"><div class="fr-note">${esc(v.err)}</div></div>`;
+    const d = v.data;
+    if (!d) return back + `<div class="fr-empty">載入中…</div>`;
+    const card = (t, cells, extra = "") => `<div class="fr-card"><div class="fr-pf-t">${t}</div><div class="fr-pf-grid">${cells.map(([n, l]) => `<div><b>${n}</b><span>${l}</span></div>`).join("")}</div>${extra}</div>`;
+    let h = back + `<div class="fr-card"><div class="fr-pf-head"><div class="fr-ava">${esc((d.name || "?").slice(0, 1))}</div>
+      <div><div class="fr-pf-name">${esc(d.name)}${d.me ? "（我）" : ""}</div><div class="fr-pf-sub">Lv${d.level || 1}・🪙 ${num(d.gold)}${d.rpg && d.rpg.class ? "・" + (CLASS[d.rpg.class] || d.rpg.class) : ""}</div></div></div></div>`;
+    if (d.hidden) return h + `<div class="fr-empty">對方沒有公開遊玩狀態。</div>`;
+    h += card("📅 生活", [[num(d.streak || 0) + " 天", "連續簽到"], [num(d.focus_week) + " 分", "本週專注"], [num(d.tasks_week), "本週完成任務"], [num(d.focus_total) + " 小時", "累積專注"]]);
+    const r = d.rpg;
+    if (r) {
+      const b = r.boss;
+      const bar = b ? `<div class="fr-note" style="margin-top:8px">本週王：${esc(BOSS[b.key] || b.key)} 第 ${b.tier} 階　${b.killed ? "已打倒 🎉" : `${num(b.dmg)} / ${num(b.hp)}`}</div><div class="fr-pf-bar"><i style="width:${Math.min(100, b.hp ? b.dmg / b.hp * 100 : 0)}%"></i></div>` : "";
+      h += card("⚔️ 冒險", [[num(r.power), "戰力"], [num(r.gear), "裝備"], [num(r.skills), "技能點"], [num(r.world_dmg || 0), "本月世界王傷害"], [esc(r.team || "—"), "小隊"]], bar);
+    }
+    if (d.fun) h += card("🎁 驚喜", [[num(d.fun.monsters), "小怪獸"], [num(d.fun.frames), "頭像框"]]);
+    const f = d.farm;
+    if (f) h += card("🏝️ 星露島", [["Lv" + (f.lv || 1), "島嶼等級"], [num(f.harvest), "收成次數"], [num(f.cook), "做過料理"], [num(f.animals), "動物"], [num(f.fish), "釣到的魚"], [f.field ? f.field + "×" + f.field : "—", "菜田"]]);
+    const m = d.doom;
+    if (m) h += card("☢️ 末世", [["第 " + num(m.day) + " 天", "生存"], [num(m.base), "設施等級"], [num(m.companions), "同伴"], [num(m.seen), "物資收藏"], [num(m.trinkets), "生活小物"], [num(m.relics), "收藏品"]]);
+    if (!r && !f && !m) h += `<div class="fr-empty">還沒開始玩遊戲。</div>`;
+    return h;
+  }
+
   function onClick(e) {
     const el = e.target.closest("[data-fr]");
     if (!el) return;
     const act = el.dataset.fr;
+    if (act === "profile") return openProfile(el.dataset.id, el.dataset.name);
+    if (act === "back") { FR.view = null; return render(); }
     if (act === "close") return closePanel();
     if (act === "add") return addFriend();
     if (act === "copy") {
@@ -405,7 +462,7 @@
   }
 
   function closePanel() {
-    FR.open = false;
+    FR.open = false; FR.view = null;
     clearInterval(FR.timer);
     clearInterval(FR.tick);
     const ov = document.getElementById("fr-overlay");
