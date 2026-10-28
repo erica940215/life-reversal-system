@@ -5752,7 +5752,9 @@ function renderFocusButtons() {
     box.innerHTML = `
       <button class="btn" onclick="pauseFocus()">⏸ 暫停</button>
       <button class="btn btn-primary" onclick="finishFocus('manual')">⏹ 結束並記錄</button>
+      <button class="btn" onclick="openFocusSwitch()">🔁 換科目</button>
       <button class="btn btn-danger" onclick="discardFocus()">✖ 放棄</button>
+      <div id="focus-switch" class="focus-switch" style="display:none"></div>
     `;
 
   } else {
@@ -5760,7 +5762,9 @@ function renderFocusButtons() {
     box.innerHTML = `
       <button class="btn btn-primary" onclick="resumeFocus()">▶ 繼續</button>
       <button class="btn" onclick="finishFocus('manual')">⏹ 結束並記錄</button>
+      <button class="btn" onclick="openFocusSwitch()">🔁 換科目</button>
       <button class="btn btn-danger" onclick="discardFocus()">✖ 放棄</button>
+      <div id="focus-switch" class="focus-switch" style="display:none"></div>
     `;
 
   }
@@ -6015,6 +6019,94 @@ function playFocusAlarm() {
 }
 
 
+/*
+  🔁 專注中換科目：計時不中斷，前面的時間記在原本的科目，
+  結束時每個科目各存一筆紀錄（時間加起來就是這次的總時間）
+*/
+function openFocusSwitch() {
+
+  if (!focusTimer) return;
+
+  const box = document.getElementById("focus-switch");
+  if (!box) return;
+
+  if (box.style.display !== "none") { box.style.display = "none"; return; }
+
+  box.innerHTML = `
+    <div class="focus-switch-row">
+      <select id="focus-switch-subject" onchange="document.getElementById('focus-switch-custom').style.display = this.value === '__custom__' ? 'block' : 'none'">
+        ${focusSubjectSelectHtml(null, focusUsedSubjects)}
+      </select>
+      <input id="focus-switch-custom" type="text" placeholder="輸入科目" style="display:none" maxlength="40">
+      <button class="btn btn-primary" onclick="confirmFocusSwitch()">換</button>
+    </div>
+    <div class="focus-switch-note">計時不會中斷，到目前為止的時間會記在「${escapeFocusText(focusTimer.subject)}」。</div>
+  `;
+
+  box.style.display = "block";
+
+}
+
+function escapeFocusText(t) {
+  return String(t == null ? "" : t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function confirmFocusSwitch() {
+
+  if (!focusTimer) return;
+
+  const select = document.getElementById("focus-switch-subject");
+  const subject = select.value === "__custom__"
+    ? document.getElementById("focus-switch-custom").value.trim()
+    : select.value;
+
+  if (!subject) { alert("請選擇或輸入科目"); return; }
+  if (subject === focusTimer.subject) { document.getElementById("focus-switch").style.display = "none"; return; }
+
+  const now = focusElapsedMs(focusTimer);
+  const from = focusTimer.segOffsetMs || 0;
+
+  focusTimer.segments = (focusTimer.segments || []).concat([{ subject: focusTimer.subject, ms: now - from }]);
+  focusTimer.segOffsetMs = now;
+
+  const old = focusTimer.subject;
+  focusTimer.subject = subject;
+
+  saveFocusTimer();
+  renderFocusSetup();
+  renderFocusButtons();
+
+  showToast(`🔁 換成「${subject}」，前面 ${Math.round((now - from) / 60000)} 分鐘記在「${old}」`);
+
+}
+
+/* 把這次專注切成各科目的段落（太短的段落併到下一段） */
+function focusSegments(timer, totalMs) {
+
+  const list = (timer.segments || []).map(s => ({ ...s }));
+  list.push({ subject: timer.subject, ms: Math.max(0, totalMs - (timer.segOffsetMs || 0)) });
+
+  const out = [];
+  let carry = 0;
+
+  list.forEach((seg, i) => {
+    const ms = seg.ms + carry;
+    if (ms < FOCUS_MIN_SECONDS * 1000 && i < list.length - 1) { carry = ms; return; }
+    carry = 0;
+    if (out.length && out[out.length - 1].subject === seg.subject) out[out.length - 1].ms += ms;
+    else out.push({ subject: seg.subject, ms });
+  });
+
+  /* 最後一段太短：併回前一段 */
+  if (out.length > 1 && out[out.length - 1].ms < FOCUS_MIN_SECONDS * 1000) {
+    out[out.length - 2].ms += out.pop().ms;
+  }
+
+  return out;
+
+}
+
+
 function startFocusTicking() {
 
   stopFocusTicking();
@@ -6205,22 +6297,37 @@ async function finishFocus(reason) {
 
     const sessionDate = toTaipeiDate(timer.startedAt);
 
-    const { data: inserted, error } = await db
-      .from("focus_sessions")
-      .insert({
+    /* 中途換過科目：每個科目各存一筆，時間接續 */
+    const segs = focusSegments(timer, elapsedMs);
+    const startMs = new Date(timer.startedAt).getTime();
+    const doneAll = timer.mode === "down" && elapsedMs >= timer.plannedMinutes * 60000 - 30000;
+    let offset = 0;
+
+    const rows = segs.map((seg, i) => {
+      const last = i === segs.length - 1;
+      const st = new Date(startMs + offset).toISOString();
+      offset += seg.ms;
+      return {
         user_id: currentUser.id,
-        subject: timer.subject,
+        subject: seg.subject,
         mode: timer.mode,
-        planned_minutes: timer.plannedMinutes,
-        duration_seconds: seconds,
-        started_at: timer.startedAt,
-        ended_at: new Date().toISOString(),
+        planned_minutes: segs.length === 1 ? timer.plannedMinutes
+          : (last && timer.mode === "down" ? (doneAll ? Math.round(seg.ms / 60000) : timer.plannedMinutes) : null),
+        duration_seconds: segs.length === 1 ? seconds : Math.round(seg.ms / 1000),
+        started_at: i === 0 ? timer.startedAt : st,
+        ended_at: last ? new Date().toISOString() : new Date(startMs + offset).toISOString(),
         session_date: sessionDate
-      })
-      .select("id")
-      .maybeSingle();
+      };
+    });
+
+    const { data: insertedRows, error } = await db
+      .from("focus_sessions")
+      .insert(rows)
+      .select("id");
 
     if (error) throw error;
+
+    const inserted = insertedRows && insertedRows.length ? insertedRows[insertedRows.length - 1] : null;
 
 
     /*
@@ -6247,7 +6354,9 @@ async function finishFocus(reason) {
     }
 
 
-    const label = `${timer.subject} ${formatDuration(seconds)}`;
+    const label = segs.length > 1
+      ? segs.map(seg => `${seg.subject} ${formatDuration(Math.round(seg.ms / 1000))}`).join("、")
+      : `${timer.subject} ${formatDuration(seconds)}`;
 
     if (reason === "timeup") {
       showToast(`⏰ 時間到！已記錄：${label}${rewardText}`);

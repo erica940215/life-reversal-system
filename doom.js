@@ -700,18 +700,54 @@
     if (seconds < 60) return;
     const minutes = Math.floor(seconds / 60);
     const drops = dropCount(t.startedAt, minutes);
-    let id = null;
-    try { id = await findSessionId(t, seconds); } catch (e) { console.warn(e); }
-    if (!id) return;
-    const { data, error } = await db.rpc("doom_run_claim", { p_session: id, p_zone: t.doomZone, p_drops: drops });
-    if (error) {
-      console.warn("專注搜刮開箱失敗：", error);
-      savePending(loadPending().concat([{ id, zone: t.doomZone, drops }]));
-      toast("☢️ 搜刮的東西先放著，進末世頁會再開箱");
-      return;
+    let ids = [];
+    try {
+      if (t.segments && t.segments.length) {
+        /* 中途換過科目：這次專注存成好幾筆，每筆都開箱，數量照時間分配 */
+        const q = await db.from("focus_sessions").select("id,duration_seconds").eq("user_id", currentUser.id)
+          .gte("started_at", t.startedAt).order("id", { ascending: true }).limit(10);
+        const list = (q.data || []).filter(r => r.duration_seconds > 0);
+        const total = list.reduce((a, r) => a + r.duration_seconds, 0) || 1;
+        let left = drops;
+        ids = list.map((r, i) => {
+          const n = i === list.length - 1 ? left : Math.round(drops * r.duration_seconds / total);
+          left -= n;
+          return { id: r.id, drops: Math.max(0, n) };
+        });
+      } else {
+        const id = await findSessionId(t, seconds);
+        if (id) ids = [{ id, drops }];
+      }
+    } catch (e) { console.warn(e); }
+    if (!ids.length) return;
+    const results = [];
+    for (const it of ids) {
+      const { data, error } = await db.rpc("doom_run_claim", { p_session: it.id, p_zone: t.doomZone, p_drops: it.drops });
+      if (error) {
+        console.warn("專注搜刮開箱失敗：", error);
+        savePending(loadPending().concat([{ id: it.id, zone: t.doomZone, drops: it.drops }]));
+        continue;
+      }
+      results.push(data);
     }
-    showReveal(data);
+    if (!results.length) { toast("☢️ 搜刮的東西先放著，進末世頁會再開箱"); return; }
+    showReveal(results.length === 1 ? results[0] : mergeRuns(results));
     if (DM.s) load();
+  }
+
+  /* 好幾筆開箱結果合成一次給你看 */
+  function mergeRuns(list) {
+    const r = Object.assign({}, list[list.length - 1]);
+    r.minutes = list.reduce((a, x) => a + (x.minutes || 0), 0);
+    r.drops = [].concat(...list.map(x => x.drops || []));
+    r.rare = list.reduce((a, x) => a + (x.rare || 0), 0);
+    r.bonus = list.map(x => x.bonus).filter(Boolean).pop() || null;
+    r.rewards = [].concat(...list.map(x => x.rewards || []));
+    r.unlocked = list.map(x => x.unlocked).filter(Boolean)[0] || null;
+    r.signal = list.map(x => x.signal).filter(Boolean)[0] || null;
+    r.double = list.some(x => x.double);
+    r.downgraded = list.map(x => x.downgraded).filter(Boolean)[0] || null;
+    return r;
   }
 
   function hookFocus() {
