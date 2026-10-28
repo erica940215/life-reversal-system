@@ -9,7 +9,7 @@
    資料庫還沒設定時先存在這台裝置的瀏覽器，設定好之後會自動搬上去。
 ========================================================= */
 
-const FARM_JS_VERSION = "2026-10-22 v1";
+const FARM_JS_VERSION = "2026-10-28 v2";
 
 (function () {
 
@@ -21,6 +21,15 @@ const FARM_JS_VERSION = "2026-10-22 v1";
   if (!D) {
     console.warn("星露島：找不到 farm-data.js");
     return;
+  }
+
+  /* 麥田：專門種小麥的小田，不佔菜田；開墾後 3×3，之後可以擴建 */
+  D.zones["麥田"] = D.zones["麥田"] || { lv: 10, cost: 500 };
+  const WHEAT_SIZES = [[10, 3, 0], [20, 4, 2000], [32, 5, 5000]];   // [等級, 邊長, 擴建星露]
+  const WHEAT_CROPS = ["wheat"];
+  for (const [lv, text] of [[10, "麥田（500 星露）：專門種小麥，不佔菜田"], [20, "麥田擴建 4×4（2,000 星露）"], [32, "麥田擴建 5×5（5,000 星露）"]]) {
+    const row = (D.levels || []).find(l => l.lv === lv);
+    if (row && Array.isArray(row.unlocks) && !row.unlocks.includes(text)) row.unlocks.push(text);
   }
 
   const IMG = "img/farm/";
@@ -301,7 +310,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
   }
 
   /* 有花錢開墾的區域 */
-  const ZONE_KEY = { 菇棚: "logs", 果園: "orchard", 香草園: "herb", 茶園: "tea", 溫室: "green", 加工坊: "workshop" };
+  const ZONE_KEY = { 菇棚: "logs", 果園: "orchard", 香草園: "herb", 茶園: "tea", 溫室: "green", 加工坊: "workshop", 麥田: "wheatfield" };
 
   function zoneOpen(zone) {
     if (!zoneUnlocked(zone)) return false;
@@ -356,6 +365,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
       field: { size: 3, plots: {} },
       herb: { open: false, plots: {} },
       green: { open: false, plots: {} },
+      wheatfield: { open: false, size: 3, plots: {} },
       orchard: { open: false, trees: {} },
       logs: { open: false, slots: {} },
       tea: { open: false, bushes: {} },
@@ -417,7 +427,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
       if (obj && obj[key] && obj[key] > limit) { obj[key] = limit; changed = true; }
     };
 
-    for (const zone of ["field", "herb", "green", "pond"]) {
+    for (const zone of ["field", "herb", "green", "pond", "wheatfield"]) {
       for (const p of Object.values(S[zone].plots || {})) {
         if (p && p.c && p.t1 && p.t0 && D.crops[p.c]) cap(p, "t1", p.t0 + D.crops[p.c].hours * HOUR);
       }
@@ -457,7 +467,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
       if (st[key] === undefined) st[key] = base[key];
     }
 
-    for (const key of ["field", "herb", "green", "pond", "orchard", "logs", "tea", "bamboo", "workshop", "kitchen", "ranch", "known", "stats", "deco", "boost", "daily", "fish"]) {
+    for (const key of ["field", "herb", "green", "wheatfield", "pond", "orchard", "logs", "tea", "bamboo", "workshop", "kitchen", "ranch", "known", "stats", "deco", "boost", "daily", "fish"]) {
       if (!st[key] || typeof st[key] !== "object") st[key] = base[key];
       for (const sub of Object.keys(base[key])) {
         if (st[key][sub] === undefined) st[key][sub] = base[key][sub];
@@ -840,8 +850,21 @@ const FARM_JS_VERSION = "2026-10-22 v1";
     return keys;
   }
 
+  /* 麥田的格子：size×size */
+  function wheatKeys() {
+    const n = S.wheatfield.size, keys = [];
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) keys.push(r + "_" + c);
+    return keys;
+  }
+
+  /* 麥田下一次擴建：[等級, 邊長, 星露]，已經最大回傳 null */
+  function wheatNextExpand() {
+    return WHEAT_SIZES.find(r => r[1] === S.wheatfield.size + 1) || null;
+  }
+
   function plotZone(zone) {
     if (zone === "field") return { store: S.field.plots, keys: fieldKeys(), cropZone: "菜田", water: true, name: "菜田" };
+    if (zone === "wheatfield") return { store: S.wheatfield.plots, keys: wheatKeys(), cropZone: "麥田", crops: WHEAT_CROPS, water: true, name: "麥田" };
     if (zone === "herb") return { store: S.herb.plots, keys: [...Array(D.caps.herbPlots).keys()].map(String), cropZone: "香草園", water: true, name: "香草園" };
     if (zone === "green") return { store: S.green.plots, keys: [...Array(D.caps.greenPlots).keys()].map(String), cropZone: "溫室", water: false, name: "溫室" };
     if (zone === "pond") return { store: S.pond.plots, keys: ["0", "1", "2"], cropZone: "蓮池", water: false, name: "蓮池" };
@@ -935,7 +958,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
     const z = plotZone(zone);
     const c = D.crops[crop];
 
-    if (!c || c.zone !== z.cropZone) return "這裡不能種這個";
+    if (!c || !(z.crops ? z.crops.includes(crop) : c.zone === z.cropZone)) return "這裡不能種這個";
     if (!cropAvailable(crop)) return "還沒解鎖";
     if (z.store[key]) return "這格已經有東西了";
 
@@ -2352,7 +2375,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
 
   const DECO_SLOTS = [
     [400, 610], [545, 615], [880, 605], [130, 680], [210, 1030], [560, 1080],
-    [620, 1210], [130, 1140], [520, 1300], [880, 1310], [1350, 1150], [1400, 880]
+    [680, 1065], [130, 1140], [520, 1300], [880, 1310], [1350, 1150], [1400, 880]
   ];
 
   function decoOwned(k) {
@@ -2513,12 +2536,12 @@ const FARM_JS_VERSION = "2026-10-22 v1";
   /* ---------- 道具 ---------- */
 
   /* 某一區還在長的東西：回傳 [物件, 欄位] */
-  const ZONE_LABEL = { field: "菜田", herb: "香草園", green: "溫室", pond: "蓮池", orchard: "果園", logs: "菇棚", tea: "茶園" };
+  const ZONE_LABEL = { field: "菜田", herb: "香草園", green: "溫室", wheatfield: "麥田", pond: "蓮池", orchard: "果園", logs: "菇棚", tea: "茶園" };
 
   function zoneTimers(zone) {
     const t = now();
     const list = [];
-    if (["field", "herb", "green", "pond"].includes(zone)) {
+    if (["field", "herb", "green", "pond", "wheatfield"].includes(zone)) {
       if (zone !== "field" && zone !== "pond" && !zoneOpen(ZONE_LABEL[zone])) return list;
       const z = plotZone(zone);
       for (const key of z.keys) {
@@ -2550,7 +2573,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
 
   function waterAllThirsty() {
     let n = 0;
-    for (const zone of ["field", "herb"]) {
+    for (const zone of ["field", "herb", "wheatfield"]) {
       const z = plotZone(zone);
       for (const key of z.keys) {
         const p = z.store[key];
@@ -3216,7 +3239,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
 
   function countRipe() {
     let n = 0;
-    for (const zone of ["field", "herb", "green", "pond"]) {
+    for (const zone of ["field", "herb", "green", "pond", "wheatfield"]) {
       const z = plotZone(zone);
       for (const key of z.keys) if (plotState(z.store[key]) === "ripe") n++;
     }
@@ -3641,7 +3664,8 @@ const FARM_JS_VERSION = "2026-10-22 v1";
     logs: [1000, 1160],
     tea: [1190, 1255],
     pier: [750, 1460, 200],
-    well: [360, 1185, 172]
+    well: [360, 1185, 172],
+    wheat: [575, 1185]
   };
 
   /* 月光蓮的蓮池（湖的東南邊） */
@@ -3804,6 +3828,14 @@ const FARM_JS_VERSION = "2026-10-22 v1";
       if (!zoneUnlocked("茶園")) items.push({ y, svg: lockedZone("茶園", x, y - 20, 90, 40) });
       else if (!S.tea.open) items.push({ y, svg: buyZone("茶園", x, y - 20, 90, 40) });
       else teaSvg(items, x, y);
+    }
+
+    /* 麥田 */
+    {
+      const [x, y] = POS.wheat;
+      if (!zoneUnlocked("麥田")) items.push({ y, svg: lockedZone("麥田", x, y - 10, 90, 45) });
+      else if (!S.wheatfield.open) items.push({ y, svg: buyZone("麥田", x, y - 10, 90, 45) });
+      else wheatSvg(items, x, y);
     }
 
     /* 溫室 */
@@ -4000,6 +4032,36 @@ const FARM_JS_VERSION = "2026-10-22 v1";
     });
   }
 
+  /* 麥田：中心在 (x, y)；格子越多每格越小，佔地差不多 */
+  function wheatSvg(items, x, y) {
+    const n = S.wheatfield.size;
+    const tw = n <= 3 ? 30 : n === 4 ? 25 : 21, th = tw / 2;
+    const fw = n * tw + 16, fh = n * th + 8;
+    let frame = `<g pointer-events="none"><polygon points="${tilePoly(x, y + 6, fw, fh)}" fill="#b98a4a" stroke="#d9b45f" stroke-width="3" stroke-linejoin="round"/>`;
+    /* 四個角的稻草堆 */
+    for (const [dx, dy] of [[-fw, 0], [fw, 0], [0, fh]]) {
+      const hx = x + dx * 0.98, hy = y + 6 + dy * 0.98;
+      frame += `<g transform="translate(${f1(hx)} ${f1(hy)})"><ellipse cx="0" cy="2" rx="13" ry="5" fill="#000" opacity=".12"/><path d="M-12 2 Q-10 -16 0 -18 Q10 -16 12 2Z" fill="#e8c35a" stroke="#c49a35" stroke-width="1.4"/><path d="M-6 -4 L-3 -14 M0 -2 L0 -15 M6 -4 L3 -14" stroke="#c49a35" stroke-width="1.2"/></g>`;
+    }
+    frame += `</g>`;
+    items.push({ y: y - fh, svg: frame });
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        const tx = x + (c - r) * tw;
+        const ty = y + (r + c - (n - 1)) * th;
+        items.push({ y: ty, svg: plotSvg("wheatfield", r + "_" + c, tx, ty, tw, th, 5) });
+      }
+    }
+    const ny = y + fh + 26;
+    items.push({ y: ny, svg: nameplate(x, ny, "麥田") });
+    const next = wheatNextExpand();
+    if (next) {
+      const can = S.lv >= next[0];
+      const sx = x + 118, sy = y + fh + 56;
+      items.push({ y: sy, svg: `<g class="tap" data-act="wheatexpand" role="button" tabindex="0" aria-label="${can ? `擴建麥田成 ${next[1]}×${next[1]}，${num(next[2])} 星露` : `Lv${next[0]} 可以擴建麥田`}">${sign(sx, sy, can ? `擴建 ${next[1]}×${next[1]}` : `Lv${next[0]}`, { lock: !can, bright: can })}</g>` });
+    }
+  }
+
   function teaSvg(items, x, y) {
     for (let i = 0; i < D.caps.teaBushes; i++) {
       const bx = x - 75 + (i % 3) * 60 + (i >= 3 ? 30 : 0);
@@ -4053,7 +4115,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
     const t = now();
     let next = Infinity;
     const consider = ts => { if (ts && ts > t && ts < next) next = ts; };
-    for (const zone of ["field", "herb", "green", "pond"]) {
+    for (const zone of ["field", "herb", "green", "pond", "wheatfield"]) {
       const z = plotZone(zone);
       for (const key of z.keys) {
         const p = z.store[key];
@@ -4269,6 +4331,13 @@ const FARM_JS_VERSION = "2026-10-22 v1";
       openModal("zone", { zone });
     },
 
+    wheatexpand: () => {
+      const next = wheatNextExpand();
+      if (!next) return;
+      if (S.lv < next[0]) return toast(`Lv${next[0]} 可以把麥田擴建成 ${next[1]}×${next[1]}`);
+      openModal("wheatexpand");
+    },
+
     expand: () => {
       const next = fieldNextExpand();
       if (!next) return;
@@ -4381,10 +4450,10 @@ const FARM_JS_VERSION = "2026-10-22 v1";
     },
 
     plantq: el => {
-      const k = el.dataset.crop;
+      const k = (UI.sheet ? UI.sheet.zone : "") + ":" + el.dataset.crop;
       const max = Math.max(1, Number(el.dataset.max) || 1);
       UI.plantQty = UI.plantQty || {};
-      const cur = UI.plantQty[k] || 1;
+      const cur = Number(el.dataset.cur) || UI.plantQty[k] || 1;
       UI.plantQty[k] = Math.min(max, Math.max(1, cur + Number(el.dataset.v)));
       renderSheet();
     },
@@ -4670,7 +4739,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
 
   function harvestAll() {
     let count = 0, exp = 0, full = false;
-    for (const zone of ["field", "herb", "green", "pond"]) {
+    for (const zone of ["field", "herb", "green", "pond", "wheatfield"]) {
       const z = plotZone(zone);
       for (const key of z.keys) {
         if (plotState(z.store[key]) !== "ripe") continue;
@@ -4825,7 +4894,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
   }
 
   function anyThirsty() {
-    for (const zone of ["field", "herb"]) {
+    for (const zone of ["field", "herb", "wheatfield"]) {
       const z = plotZone(zone);
       for (const key of z.keys) if (plotState(z.store[key]) === "thirsty") return true;
     }
@@ -4866,7 +4935,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
         toast("💧 澆好了，開始長大");
       } else if (opt === "waterall") {
         let n = 0;
-        for (const zone of ["field", "herb"]) {
+        for (const zone of ["field", "herb", "wheatfield"]) {
           const zz = plotZone(zone);
           for (const key of zz.keys) if (plotState(zz.store[key]) === "thirsty" && waterOne(zone, key)) n++;
         }
@@ -4972,7 +5041,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
     seeds(t) {
 
       const zone = t.zone;
-      let cropZone, title, emptyCount = 0;
+      let cropZone, title, emptyCount = 0, only = null;
 
       if (zone === "orchard") { cropZone = "果園"; title = "種果樹"; }
       else if (zone === "pond") { cropZone = "蓮池"; title = "蓮池・選種子"; emptyCount = plotZone("pond").keys.filter(k => !S.pond.plots[k]).length; }
@@ -4980,11 +5049,12 @@ const FARM_JS_VERSION = "2026-10-22 v1";
       else if (zone !== "pond") {
         const z = plotZone(zone);
         cropZone = z.cropZone;
+        only = z.crops || null;
         title = `${z.name}・選種子`;
         emptyCount = z.keys.filter(k => !z.store[k]).length;
       }
 
-      const list = cropsForZone(cropZone);
+      const list = only || cropsForZone(cropZone);
       const avail = list.filter(cropAvailable);
       const locked = list.filter(k => !cropAvailable(k) && D.crops[k].lv > S.lv).slice(0, 3);
 
@@ -5003,10 +5073,11 @@ const FARM_JS_VERSION = "2026-10-22 v1";
         const maxN = Math.min(emptyCount, seeds + byDew);
         let btns;
         if (emptyCount > 1 && maxN > 1) {
-          const q = Math.min(maxN, Math.max(1, (UI.plantQty && UI.plantQty[k]) || 1));
-          btns = `<div class="fm-qty"><button type="button" class="fm-btn small" data-act="plantq" data-crop="${k}" data-v="-1" data-max="${maxN}" ${q <= 1 ? "disabled" : ""}>－</button>
+          /* 麥田只種小麥：預設種滿 */
+          const q = Math.min(maxN, Math.max(1, (UI.plantQty && UI.plantQty[zone + ":" + k]) || (zone === "wheatfield" ? maxN : 1)));
+          btns = `<div class="fm-qty"><button type="button" class="fm-btn small" data-act="plantq" data-crop="${k}" data-v="-1" data-max="${maxN}" data-cur="${q}" ${q <= 1 ? "disabled" : ""}>－</button>
             <span class="fm-qty-n">${q} 格</span>
-            <button type="button" class="fm-btn small" data-act="plantq" data-crop="${k}" data-v="1" data-max="${maxN}" ${q >= maxN ? "disabled" : ""}>＋</button></div>
+            <button type="button" class="fm-btn small" data-act="plantq" data-crop="${k}" data-v="1" data-max="${maxN}" data-cur="${q}" ${q >= maxN ? "disabled" : ""}>＋</button></div>
             <button type="button" class="fm-btn small green" data-act="plant" data-crop="${k}" data-n="${q}" ${afford ? "" : "disabled"}>種 ${q} 格</button>`;
         } else {
           btns = `<button type="button" class="fm-btn small green" data-act="plant" data-crop="${k}" ${afford ? "" : "disabled"}>種這格</button>`;
@@ -5030,7 +5101,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
         if (cap > placed) extra = `<div class="fm-row r-r"><div class="fm-row-art">${BLD.sprinkler ? `<img src="${IMG}bld/sprinkler.webp" alt="">` : "💦"}</div><div><div class="fm-row-name">灑水器</div><div class="fm-row-sub">放在這格，旁邊 8 格種下去不用澆水（還能放 ${cap - placed} 台）</div></div><div class="fm-row-btns"><button type="button" class="fm-btn small blue" data-act="sprinkler">放這裡</button></div></div>`;
       }
 
-      const water = (zone === "field" || zone === "herb")
+      const water = (zone === "field" || zone === "herb" || zone === "wheatfield")
         ? `<div class="fm-note" style="margin:0 4px 8px">💧 水 <b>${S.water}</b> 滴・每種一格用 1 滴${isRainDay() ? "（今天下雨不用水）" : ""}</div>` : "";
 
       return sheetTop(title, `🌟 ${num(S.dew)}`) + `<div class="fm-panel">${water}<div class="fm-list">${extra}${rows || `<div class="fm-empty">還沒有可以種的</div>`}${lockedRows}</div></div>`;
@@ -5780,6 +5851,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
         香草園: "6 格小田，香草 1–3 小時就能收。",
         茶園: "種茶樹，明天長大，之後每 6 小時採一次茶葉。",
         溫室: "6 格，不用澆水，種咖啡、可可、火龍果、香草莢。",
+        麥田: "專門種小麥的田，不佔菜田的格子。先開 3×3（9 格），Lv20、Lv32 可以擴建到 4×4、5×5。種一格用 1 滴水，小麥拿去飼料機做飼料。",
         加工坊: "把小麥、牛奶這些材料做成麵粉、奶油，做更多料理。"
       }[zone] || "";
       html = modalBox(`開墾${zone}`,
@@ -5791,6 +5863,14 @@ const FARM_JS_VERSION = "2026-10-22 v1";
       const next = fieldNextExpand();
       html = modalBox(`擴建菜田`,
         `<p class="fm-note">從 ${S.field.size}×${S.field.size} 擴建成 <b>${next[1]}×${next[1]}</b>（${next[1] * next[1]} 格），原本種的不會動。</p><p class="fm-note">需要 <b>${num(next[2])} 星露</b>（你有 ${num(S.dew)}）</p>`,
+        `<button type="button" class="fm-btn green" data-act="confirm" data-v="yes" ${S.dew >= next[2] ? "" : "disabled"}>擴建</button>${close}`);
+    }
+
+    else if (m.name === "wheatexpand") {
+      const next = wheatNextExpand();
+      const n = S.wheatfield.size;
+      html = modalBox(`擴建麥田`,
+        `<p class="fm-note">從 ${n}×${n} 擴建成 <b>${next[1]}×${next[1]}</b>（${next[1] * next[1]} 格），原本種的不會動。</p><p class="fm-note">需要 <b>${num(next[2])} 星露</b>（你有 ${num(S.dew)}）</p>`,
         `<button type="button" class="fm-btn green" data-act="confirm" data-v="yes" ${S.dew >= next[2] ? "" : "disabled"}>擴建</button>${close}`);
     }
 
@@ -5817,7 +5897,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
         `<div class="fm-bar water" style="margin:6px 0 8px"><i style="width:${(S.water / cap.max) * 100}%"></i></div>
          <p class="fm-note">現在 <b>${S.water} / ${cap.max}</b> 滴（${cap.buckets} 桶 × 每桶 ${cap.per} 滴）。</p>
          <p class="fm-note">完成 <b>1 個習慣或任務</b>、<b>喝水達標</b>：裝 1 桶（${cap.per} 滴）。<b>專注每 15 分鐘</b>、<b>記一次喝水、一餐、一次運動</b>：1 滴。今天已經算了 ${credited} 次。${own("tool_copperwater") ? "銅澆水壺：1 滴水澆 2 格。" : ""}</p>
-         <p class="fm-note">菜田和香草園種一格用 1 滴；菇棚、果園、竹林、茶園、溫室不用水。${isRainDay() ? "<b>今天下雨，種什麼都不用水。</b>" : "大約每週會下一次雨。"}</p>`,
+         <p class="fm-note">菜田、香草園、麥田種一格用 1 滴；菇棚、果園、竹林、茶園、溫室不用水。${isRainDay() ? "<b>今天下雨，種什麼都不用水。</b>" : "大約每週會下一次雨。"}</p>`,
         `<button type="button" class="fm-btn blue" data-act="confirm" data-v="habits">去打卡習慣</button>${have("bucket") ? `<button type="button" class="fm-btn" data-act="useitem" data-item="bucket">用水桶（${have("bucket")}）</button>` : ""}${close}`);
     }
 
@@ -5918,6 +5998,15 @@ const FARM_JS_VERSION = "2026-10-22 v1";
       S.field.size = next[1];
       closeModal();
       toast(`🎉 菜田變成 ${next[1]}×${next[1]} 了`);
+      return after(true);
+    }
+
+    if (m.name === "wheatexpand") {
+      const next = wheatNextExpand();
+      if (!next || S.lv < next[0] || !spend(next[2])) return;
+      S.wheatfield.size = next[1];
+      closeModal();
+      toast(`🎉 麥田變成 ${next[1]}×${next[1]} 了`);
       return after(true);
     }
 
@@ -6331,7 +6420,7 @@ const FARM_JS_VERSION = "2026-10-22 v1";
           else if (typeof v === "object") walk(v);
         }
       };
-      walk(S.field); walk(S.herb); walk(S.green); walk(S.orchard); walk(S.logs); walk(S.tea); walk(S.bamboo);
+      walk(S.field); walk(S.herb); walk(S.green); walk(S.wheatfield); walk(S.orchard); walk(S.logs); walk(S.tea); walk(S.bamboo);
       walk(S.kitchen); walk(S.mach); walk(S.ranch.animals); walk(S.ranch.inc);
       for (const k of Object.keys(S.ranch.breed)) S.ranch.breed[k] -= shift;
       after();
