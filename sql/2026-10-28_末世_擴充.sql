@@ -11,6 +11,7 @@
 --   前世記憶碎片 12 片、每日轉盤、神秘商人限時貨架、翻倍卡、銅銀金補給箱
 --   生存天數里程碑、區域熟練度、基地等級、收藏組合、專注紀念碑
 --   倖存者日記（最近 7 天）
+--   生活小物 38 種、6 個系列（搜刮、抽獎時額外撿到）
 -- =========================================================
 
 alter table public.doom_state
@@ -465,6 +466,8 @@ begin
   if st.hp <= 0 then l := l - 5; end if;
   select count(*) into sets from jsonb_object_keys(st.rewards) k where k like 'set:%';
   l := l + 2 * sets;
+  select count(*) into sets from jsonb_object_keys(st.rewards) k where k like 'tset:%';
+  l := l + sets;
   return greatest(0, l);
 end;
 $function$;
@@ -777,6 +780,9 @@ declare
   e jsonb;
   applied jsonb;
   results jsonb := '[]'::jsonb;
+  trk jsonb := '[]'::jsonb;
+  tk jsonb;
+  v_first boolean;
 begin
   if u is null then raise exception '尚未登入'; end if;
   perform public.doom_ensure(u);
@@ -801,7 +807,13 @@ begin
 
   update public.doom_state set pity = v_pity where user_id = u;
   update public.doom_days set draws = draws + n where user_id = u and day = today;
-  return json_build_object('results', results, 'luck', lk, 'pity', v_pity, 'rewards', public.doom_rewards_check(u));
+  -- 🧸 生活小物
+  v_first := public.doom_trinket_first(u);
+  for i in 1..n loop
+    tk := public.doom_trinket(u, 'doom-draw-trk:' || gen_random_uuid(), null, v_first and i = 1);
+    if tk is not null then trk := trk || tk; end if;
+  end loop;
+  return json_build_object('results', results, 'luck', lk, 'pity', v_pity, 'trinkets', trk, 'rewards', public.doom_rewards_check(u));
 end;
 $function$;
 
@@ -951,6 +963,9 @@ declare
   sig jsonb := null;
   sg jsonb;
   label text;
+  trk jsonb := '[]'::jsonb;
+  tk jsonb;
+  v_first boolean;
 begin
   select result into v_old from public.doom_runs where user_id = u and session_id = p_session;
   if found then return v_old || jsonb_build_object('already', true); end if;
@@ -1072,6 +1087,16 @@ begin
     bonus := jsonb_build_object('tier', tier, 'id', e->>'id', 'src', 'loot', 'name', e->>'name', 'emoji', e->>'emoji', 'gains', applied);
   end if;
 
+  -- 🧸 生活小物：每 15 分鐘擲一次，一趟最多 4 個；今天第一次搜刮一定有
+  if cnt > 0 then
+    v_first := public.doom_trinket_first(u);
+    for i in 1..greatest(1, minutes / 15) loop
+      exit when jsonb_array_length(trk) >= 4;
+      tk := public.doom_trinket(u, 'doom-run:' || p_session || ':t' || i, z->>'id', v_first and i = 1);
+      if tk is not null then trk := trk || tk; end if;
+    end loop;
+  end if;
+
   -- 🏮 夜市廢墟：深夜 10 點到凌晨 4 點開始的專注
   hr := extract(hour from (s.started_at at time zone 'Asia/Taipei'))::integer;
   if (hr >= 22 or hr < 4) and not st.zones_unlocked ? 'night_market' then
@@ -1098,7 +1123,7 @@ begin
   res := jsonb_build_object('session', p_session, 'zone', z->>'id', 'zone_name', z->>'name', 'zone_emoji', z->>'emoji',
     'minutes', minutes, 'drops', drops, 'bonus', bonus, 'downgraded', downgraded, 'rare', n_rare,
     'mastery', jsonb_build_object('lv', mlv, 'minutes', mins + minutes), 'double', used_double,
-    'unlocked', unlocked, 'signal', sig);
+    'unlocked', unlocked, 'signal', sig, 'trinkets', trk);
   insert into public.doom_runs (user_id, session_id, zone, minutes, result) values (u, p_session, z->>'id', minutes, res);
   perform public.doom_log_add(u, 'run', null,
     '在' || (z->>'name') || '專注 ' || minutes || ' 分鐘，帶回 ' || jsonb_array_length(drops) || ' 樣' || case when completed then '，平安歸來' else '' end || '。');
@@ -1384,3 +1409,142 @@ $function$;
 grant execute on function public.doom_status() to authenticated;
 
 revoke all on function public.doom_seen(uuid, text) from public, authenticated, anon;
+
+
+-- =========================================================
+-- 🧸 生活小物：搜刮、抽獎時有機會額外撿到的收藏（不影響原本的掉落）
+--   每次抽獎 20%；專注搜刮每 15 分鐘擲一次 20%（一趟最多 4 個）；每天第一次搜刮一定有
+--   重複的換士氣 +2、星屑 +3；集滿一個系列送補給箱、幸運永久 +1
+-- =========================================================
+alter table public.doom_state add column if not exists trinkets jsonb not null default '{}'::jsonb;
+alter table public.doom_days add column if not exists trinket_first boolean not null default false;
+
+create or replace function public.doom_trinket_cat()
+returns jsonb language sql immutable
+as $function$
+select $json${
+"series": [
+  {"id":"snack","name":"零食櫃","emoji":"🍬","zones":["market","night_market","subway"],"gain":{"box_silver":1}},
+  {"id":"can","name":"罐頭架","emoji":"🥫","zones":["bunker","military","market"],"gain":{"box_silver":1}},
+  {"id":"memory","name":"回憶小物","emoji":"🧸","zones":["library","subway","rooftop"],"gain":{"box_gold":1}},
+  {"id":"tool","name":"生存工具","emoji":"🔦","zones":["hardware","military","bunker"],"gain":{"box_silver":1}},
+  {"id":"fun","name":"舊時代娛樂","emoji":"🎮","zones":["library","night_market","subway"],"gain":{"box_gold":1}},
+  {"id":"rare","name":"稀有珍品","emoji":"🌟","zones":["observatory","rooftop"],"gain":{"box_gold":2,"wish_limited":1}}
+],
+"items": [
+  {"id":"choco","s":"snack","tier":"c","name":"巧克力棒","emoji":"🍫","text":"融化過又凝固，還是很好吃。"},
+  {"id":"chips","s":"snack","tier":"c","name":"洋芋片","emoji":"🥔","text":"袋子還鼓鼓的，裡面有空氣跟希望。"},
+  {"id":"caramel","s":"snack","tier":"c","name":"牛奶糖","emoji":"🍬","text":"小時候的味道。"},
+  {"id":"cracker","s":"snack","tier":"c","name":"蘇打餅乾","emoji":"🍘","text":"配什麼都可以。"},
+  {"id":"soda","s":"snack","tier":"c","name":"汽水","emoji":"🥤","text":"打開的那聲「嘶」，好久沒聽到了。"},
+  {"id":"jelly","s":"snack","tier":"r","name":"果凍","emoji":"🍮","text":"五顏六色，看了心情就好。"},
+  {"id":"eggroll","s":"snack","tier":"r","name":"蛋捲","emoji":"🥠","text":"鐵盒裡排得整整齊齊。"},
+  {"id":"lollipop","s":"snack","tier":"r","name":"棒棒糖","emoji":"🍭","text":"大到可以吃一個禮拜。"},
+  {"id":"tuna","s":"can","tier":"c","name":"鮪魚罐頭","emoji":"🐟","text":"拉環一拉就開，太方便了。"},
+  {"id":"corncan","s":"can","tier":"c","name":"玉米罐","emoji":"🌽","text":"甜甜的玉米粒。"},
+  {"id":"congee","s":"can","tier":"c","name":"八寶粥","emoji":"🥣","text":"還附了一支小湯匙。"},
+  {"id":"peach","s":"can","tier":"r","name":"水蜜桃罐頭","emoji":"🍑","text":"糖水是最好喝的部分。"},
+  {"id":"spam","s":"can","tier":"r","name":"午餐肉","emoji":"🥩","text":"煎一下香到整個基地都聞得到。"},
+  {"id":"goldcan","s":"can","tier":"s","name":"黃金罐頭","emoji":"✨","text":"沒人知道裡面裝什麼，但它在發光。"},
+  {"id":"postcard","s":"memory","tier":"c","name":"明信片","emoji":"💌","text":"寄不出去的信，被綁成一疊。"},
+  {"id":"hairclip","s":"memory","tier":"c","name":"髮夾","emoji":"🌸","text":"某個人很喜歡的小東西。"},
+  {"id":"teddy","s":"memory","tier":"r","name":"泰迪熊","emoji":"🧸","text":"耳朵補過好幾次。"},
+  {"id":"watch","s":"memory","tier":"r","name":"舊手錶","emoji":"⌚","text":"停在某一天的某個時間。"},
+  {"id":"photo","s":"memory","tier":"l","name":"全家福","emoji":"🖼️","text":"玻璃裂了，笑容還在。"},
+  {"id":"musicbox","s":"memory","tier":"x","name":"音樂盒","emoji":"🎶","text":"轉一轉，還會唱歌。"},
+  {"id":"torch","s":"tool","tier":"c","name":"手電筒","emoji":"🔦","text":"晚上最可靠的朋友。"},
+  {"id":"lighter","s":"tool","tier":"c","name":"打火機","emoji":"🔥","text":"一打就著。"},
+  {"id":"whistle","s":"tool","tier":"c","name":"哨子","emoji":"📯","text":"走散的時候吹三聲。"},
+  {"id":"rope","s":"tool","tier":"c","name":"繩索","emoji":"🪢","text":"什麼都綁得住。"},
+  {"id":"knife","s":"tool","tier":"r","name":"瑞士刀","emoji":"🔪","text":"一把抵十把。"},
+  {"id":"compass","s":"tool","tier":"l","name":"指南針","emoji":"🧭","text":"指針一直指著回家的方向。"},
+  {"id":"cards","s":"fun","tier":"c","name":"撲克牌","emoji":"🃏","text":"少了一張紅心 7。"},
+  {"id":"comic","s":"fun","tier":"c","name":"漫畫書","emoji":"📕","text":"停在最精彩的那一集。"},
+  {"id":"marbles","s":"fun","tier":"c","name":"彈珠","emoji":"🔮","text":"一袋玻璃做的星球。"},
+  {"id":"cassette","s":"fun","tier":"r","name":"卡帶","emoji":"📼","text":"上面手寫著「最愛的歌」。"},
+  {"id":"cube","s":"fun","tier":"r","name":"魔術方塊","emoji":"🧊","text":"只差最後一層。"},
+  {"id":"gameboy","s":"fun","tier":"x","name":"掌上遊戲機","emoji":"🎮","text":"螢幕裂了，但還能玩。"},
+  {"id":"candyjar","s":"rare","tier":"l","name":"彩虹糖罐","emoji":"🍬","text":"整罐都是彩色的。"},
+  {"id":"cake","s":"rare","tier":"x","name":"生日蛋糕","emoji":"🎂","text":"完整的一個，還插著一根蠟燭。"},
+  {"id":"ring","s":"rare","tier":"x","name":"戒指","emoji":"💍","text":"絨布盒裡，一個約定。"},
+  {"id":"pocketwatch","s":"rare","tier":"s","name":"金色懷錶","emoji":"⏱️","text":"秒針又開始走了。"},
+  {"id":"starbottle","s":"rare","tier":"s","name":"星星玻璃瓶","emoji":"🌟","text":"一瓶摺好的紙星星，會發光。"},
+  {"id":"snowglobe","s":"rare","tier":"s","name":"雪花球","emoji":"❄️","text":"裡面的小鎮，永遠在下雪。"}
+]}$json$::jsonb
+$function$;
+grant execute on function public.doom_trinket_cat() to authenticated;
+
+-- 擲一個小物：p_force 為 true 時一定給；回傳撿到的東西，沒撿到回傳 null
+create or replace function public.doom_trinket(u uuid, p_src text, p_zone text, p_force boolean default false)
+returns jsonb language plpgsql security definer set search_path to 'public'
+as $function$
+declare
+  cat jsonb := public.doom_trinket_cat();
+  lk integer := public.doom_luck(u);
+  x double precision;
+  tier text;
+  e jsonb := null;
+  have integer;
+  applied jsonb;
+  ser jsonb;
+  key text;
+  st public.doom_state%rowtype;
+  done jsonb := null;
+begin
+  if not p_force and random() >= 0.20 then return null; end if;
+  x := random() * 100;
+  tier := case
+    when x < 1.5 + lk * 0.05 then 's'
+    when x < 5 + lk * 0.15 then 'x'
+    when x < 13 + lk * 0.3 then 'l'
+    when x < 40 + lk * 0.5 then 'r'
+    else 'c' end;
+  -- 區域偏好：60% 先從這個區域常見的系列挑
+  if p_zone is not null and random() < 0.6 then
+    select el into e from jsonb_array_elements(cat->'items') el
+      where el->>'tier' = tier and exists (select 1 from jsonb_array_elements(cat->'series') s
+        where s->>'id' = el->>'s' and s->'zones' ? p_zone)
+      order by random() limit 1;
+  end if;
+  if e is null then
+    select el into e from jsonb_array_elements(cat->'items') el where el->>'tier' = tier order by random() limit 1;
+  end if;
+  if e is null then return null; end if;
+
+  select * into st from public.doom_state where user_id = u for update;
+  have := coalesce((st.trinkets->>(e->>'id'))::integer, 0);
+  update public.doom_state set trinkets = trinkets || jsonb_build_object(e->>'id', have + 1) where user_id = u;
+  applied := public.doom_apply(u, case when have > 0 then '{"morale":2,"stardust":3}' else '{"morale":3}' end::jsonb, p_src || ':trk');
+  if tier in ('x', 's') then perform public.doom_log_add(u, 'draw', tier, '撿到了生活小物：' || (e->>'name') || '！'); end if;
+
+  -- 這個系列集滿了沒
+  ser := (select s from jsonb_array_elements(cat->'series') s where s->>'id' = e->>'s');
+  key := 'tset:' || (e->>'s');
+  select * into st from public.doom_state where user_id = u;
+  if not st.rewards ? key and not exists (select 1 from jsonb_array_elements(cat->'items') it
+      where it->>'s' = e->>'s' and not st.trinkets ? (it->>'id')) then
+    update public.doom_state set rewards = rewards || jsonb_build_object(key, public.app_today()) where user_id = u;
+    done := jsonb_build_object('kind', 'set', 'title', (ser->>'emoji') || ' 小物系列集滿：' || (ser->>'name') || '（幸運永久 +1）',
+      'gains', public.doom_apply(u, ser->'gain', 'doom-rw:' || key));
+    perform public.doom_log_add(u, 'draw', 'x', '集滿了生活小物「' || (ser->>'name') || '」！');
+  end if;
+
+  return jsonb_build_object('id', e->>'id', 'name', e->>'name', 'emoji', e->>'emoji', 'tier', tier,
+    'new', have = 0, 'count', have + 1, 'gains', applied, 'set', done);
+end;
+$function$;
+revoke all on function public.doom_trinket(uuid, text, text, boolean) from public, authenticated, anon;
+
+-- 今天第一次搜刮：回傳 true 並記下來
+create or replace function public.doom_trinket_first(u uuid)
+returns boolean language plpgsql security definer set search_path to 'public'
+as $function$
+declare n integer;
+begin
+  update public.doom_days set trinket_first = true
+    where user_id = u and day = public.app_today() and not trinket_first;
+  get diagnostics n = row_count;
+  return n > 0;
+end;
+$function$;
+revoke all on function public.doom_trinket_first(uuid) from public, authenticated, anon;

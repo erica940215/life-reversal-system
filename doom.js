@@ -11,7 +11,7 @@
 
 (function () {
 
-  const DOOM_JS_VERSION = "2026-10-28 v3";
+  const DOOM_JS_VERSION = "2026-10-28 v4";
   const IMG = "img/doom/";
 
   const DM = { cat: null, ex: null, diary: null, zoneUnlocked: [], zoneMastery: {}, s: null, error: null, busy: false, tab: "today",
@@ -100,6 +100,10 @@
       if (!DM.zones) {
         const z = await db.rpc("doom_zones");
         if (!z.error) DM.zones = z.data;
+      }
+      if (!DM.trk) {
+        const t = await db.rpc("doom_trinket_cat");
+        if (!t.error && t.data) DM.trk = t.data;
       }
       await retryPending();
       const { data, error } = await db.rpc("doom_status");
@@ -282,7 +286,7 @@
           return `<div class="dm-card tier-${r.tier}" style="animation-delay:${i * 110}ms">
             <span class="dm-tier">${tierName(r.tier)}</span>${ic("loot", r.id, e.emoji, "big")}
             <b>${esc(e.name)}</b><small>${esc(gainsText(r.gains))}</small></div>`;
-        }).join("")}</div>`;
+        }).join("")}</div>${trkHtml(DM.revealTrk, DM.reveal.length * 110)}`;
     }
     return `<div class="card dm-draw">
       <div class="dm-draw-h">${ic("ui", "scav", "🎟️", "big")}<div><b>搜刮券 ${st.scav} 張</b>
@@ -361,7 +365,27 @@
       got += a; all += g.items.length;
       return `<details class="dm-stash"${a ? " open" : ""}><summary>${esc(g.name)} <b>${a}/${g.items.length}</b></summary><div class="dm-grid">${g.items.map(x => cell(g.kind, x)).join("")}</div></details>`;
     }).join("");
-    return `<div class="card"><h3>🎒 物資收藏 ${got}/${all}</h3><p class="dm-note">抽到、搜刮到的東西都會記在這裡，數字是拿到過幾次。</p>${body}</div>`;
+    return trinketBookHtml() + `<div class="card"><h3>🎒 物資收藏 ${got}/${all}</h3><p class="dm-note">抽到、搜刮到的東西都會記在這裡，數字是拿到過幾次。</p>${body}</div>`;
+  }
+
+  /* 🧸 生活小物收藏 */
+  function trinketBookHtml() {
+    if (!DM.trk) return "";
+    const st = DM.s.state, have = st.trinkets || {}, rw = st.rewards || {};
+    const order = ["c", "r", "l", "x", "s"];
+    let got = 0;
+    const body = DM.trk.series.map(se => {
+      const items = DM.trk.items.filter(x => x.s === se.id).sort((a, b) => order.indexOf(a.tier) - order.indexOf(b.tier));
+      const a = items.filter(x => have[x.id]).length;
+      got += a;
+      const done = rw["tset:" + se.id];
+      const cells = items.map(x => have[x.id]
+        ? `<div class="dm-book tier-${x.tier}" title="${esc(x.text)}">${ic("trinket", x.id, x.emoji, "big")}<b>${esc(x.name)}</b><small>${tierName(x.tier)}・×${have[x.id]}</small></div>`
+        : `<div class="dm-book off tier-${x.tier}"><span class="dm-emo big">❔</span><b>？？？</b><small>${tierName(x.tier)}</small></div>`).join("");
+      return `<details class="dm-stash${done ? " done" : ""}"${a ? " open" : ""}><summary>${ic("ui", "set_" + se.id, se.emoji, "sm")} ${esc(se.name)} <b>${a}/${items.length}</b>${done ? " ✅" : ""}</summary><div class="dm-grid">${cells}</div></details>`;
+    }).join("");
+    return `<div class="card"><h3>🧸 生活小物 ${got}/${DM.trk.items.length}</h3>
+      <p class="dm-note">搜刮、抽獎時有機會順手撿到，每天第一次搜刮一定有一個。集滿一個系列送補給箱、幸運永久 +1；重複的換士氣和星屑。</p>${body}</div>`;
   }
 
   function bookHtml() {
@@ -411,7 +435,7 @@
     const el = e.target.closest("[data-dm]");
     if (!el || el.disabled) return;
     const act = el.dataset.dm;
-    if (act === "tab") { DM.tab = el.dataset.v; if (DM.tab !== "draw") DM.reveal = null; render(); return; }
+    if (act === "tab") { DM.tab = el.dataset.v; if (DM.tab !== "draw") DM.reveal = null; DM.revealTrk = null; render(); return; }
     if (act === "reload") { DM.error = null; render(); load(); return; }
     if (act === "newsok") { DM.news = null; render(); return; }
     if (act === "report") { call("doom_report_seen", {}, () => {}); return; }
@@ -428,9 +452,10 @@
     }
     if (act === "draw") {
       const n = Number(el.dataset.v);
-      DM.reveal = null;
+      DM.reveal = null; DM.revealTrk = null;
       call("doom_draw", { p_n: n }, d => {
         DM.reveal = d.results;
+        DM.revealTrk = d.trinkets || [];
         sfxTier(bestTier(d.results));
         const best = d.results.some(r => r.tier === "s") ? "s" : d.results.some(r => r.tier === "x") ? "x" : d.results.some(r => r.tier === "l") ? "l" : "";
         vibrate(best ? [30, 40, 60] : 15);
@@ -471,7 +496,7 @@
     }
     if (act === "shop") { call("doom_shop_buy", { p_i: Number(el.dataset.v) }, d => { sfx("coin"); toast(`🛒 買到 ${d.name}：${gainsText(d.gains)}`); }); return; }
     if (act === "box") {
-      DM.reveal = null;
+      DM.reveal = null; DM.revealTrk = null;
       call("doom_box_open", { p_kind: el.dataset.v }, d => {
         DM.reveal = d.results; const b = bestTier(d.results); sfxTier(b); vibrate(b !== "c" ? [30, 40, 60] : 20);
         setTimeout(() => { const c = document.querySelector("#dm-root .dm-banner, #dm-root .dm-cards"); if (c) c.scrollIntoView({ behavior: "smooth", block: "center" }); }, 60);
@@ -479,7 +504,7 @@
       return;
     }
     if (act === "identify") {
-      DM.reveal = null;
+      DM.reveal = null; DM.revealTrk = null;
       call("doom_identify", { p_uid: el.dataset.v }, d => {
         DM.reveal = [d]; sfxTier(d.tier); vibrate(20);
         toast(`❓ 鑑定結果：${tierName(d.tier)}・${d.name}`);
@@ -764,6 +789,7 @@
     r.drops = [].concat(...list.map(x => x.drops || []));
     r.rare = list.reduce((a, x) => a + (x.rare || 0), 0);
     r.bonus = list.map(x => x.bonus).filter(Boolean).pop() || null;
+    r.trinkets = [].concat(...list.map(x => x.trinkets || []));
     r.rewards = [].concat(...list.map(x => x.rewards || []));
     r.unlocked = list.map(x => x.unlocked).filter(Boolean)[0] || null;
     r.signal = list.map(x => x.signal).filter(Boolean)[0] || null;
@@ -808,6 +834,15 @@
     setInterval(() => { try { ensureZones(); focusUi(false); } catch (_) {} }, 1000);
   }
 
+  /* 🧸 生活小物：開箱時另外一排 */
+  function trkHtml(list, delay = 0) {
+    if (!list || !list.length) return "";
+    const cards = list.map((t, i) => `<div class="dm-card tier-${t.tier}" style="animation-delay:${delay + i * 160}ms"><span class="dm-tier">${tierName(t.tier)}</span>${t.new ? `<span class="dm-label">NEW</span>` : ""}
+      ${ic("trinket", t.id, t.emoji, "big")}<b>${esc(t.name)}</b><small>${t.new ? "第一次撿到！" : `第 ${t.count} 個`}・${esc(gainsText(t.gains))}</small></div>`).join("");
+    const sets = list.filter(t => t.set).map(t => `<div class="dm-rv-news">${esc(t.set.title)}${gainsHtml(t.set.gains)}</div>`).join("");
+    return `<div class="dm-trk"><div class="dm-trk-h">🧸 順手撿到的小物</div><div class="dm-cards">${cards}</div>${sets}</div>`;
+  }
+
   /* 開箱畫面 */
   function dropCard(d, i) {
     const cls = d.kind === "danger" ? "danger" : "tier-" + (d.tier || "c");
@@ -846,6 +881,7 @@
       ${(r.rewards || []).map(x => `<div class="dm-rv-news">${esc(x.title)}${gainsHtml(x.gains)}</div>`).join("")}
       ${banner ? `<div class="dm-banner tier-${best}">${banner}</div>` : ""}
       ${drops.length ? `<div class="dm-cards">${drops.map(dropCard).join("")}</div>` : `<p class="dm-note">這次太短，什麼都沒撿到。專注滿 5 分鐘才會開始撿東西。</p>`}
+      ${trkHtml(r.trinkets, drops.length * 160 + 100)}
       ${r.bonus ? `<div class="dm-rv-bonus" style="animation-delay:${drops.length * 160 + 200}ms">🎁 平安歸來寶箱${dropCard(Object.assign({ kind: "item" }, r.bonus), 0)}</div>` : ""}
       ${all.length ? `<div class="dm-rv-sum"><small>這趟一共</small>${gainsHtml(mergeGains(all))}</div>` : ""}
       <div class="dm-opts"><button type="button" class="btn dm-btn" data-close>收進基地</button>
@@ -1288,6 +1324,8 @@
       .dm-book { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 3px; padding: 10px 6px; border-radius: 12px; background: rgba(127,127,127,.08); border: 1px solid var(--tc, transparent); }
       .dm-book b { font-size: 13px; } .dm-book small { font-size: 11px; opacity: .75; }
       .dm-book.off { opacity: .45; }
+      .dm-stash.done summary { color: #f9a825; }
+      .dm-trk { margin-top: 10px; } .dm-trk-h { font-weight: 700; margin: 4px 0 6px; }
       .dm-stash { margin-top: 8px; } .dm-stash summary { cursor: pointer; font-weight: 700; padding: 6px 0; } .dm-stash summary b { opacity: .7; font-weight: 600; margin-left: 4px; }
       .dm-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center; margin: 8px 0; }
       .dm-stats b { display: block; font-size: 20px; } .dm-stats small { font-size: 11px; opacity: .7; }
