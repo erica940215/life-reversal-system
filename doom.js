@@ -11,7 +11,7 @@
 
 (function () {
 
-  const DOOM_JS_VERSION = "2026-10-28 v4";
+  const DOOM_JS_VERSION = "2026-10-30 v5";
   const IMG = "img/doom/";
 
   const DM = { cat: null, ex: null, diary: null, zoneUnlocked: [], zoneMastery: {}, s: null, error: null, busy: false, tab: "today",
@@ -104,6 +104,7 @@
         if (!z.error) DM.zones = z.data;
       }
       if (!DM.city) loadCity();
+      if (!DM.pan) loadPantry();
       if (!DM.trk) {
         const t = await db.rpc("doom_trinket_cat");
         if (!t.error && t.data) DM.trk = t.data;
@@ -289,7 +290,7 @@
           return `<div class="dm-card tier-${r.tier}" style="animation-delay:${i * 110}ms">
             <span class="dm-tier">${tierName(r.tier)}</span>${ic("loot", r.id, e.emoji, "big")}
             <b>${esc(e.name)}</b><small>${esc(gainsText(r.gains))}</small></div>`;
-        }).join("")}</div>${trkHtml(DM.revealTrk, DM.reveal.length * 110)}`;
+        }).join("")}</div>${trkHtml(DM.revealTrk, DM.reveal.length * 110)}${foodDropHtml(DM.revealFood, DM.reveal.length * 110 + 200)}`;
     }
     return `<div class="card dm-draw">
       <div class="dm-draw-h">${ic("ui", "scav", "🎟️", "big")}<div><b>搜刮券 ${st.scav} 張</b>
@@ -423,9 +424,9 @@
     if (DM.error) { root.innerHTML = `<div class="card"><p>載入失敗：${esc(DM.error)}</p><button type="button" class="btn" data-dm="reload">再試一次</button></div>`; return; }
     if (!DM.s || !DM.cat) { root.innerHTML = `<div class="card"><p>☢️ 正在連線到序光電台…</p></div>`; return; }
 
-    const tabs = [["today", "📻 今日"], ["draw", `🎟️ 搜刮${DM.s.state.scav ? `<i class="dm-dot">${DM.s.state.scav}</i>` : ""}`], ["base", "🏚️ 基地"], ["chapter", "📖 章節"], ["city", `🏙️ 城市${cityDot()}`], ["book", "🔮 圖鑑"]];
+    const tabs = [["today", "📻 今日"], ["draw", `🎟️ 搜刮${DM.s.state.scav ? `<i class="dm-dot">${DM.s.state.scav}</i>` : ""}`], ["base", "🏚️ 基地"], ["chapter", "📖 章節"], ["city", `🏙️ 城市${cityDot()}`], ["food", `🍱 食物${foodDot()}`], ["book", "🔮 圖鑑"]];
     const body = DM.tab === "draw" ? drawHtml() : DM.tab === "base" ? baseHtml() : DM.tab === "chapter" ? chapterHtml()
-      : DM.tab === "book" ? bookHtml() : DM.tab === "city" ? cityHtml() : todayHtml();
+      : DM.tab === "book" ? bookHtml() : DM.tab === "city" ? cityHtml() : DM.tab === "food" ? foodHtml() : todayHtml();
     root.innerHTML = headHtml() + reportHtml() + newsHtml() +
       `<div class="dm-tabs">${tabs.map(([k, n]) => `<button type="button" class="${DM.tab === k ? "on" : ""}" data-dm="tab" data-v="${k}">${n}</button>`).join("")}</div>` +
       body;
@@ -438,6 +439,13 @@
     const el = e.target.closest("[data-dm]");
     if (!el || el.disabled) return;
     const act = el.dataset.dm;
+    if (act === "fcat") { DM.fsec = el.dataset.v; render(); return; }
+    if (act === "eat") {
+      const f = (document.getElementById("dm-meal-food") || {}).value || "", dr = (document.getElementById("dm-meal-drink") || {}).value || "";
+      if (!f && !dr) { toast("至少選一樣"); return; }
+      call("doom_meal_choose", { p_food: f, p_drink: dr }, async d => { sfx("coin"); toast(`🍽️ 吃飽了！${gainsText(d.gains)}${d.luck ? `　今天幸運 +${d.luck}` : ""}`); await loadPantry(); });
+      return;
+    }
     if (act === "csec") { DM.csec = el.dataset.v; render(); return; }
     if (act === "cbuild") { const p = cityCat().projects.find(x => x.id === el.dataset.v); cityCall("doom_build_project", { p_id: el.dataset.v }, d => { sfx("level"); toast(`🏗️ ${p ? p.name : ""}${d.lv >= 3 ? "完工了！" : `蓋到第 ${d.lv} 階段`}`); }); return; }
     if (act === "craft") { const n = Number(el.dataset.n) || 1; cityCall("doom_craft", { p_id: el.dataset.v, p_n: n }, d => { sfx("coin"); toast(`🛠️ 做了 ${d.n} 個：${gainsText(d.gains)}`); }); return; }
@@ -450,7 +458,7 @@
       return;
     }
     if (act === "expclaim") { cityCall("doom_exp_claim", { p_id: Number(el.dataset.v) }, d => { sfx("level"); DM.expResult = d; }); return; }
-    if (act === "tab") { DM.tab = el.dataset.v; if (DM.tab !== "draw") DM.reveal = null; DM.revealTrk = null; render(); return; }
+    if (act === "tab") { DM.tab = el.dataset.v; if (DM.tab !== "draw") DM.reveal = null; DM.revealTrk = null; DM.revealFood = null; render(); return; }
     if (act === "reload") { DM.error = null; render(); load(); return; }
     if (act === "newsok") { DM.news = null; render(); return; }
     if (act === "report") { call("doom_report_seen", {}, () => {}); return; }
@@ -467,10 +475,11 @@
     }
     if (act === "draw") {
       const n = Number(el.dataset.v);
-      DM.reveal = null; DM.revealTrk = null;
+      DM.reveal = null; DM.revealTrk = null; DM.revealFood = null;
       call("doom_draw", { p_n: n }, d => {
         DM.reveal = d.results;
         DM.revealTrk = d.trinkets || [];
+        DM.revealFood = d.pantry || [];
         sfxTier(bestTier(d.results));
         const best = d.results.some(r => r.tier === "s") ? "s" : d.results.some(r => r.tier === "x") ? "x" : d.results.some(r => r.tier === "l") ? "l" : "";
         vibrate(best ? [30, 40, 60] : 15);
@@ -511,7 +520,7 @@
     }
     if (act === "shop") { call("doom_shop_buy", { p_i: Number(el.dataset.v) }, d => { sfx("coin"); toast(`🛒 買到 ${d.name}：${gainsText(d.gains)}`); }); return; }
     if (act === "box") {
-      DM.reveal = null; DM.revealTrk = null;
+      DM.reveal = null; DM.revealTrk = null; DM.revealFood = null;
       call("doom_box_open", { p_kind: el.dataset.v }, d => {
         DM.reveal = d.results; const b = bestTier(d.results); sfxTier(b); vibrate(b !== "c" ? [30, 40, 60] : 20);
         setTimeout(() => { const c = document.querySelector("#dm-root .dm-banner, #dm-root .dm-cards"); if (c) c.scrollIntoView({ behavior: "smooth", block: "center" }); }, 60);
@@ -519,7 +528,7 @@
       return;
     }
     if (act === "identify") {
-      DM.reveal = null; DM.revealTrk = null;
+      DM.reveal = null; DM.revealTrk = null; DM.revealFood = null;
       call("doom_identify", { p_uid: el.dataset.v }, d => {
         DM.reveal = [d]; sfxTier(d.tier); vibrate(20);
         toast(`❓ 鑑定結果：${tierName(d.tier)}・${d.name}`);
@@ -806,6 +815,7 @@
     r.bonus = list.map(x => x.bonus).filter(Boolean).pop() || null;
     r.trinkets = [].concat(...list.map(x => x.trinkets || []));
     r.rescued = list.reduce((a, x) => a + (x.rescued || 0), 0);
+    r.pantry = [].concat(...list.map(x => x.pantry || []));
     r.rewards = [].concat(...list.map(x => x.rewards || []));
     r.unlocked = list.map(x => x.unlocked).filter(Boolean)[0] || null;
     r.signal = list.map(x => x.signal).filter(Boolean)[0] || null;
@@ -899,6 +909,7 @@
       ${banner ? `<div class="dm-banner tier-${best}">${banner}</div>` : ""}
       ${drops.length ? `<div class="dm-cards">${drops.map(dropCard).join("")}</div>` : `<p class="dm-note">這次太短，什麼都沒撿到。專注滿 5 分鐘才會開始撿東西。</p>`}
       ${trkHtml(r.trinkets, drops.length * 160 + 100)}
+      ${foodDropHtml(r.pantry, drops.length * 160 + 150)}
       ${r.bonus ? `<div class="dm-rv-bonus" style="animation-delay:${drops.length * 160 + 200}ms">🎁 平安歸來寶箱${dropCard(Object.assign({ kind: "item" }, r.bonus), 0)}</div>` : ""}
       ${all.length ? `<div class="dm-rv-sum"><small>這趟一共</small>${gainsHtml(mergeGains(all))}</div>` : ""}
       <div class="dm-opts"><button type="button" class="btn dm-btn" data-close>收進基地</button>
@@ -1237,6 +1248,75 @@
   }
 
   /* =========================================================
+     🍱 食物櫃：收集美食，每天選一餐
+  ========================================================= */
+  async function loadPantry() {
+    if (!hasDb()) return;
+    try {
+      if (!DM.fcat) { const c = await db.rpc("doom_food_cat"); if (c.error) { DM.foodErr = /doom_food_cat|PGRST202|42883/.test(c.error.message || "") ? "setup" : c.error.message; return; } DM.fcat = c.data; }
+      const { data, error } = await db.rpc("doom_pantry_status");
+      if (error) { DM.foodErr = error.message; return; }
+      DM.foodErr = null; DM.pan = data;
+      (data.auto || []).forEach(m => {
+        const n = [foodInfo(m.food), foodInfo(m.drink)].filter(Boolean).map(x => x.emoji + x.name).join("＋");
+        DM.news = (DM.news || []).concat([{ icon: "🍽️", title: `${m.day.slice(5).replace("-", "/")} 沒選，系統幫你吃了 ${n}`, body: "", gains: m.gains }]);
+      });
+    } catch (e) { DM.foodErr = e.message || String(e); }
+  }
+  const foodInfo = id => id && DM.fcat ? DM.fcat.items.find(x => x.id === id) : null;
+  function foodDot() { return DM.pan && !DM.pan.today && Object.keys(DM.pan.pantry || {}).length ? `<i class="dm-dot">!</i>` : ""; }
+
+  function foodDropHtml(list, delay = 0) {
+    if (!list || !list.length) return "";
+    return `<div class="dm-trk"><div class="dm-trk-h">🍱 撿到的美食</div><div class="dm-cards">${list.map((t, i) => `<div class="dm-card tier-${t.tier}" style="animation-delay:${delay + i * 120}ms"><span class="dm-tier">${tierName(t.tier)}</span>${t.new ? `<span class="dm-label">NEW</span>` : ""}
+      ${ic("pantry", t.id, t.emoji, "big")}<b>${esc(t.name)}</b></div>`).join("")}</div></div>`;
+  }
+
+  function foodHtml() {
+    if (DM.foodErr === "setup") return `<div class="card"><p>⚠️ 美食的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-10-30_末世_美食.sql</b>。</p></div>`;
+    if (DM.foodErr) return `<div class="card"><p>載入失敗：${esc(DM.foodErr)}</p></div>`;
+    if (!DM.pan || !DM.fcat) { loadPantry().then(render); return `<div class="card"><p>🍱 打開食物櫃中…</p></div>`; }
+    const cat = DM.fcat, pan = DM.pan.pantry || {}, eaten = DM.pan.eaten || {}, today = DM.pan.today;
+    const eff = t => cat.effects[t];
+    const effText = t => { const e = eff(t); return `🔥+${e.morale}${e.hp ? ` 🛡️+${e.hp}` : ""}${e.luck ? ` 🍀+${e.luck}` : ""}`; };
+    const owned = cat.items.filter(x => pan[x.id] > 0);
+    const opt = k => owned.filter(x => x.k === k).sort((a, b) => "crlxs".indexOf(a.t) - "crlxs".indexOf(b.t))
+      .map(x => `<option value="${x.id}">${x.emoji} ${esc(x.name)} ×${pan[x.id]}（${tierName(x.t)}・${effText(x.t)}）</option>`).join("");
+
+    let meal;
+    if (today && !today.none) {
+      const f = foodInfo(today.food), d = foodInfo(today.drink);
+      meal = `<div class="dm-meal done">${f ? ic("pantry", f.id, f.emoji, "big") : ""}${d ? ic("pantry", d.id, d.emoji, "big") : ""}
+        <div><b>今天吃了 ${[f, d].filter(Boolean).map(x => esc(x.name)).join(" ＋ ")}</b>${gainsHtml(today.gains)}${today.luck ? `<small>🍀 今天幸運 +${today.luck}</small>` : ""}</div></div>`;
+    } else if (!owned.length) {
+      meal = `<p class="dm-note">食物櫃是空的。專注搜刮、抽獎都會撿到美食。</p>`;
+    } else {
+      meal = `<div class="dm-meal-pick">
+        <label>🍽️ 食物 <select id="dm-meal-food"><option value="">（不吃）</option>${opt("food")}</select></label>
+        <label>🥤 飲料 <select id="dm-meal-drink"><option value="">（不喝）</option>${opt("drink")}</select></label>
+        <button type="button" class="btn dm-btn" data-dm="eat" ${DM.busy ? "disabled" : ""}>吃這一餐</button></div>
+        <p class="dm-note">有吃有喝再加士氣 2。稀有度越高越好吃：精良以上會加基地，稀有以上會加今天的幸運。今天沒選的話，明天系統會從「普通、精良」裡幫你挑最多的吃掉，稀有的不會動。</p>`;
+    }
+
+    const sec = DM.fsec || "all";
+    const cats = cat.cats.map(c => {
+      const items = cat.items.filter(x => x.c === c.id);
+      const got = items.filter(x => pan[x.id] > 0 || eaten[x.id]).length;
+      return { c, items, got };
+    });
+    const totalGot = cats.reduce((a, x) => a + x.got, 0);
+    const chips = `<div class="dm-fchips"><button type="button" class="${sec === "all" ? "on" : ""}" data-dm="fcat" data-v="all">全部 ${totalGot}/${cat.items.length}</button>${cats.map(x => `<button type="button" class="${sec === x.c.id ? "on" : ""}" data-dm="fcat" data-v="${x.c.id}">${x.c.emoji} ${esc(x.c.name)} ${x.got}/${x.items.length}</button>`).join("")}</div>`;
+    const grid = cats.filter(x => sec === "all" || x.c.id === sec).map(x => `<div class="dm-fsec">${x.c.emoji} ${esc(x.c.name)}</div><div class="dm-grid">${x.items.map(it => {
+      const n = pan[it.id] || 0, e = eaten[it.id] || 0, known = n || e;
+      return known ? `<div class="dm-book tier-${it.t} ${n ? "" : "empty"}" title="${esc(it.text)}">${ic("pantry", it.id, it.emoji, "big")}<b>${esc(it.name)}</b><small>${n ? `有 ${n} 份` : "吃完了"}${e ? `・吃過 ${e} 次` : ""}</small></div>`
+        : `<div class="dm-book off tier-${it.t}"><span class="dm-emo big">❔</span><b>？？？</b><small>${tierName(it.t)}</small></div>`;
+    }).join("")}</div>`).join("");
+    const stock = Object.values(pan).reduce((a, n) => a + n, 0);
+    return `<div class="card"><h3>🍽️ 今天吃什麼</h3>${meal}</div>
+      <div class="card"><h3>🍱 食物櫃（囤了 ${stock} 份）</h3>${chips}${grid}</div>`;
+  }
+
+  /* =========================================================
      🏙️ 城市：重建城市、合成工坊、遠征
   ========================================================= */
   const cityCat = () => DM.ccat || { projects: [], recipes: [], dests: [] };
@@ -1482,6 +1562,13 @@
       .dm-pin.lv3 .dm-img, .dm-pin.lv3 .dm-emo { width: 30px; height: 30px; box-shadow: 0 0 20px 8px rgba(255,220,130,.9); }
       .dm-pin i { font-style: normal; font-size: 9px; color: #ffd54f; text-shadow: 0 0 4px #000; line-height: 1; }
       @keyframes dm-pin { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.35); } }
+      .dm-meal { display: flex; gap: 8px; align-items: center; } .dm-meal > div { display: flex; flex-direction: column; gap: 4px; }
+      .dm-meal-pick { display: flex; flex-direction: column; gap: 8px; } .dm-meal-pick label { display: flex; flex-direction: column; gap: 4px; font-weight: 700; font-size: 13px; }
+      .dm-meal-pick select { padding: 8px; border-radius: 10px; font-size: 14px; max-width: 100%; }
+      .dm-fchips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 6px; scrollbar-width: none; }
+      .dm-fchips button { flex: 0 0 auto; border: 0; border-radius: 99px; padding: 6px 10px; background: rgba(127,127,127,.15); color: inherit; font-size: 12.5px; cursor: pointer; }
+      .dm-fchips button.on { background: #ff9800; color: #1b1f2e; font-weight: 700; }
+      .dm-fsec { font-weight: 700; margin: 10px 0 6px; } .dm-book.empty { opacity: .7; }
       .dm-subtabs { display: flex; gap: 6px; margin: 0 0 12px; } .dm-subtabs button { flex: 1; padding: 8px; border-radius: 10px; border: 0; background: rgba(127,127,127,.15); color: inherit; font-weight: 700; cursor: pointer; } .dm-subtabs button.on { background: #ff9800; color: #1b1f2e; }
       .dm-proj, .dm-craft, .dm-exp { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid rgba(127,127,127,.15); }
       .dm-proj.off, .dm-exp.off { opacity: .5; } .dm-proj.done { background: linear-gradient(90deg, rgba(255,193,7,.12), transparent); border-radius: 10px; }
