@@ -25,6 +25,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
 
   /* 麥田：專門種小麥的小田，不佔菜田；開墾後 3×3，之後可以擴建 */
   D.zones["麥田"] = D.zones["麥田"] || { lv: 10, cost: 500 };
+  D.caps.incubator = Math.max(D.caps.incubator || 2, 8);   // 孵蛋器 8 格，一次可以孵很多顆
   const WHEAT_SIZES = [[10, 3, 0], [20, 4, 2000], [32, 5, 5000]];   // [等級, 邊長, 擴建星露]
   const WHEAT_CROPS = ["wheat"];
   for (const [lv, text] of [[10, "麥田（500 星露）：專門種小麥，不佔菜田"], [20, "麥田擴建 4×4（2,000 星露）"], [32, "麥田擴建 5×5（5,000 星露）"]]) {
@@ -4655,6 +4656,14 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       after();
     },
 
+    incubatemax: el => {
+      let n = 0, why = "ok";
+      while (n < 50) { const r = incubate(el.dataset.egg); if (r !== "ok") { why = r; break; } n++; }
+      if (!n) return toast(why);
+      toast(`🥚 放了 ${n} 顆${why === "沒有蛋" ? "（蛋用完了）" : ""}`);
+      after();
+    },
+
     buy: el => {
       const res = buyItem(el.dataset.item, Number(el.dataset.qty || 1));
       if (res !== "ok") return toast(res);
@@ -5464,9 +5473,10 @@ const FARM_JS_VERSION = "2026-10-28 v2";
           slots.push(`<div class="fm-stove">${itemIcon(slot.egg)}<span>${esc(D.animals[sp].baby)}</span><span class="t">${done ? "住處滿了，空出位子就孵出來" : `<span data-until="${slot.t1}">${dur(slot.t1 - now())}</span>`}</span></div>`);
         }
         const eggs = Object.keys(EGG_SPECIES).filter(e => S.lv >= D.animals[EGG_SPECIES[e]].lv);
-        const btns = eggs.map(e => `<button type="button" class="fm-btn small" data-act="incubate" data-egg="${e}" ${have(e) && S.ranch.inc.length < D.caps.incubator ? "" : "disabled"}>放${esc(itemName(e))}（${have(e)}）</button>`).join(" ");
+        const free = S.ranch.inc.length < D.caps.incubator;
+        const btns = eggs.map(e => `<span style="display:inline-flex;gap:4px"><button type="button" class="fm-btn small" data-act="incubate" data-egg="${e}" ${have(e) && free ? "" : "disabled"}>放${esc(itemName(e))}（${have(e)}）</button>${have(e) > 1 ? `<button type="button" class="fm-btn small green" data-act="incubatemax" data-egg="${e}" ${free ? "" : "disabled"}>放滿</button>` : ""}</span>`).join(" ");
         inc = `<div class="fm-pen"><div class="fm-pen-head"><h3 class="ol" style="--olc:#a8641e"><img class="fm-house" src="${IMG}bld/incubator.webp" alt=""> 孵蛋器</h3></div>
-          <div class="fm-stoves" style="grid-template-columns:repeat(2,minmax(0,1fr))">${slots.join("")}</div><div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">${btns}</div></div>`;
+          <div class="fm-stoves" style="grid-template-columns:repeat(4,minmax(0,1fr))">${slots.join("")}</div><div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">${btns}</div></div>`;
       }
 
       const pens = Object.entries(D.animals).filter(([sp, a]) => (sp !== "deer" && !a.gacha) || animalsOf(sp).length).map(([sp, info]) => {
