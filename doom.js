@@ -55,6 +55,7 @@
     if (g.k === "relic") { const r = find("relics", g.id); return `<span class="dm-chip big tier-${r ? r.tier : "x"}">${r ? r.emoji + " " + esc(r.name) : "收藏品"}</span>`; }
     if (g.k === "facility") { const f = find("facilities", g.id); return `<span class="dm-chip big">${f ? f.emoji + " " + esc(f.name) : "設施"} 升到 Lv${g.lv}</span>`; }
     if (g.k === "memory") { const m = DM.ex && DM.ex.memories.find(x => x.id === g.id); return `<span class="dm-chip big tier-x">🧩 記憶碎片${m ? "：" + esc(m.title) : ""}</span>`; }
+    if (g.k === "trinket") return `<span class="dm-chip big tier-${g.tier || "c"}">🧸 ${esc(g.emoji)} ${esc(g.name)}</span>`;
     const r = resInfo(g.k);
     return `<span class="dm-chip ${g.n < 0 ? "neg" : ""}">${r.emoji} ${g.n > 0 ? "+" : ""}${g.n}${g.note ? `<small>（${esc(g.note)}）</small>` : ""}</span>`;
   }
@@ -64,6 +65,7 @@
     if (g.k === "relic") { const r = find("relics", g.id); return r ? `${r.emoji}${r.name}` : "收藏品"; }
     if (g.k === "facility") { const f = find("facilities", g.id); return f ? `${f.emoji}${f.name} Lv${g.lv}` : "設施升級"; }
     if (g.k === "memory") return "🧩記憶碎片";
+    if (g.k === "trinket") return `${g.emoji}${g.name}`;
     const r = resInfo(g.k);
     return `${r.emoji}${g.n > 0 ? "+" : ""}${g.n}`;
   }).join(" ");
@@ -101,6 +103,7 @@
         const z = await db.rpc("doom_zones");
         if (!z.error) DM.zones = z.data;
       }
+      if (!DM.city) loadCity();
       if (!DM.trk) {
         const t = await db.rpc("doom_trinket_cat");
         if (!t.error && t.data) DM.trk = t.data;
@@ -420,9 +423,9 @@
     if (DM.error) { root.innerHTML = `<div class="card"><p>載入失敗：${esc(DM.error)}</p><button type="button" class="btn" data-dm="reload">再試一次</button></div>`; return; }
     if (!DM.s || !DM.cat) { root.innerHTML = `<div class="card"><p>☢️ 正在連線到序光電台…</p></div>`; return; }
 
-    const tabs = [["today", "📻 今日"], ["draw", `🎟️ 搜刮${DM.s.state.scav ? `<i class="dm-dot">${DM.s.state.scav}</i>` : ""}`], ["base", "🏚️ 基地"], ["chapter", "📖 章節"], ["book", "🔮 圖鑑"]];
+    const tabs = [["today", "📻 今日"], ["draw", `🎟️ 搜刮${DM.s.state.scav ? `<i class="dm-dot">${DM.s.state.scav}</i>` : ""}`], ["base", "🏚️ 基地"], ["chapter", "📖 章節"], ["city", `🏙️ 城市${cityDot()}`], ["book", "🔮 圖鑑"]];
     const body = DM.tab === "draw" ? drawHtml() : DM.tab === "base" ? baseHtml() : DM.tab === "chapter" ? chapterHtml()
-      : DM.tab === "book" ? bookHtml() : todayHtml();
+      : DM.tab === "book" ? bookHtml() : DM.tab === "city" ? cityHtml() : todayHtml();
     root.innerHTML = headHtml() + reportHtml() + newsHtml() +
       `<div class="dm-tabs">${tabs.map(([k, n]) => `<button type="button" class="${DM.tab === k ? "on" : ""}" data-dm="tab" data-v="${k}">${n}</button>`).join("")}</div>` +
       body;
@@ -435,6 +438,18 @@
     const el = e.target.closest("[data-dm]");
     if (!el || el.disabled) return;
     const act = el.dataset.dm;
+    if (act === "csec") { DM.csec = el.dataset.v; render(); return; }
+    if (act === "cbuild") { const p = cityCat().projects.find(x => x.id === el.dataset.v); cityCall("doom_build_project", { p_id: el.dataset.v }, d => { sfx("level"); toast(`🏗️ ${p ? p.name : ""}${d.lv >= 3 ? "完工了！" : `蓋到第 ${d.lv} 階段`}`); }); return; }
+    if (act === "craft") { const n = Number(el.dataset.n) || 1; cityCall("doom_craft", { p_id: el.dataset.v, p_n: n }, d => { sfx("coin"); toast(`🛠️ 做了 ${d.n} 個：${gainsText(d.gains)}`); }); return; }
+    if (act === "recycle") { cityCall("doom_recycle", {}, d => { sfx("coin"); toast(`♻️ 回收 ${d.n} 個重複小物：${gainsText(d.gains)}`); }); return; }
+    if (act === "expgo") {
+      const dest = el.dataset.v, sel = document.getElementById("dm-exp-comp");
+      const comp = sel ? sel.value : "";
+      if (!comp) { toast("先選一個同伴"); return; }
+      cityCall("doom_exp_start", { p_dest: dest, p_companion: comp }, () => { sfx("click"); toast("🧭 出發了！你專注的時候，遠征會加倍快"); });
+      return;
+    }
+    if (act === "expclaim") { cityCall("doom_exp_claim", { p_id: Number(el.dataset.v) }, d => { sfx("level"); DM.expResult = d; }); return; }
     if (act === "tab") { DM.tab = el.dataset.v; if (DM.tab !== "draw") DM.reveal = null; DM.revealTrk = null; render(); return; }
     if (act === "reload") { DM.error = null; render(); load(); return; }
     if (act === "newsok") { DM.news = null; render(); return; }
@@ -790,6 +805,7 @@
     r.rare = list.reduce((a, x) => a + (x.rare || 0), 0);
     r.bonus = list.map(x => x.bonus).filter(Boolean).pop() || null;
     r.trinkets = [].concat(...list.map(x => x.trinkets || []));
+    r.rescued = list.reduce((a, x) => a + (x.rescued || 0), 0);
     r.rewards = [].concat(...list.map(x => x.rewards || []));
     r.unlocked = list.map(x => x.unlocked).filter(Boolean)[0] || null;
     r.signal = list.map(x => x.signal).filter(Boolean)[0] || null;
@@ -876,6 +892,7 @@
       ${r.downgraded ? `<p class="dm-warn">${esc(r.downgraded)}</p>` : ""}
       ${r.unlocked ? `<div class="dm-rv-news">🗺️ 發現隱藏區域：<b>${esc((zoneById(r.unlocked) || {}).name || r.unlocked)}</b>！下次專注可以去了。</div>` : ""}
       ${r.signal ? `<div class="dm-rv-news">📡 解開第 ${r.signal.no} 段神秘訊號：「${esc(r.signal.cipher)}」${r.signal.unlock ? `<br>找到新地方：<b>${esc((zoneById(r.signal.unlock) || {}).name || "")}</b>` : ""}${gainsHtml(r.signal.gains)}</div>` : ""}
+      ${r.rescued ? `<div class="dm-rv-news">🧑 救回了 <b>${r.rescued}</b> 個倖存者，帶他們回城市！</div>` : ""}
       ${r.double ? `<div class="dm-rv-tag">✖️ 翻倍卡生效：這趟的東西翻倍</div>` : ""}
       ${r.mastery ? `<div class="dm-rv-tag">${esc(r.zone_emoji)} ${esc(r.zone_name)}熟練度 Lv${masteryLv(r.mastery.minutes)}（累積 ${r.mastery.minutes} 分鐘）</div>` : ""}
       ${(r.rewards || []).map(x => `<div class="dm-rv-news">${esc(x.title)}${gainsHtml(x.gains)}</div>`).join("")}
@@ -911,7 +928,9 @@
   const EXTRA_RES = {
     box_bronze: { name: "銅補給箱", emoji: "📦" }, box_silver: { name: "銀補給箱", emoji: "🎁" },
     box_gold: { name: "金補給箱", emoji: "👑" }, double: { name: "翻倍卡", emoji: "✖️" },
-    unid: { name: "未鑑定物品", emoji: "❓" }
+    unid: { name: "未鑑定物品", emoji: "❓" }, survivor: { name: "倖存者", emoji: "🧑" },
+    stardust: { name: "星屑", emoji: "✨" }, gold: { name: "金幣", emoji: "🪙" },
+    wish_normal: { name: "星願券", emoji: "🎫" }, ticket_normal: { name: "召喚券", emoji: "🎟️" }
   };
   const BOX_KINDS = ["bronze", "silver", "gold"];
 
@@ -1217,6 +1236,122 @@
         return `<div class="dm-goal"><span>${s.emoji} ${esc(s.name)}${done ? " ✅" : ""}</span><b>${a}/${b}</b>${bar(a, b || 1, done ? "#66bb6a" : "#ab47bc")}</div>`; }).join("")}</div>`;
   }
 
+  /* =========================================================
+     🏙️ 城市：重建城市、合成工坊、遠征
+  ========================================================= */
+  const cityCat = () => DM.ccat || { projects: [], recipes: [], dests: [] };
+  function cityDot() {
+    const c = DM.city;
+    if (!c) return "";
+    const ready = (c.expeditions || []).filter(e => Date.parse(e.end_at) <= Date.now()).length;
+    return ready ? `<i class="dm-dot">${ready}</i>` : "";
+  }
+  async function loadCity() {
+    if (!hasDb()) return;
+    try {
+      if (!DM.ccat) { const c = await db.rpc("doom_city_cat"); if (!c.error) DM.ccat = c.data; else if (/doom_city_cat|PGRST202|42883/.test(c.error.message || "")) { DM.cityErr = "setup"; return; } }
+      const { data, error } = await db.rpc("doom_city_status");
+      if (error) { DM.cityErr = /doom_city_status|PGRST202|42883/.test(error.message || "") ? "setup" : error.message; return; }
+      DM.cityErr = null;
+      DM.city = data;
+      if (data.notes && data.notes.length) {
+        DM.news = (DM.news || []).concat(data.notes.map(n => ({ icon: n.kind === "raid" ? "🌙" : "🏙️", title: n.title, body: "", gains: n.gains })));
+      }
+    } catch (e) { DM.cityErr = e.message || String(e); }
+  }
+  async function cityCall(name, args, after) {
+    await call(name, args, after);
+    await loadCity();
+    render();
+  }
+  const costHtml = (cost, have) => Object.entries(cost || {}).map(([k, n]) => {
+    const ok = !have || (have[k] || 0) >= n;
+    return `<span class="dm-chip ${ok ? "" : "neg"}">${resInfo(k).emoji} ${n}</span>`;
+  }).join("");
+  const compName = id => { const c = find("companions", id); return c ? `${c.emoji} ${c.name}` : id; };
+  const leftText = ms => { if (ms <= 0) return "回來了！"; const m = Math.ceil(ms / 60000); return m >= 60 ? `${Math.floor(m / 60)} 小時 ${m % 60} 分` : `${m} 分`; };
+
+  function cityHtml() {
+    if (DM.cityErr === "setup") return `<div class="card"><p>⚠️ 城市的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-10-30_末世_城市.sql</b>。</p></div>`;
+    if (DM.cityErr) return `<div class="card"><p>載入失敗：${esc(DM.cityErr)}</p></div>`;
+    if (!DM.city) { loadCity().then(render); return `<div class="card"><p>🏙️ 走向城市廢墟中…</p></div>`; }
+    const c = DM.city, sec = DM.csec || "city";
+    const tabs = [["city", "🏗️ 重建"], ["craft", "🛠️ 工坊"], ["exp", `🧭 遠征${cityDot()}`]];
+    const head = `<div class="card dm-city-head">${ic("city", "banner", "🏙️", "banner")}
+      <div class="dm-stats"><div><b>Lv${c.city_lv}</b><small>城市等級</small></div><div><b>${c.survivors}</b><small>倖存者</small></div>
+      <div><b>${c.defense}</b><small>防禦（夜襲約 ${c.threat}）</small></div><div><b>${c.raids.win || 0}勝 ${c.raids.lose || 0}敗</b><small>夜襲紀錄</small></div></div>
+      <p class="dm-note">倖存者靠專注搜刮救回來（越久越容易），遠征也會帶回來。每 4 個人每天吃 1 份食物、喝 1 份水（最多吃掉 5%），每 3 個人每天做 1 個零件。</p></div>
+      <div class="dm-subtabs">${tabs.map(([k, n]) => `<button type="button" class="${sec === k ? "on" : ""}" data-dm="csec" data-v="${k}">${n}</button>`).join("")}</div>`;
+    return head + (sec === "craft" ? craftHtml() : sec === "exp" ? expHtml() : projHtml());
+  }
+
+  function projHtml() {
+    const c = DM.city, st = DM.s.state;
+    const cards = cityCat().projects.map(p => {
+      const lv = (c.projects || {})[p.id] || 0;
+      const locked = c.city_lv < p.lv;
+      const stg = p.stages[lv];
+      const pips = [0, 1, 2].map(i => `<i class="${i < lv ? "on" : ""}"></i>`).join("");
+      let foot;
+      if (lv >= 3) foot = `<div class="dm-done">✅ 完工</div>`;
+      else if (locked) foot = `<div class="dm-note">🔒 城市 Lv${p.lv} 開放</div>`;
+      else {
+        const enough = Object.entries(stg.cost).every(([k, n]) => st[k] >= n) && c.survivors >= stg.need;
+        foot = `<div class="dm-chips">${costHtml(stg.cost, st)}<span class="dm-chip ${c.survivors >= stg.need ? "" : "neg"}">🧑 ${stg.need} 人</span></div>
+          <button type="button" class="btn dm-btn" data-dm="cbuild" data-v="${p.id}" ${enough && !DM.busy ? "" : "disabled"}>蓋第 ${lv + 1} 階段</button>`;
+      }
+      return `<div class="dm-proj ${lv >= 3 ? "done" : ""} ${locked ? "off" : ""}">${ic("city", p.id, p.emoji, "big")}
+        <div class="dm-proj-b"><b>${esc(p.name)}</b><span class="dm-pips">${pips}</span><small>${esc(p.desc)}・${esc(p.perk)}</small>${foot}</div></div>`;
+    }).join("");
+    return `<div class="card"><h3>🏗️ 大型工程</h3><p class="dm-note">每個工程 3 個階段，蓋好永久有效。完成的階段越多，城市等級越高，能去的遠征地點也越多。</p>${cards}</div>`;
+  }
+
+  function craftHtml() {
+    const st = DM.s.state;
+    const rows = cityCat().recipes.map(r => {
+      const can = Object.entries(r.cost).every(([k, n]) => st[k] >= n);
+      const [kind, id] = (r.icon || "craft/" + r.id).split("/");
+      const max = Math.min(20, ...Object.entries(r.cost).map(([k, n]) => Math.floor(st[k] / n)));
+      return `<div class="dm-craft">${ic(kind, id, r.emoji, "big")}<div class="dm-proj-b"><b>${esc(r.name)}</b><div class="dm-chips">${costHtml(r.cost, st)}</div></div>
+        <div class="dm-craft-btns"><button type="button" class="btn dm-btn" data-dm="craft" data-v="${r.id}" data-n="1" ${can && !DM.busy ? "" : "disabled"}>做</button>
+        ${max >= 2 ? `<button type="button" class="btn dm-btn ghost" data-dm="craft" data-v="${r.id}" data-n="${max}" ${DM.busy ? "disabled" : ""}>×${max}</button>` : ""}</div></div>`;
+    }).join("");
+    const dup = Object.values(st.trinkets || {}).reduce((a, n) => a + Math.max(0, n - 1), 0);
+    return `<div class="card"><h3>🛠️ 合成工坊</h3><p class="dm-note">把囤的物資和搜刮券做成好東西。已經做了 ${DM.city.crafted} 次。</p>${rows}</div>
+      <div class="card"><h3>♻️ 小物回收</h3><p class="dm-note">重複的生活小物（每種留 1 個）每個換 ✨4、🔩3。現在有 ${dup} 個重複的。</p>
+        <button type="button" class="btn dm-btn" data-dm="recycle" ${dup && !DM.busy ? "" : "disabled"}>全部回收</button></div>`;
+  }
+
+  function expHtml() {
+    const c = DM.city, st = DM.s.state;
+    const now = Date.now();
+    const going = (c.expeditions || []).map(e => {
+      const d = cityCat().dests.find(x => x.id === e.dest) || { name: e.dest, emoji: "🧭" };
+      const left = Date.parse(e.end_at) - now;
+      return `<div class="dm-exp">${ic("exp", e.dest, d.emoji, "big")}<div class="dm-proj-b"><b>${esc(d.name)}</b><small>${compName(e.companion)} 帶隊・${left > 0 ? `還要 <span data-dm-left="${e.end_at}">${leftText(left)}</span>` : "回來了！"}</small></div>
+        <button type="button" class="btn dm-btn" data-dm="expclaim" data-v="${e.id}" ${left <= 0 && !DM.busy ? "" : "disabled"}>${left <= 0 ? "收下" : "在路上"}</button></div>`;
+    }).join("");
+    const busy = new Set((c.expeditions || []).map(e => e.companion));
+    const free = (st.companions || []).filter(x => !busy.has(x));
+    const full = (c.expeditions || []).length >= c.slots;
+    const res = DM.expResult ? `<div class="card dm-rv-news">🧭 遠征隊從${esc(DM.expResult.emoji)} ${esc(DM.expResult.name)}回來了！${gainsHtml(DM.expResult.gains)}</div>` : "";
+    const pick = free.length ? `<label class="dm-note">派誰去：<select id="dm-exp-comp">${free.map(x => `<option value="${x}">${compName(x)}</option>`).join("")}</select></label>` : `<p class="dm-note">同伴都出去了。</p>`;
+    const dests = cityCat().dests.map(d => {
+      const locked = c.city_lv < d.city;
+      const can = !locked && !full && free.length && Object.entries(d.cost).every(([k, n]) => st[k] >= n);
+      const gain = Object.keys(d.gain).map(k => resInfo(k).emoji).join("") + (d.survivor ? "🧑" : "") + (d.rare ? "🔮" : "");
+      return `<div class="dm-exp ${locked ? "off" : ""}">${ic("exp", d.id, d.emoji, "big")}<div class="dm-proj-b"><b>${esc(d.name)}</b><small>${esc(d.desc)}・${d.hours} 小時・可能帶回 ${gain}</small>
+        <div class="dm-chips">${costHtml(d.cost, st)}</div></div>
+        <button type="button" class="btn dm-btn" data-dm="expgo" data-v="${d.id}" ${can && !DM.busy ? "" : "disabled"}>${locked ? `🔒 Lv${d.city}` : "出發"}</button></div>`;
+    }).join("");
+    return res + `<div class="card"><h3>🧭 遠征中（${(c.expeditions || []).length}/${c.slots}）</h3>${going || `<p class="dm-note">現在沒有隊伍在外面。</p>`}
+      <p class="dm-note">遠征期間你專注多久，遠征就提早多久回來。蓋無線電塔可以同時派更多隊。同伴好感越高，帶回越多。</p></div>
+      <div class="card"><h3>🗺️ 派遣遠征</h3>${pick}${dests}</div>`;
+  }
+  setInterval(() => {
+    document.querySelectorAll("[data-dm-left]").forEach(el => { el.textContent = leftText(Date.parse(el.dataset.dmLeft) - Date.now()); });
+  }, 30000);
+
   /* ---------- 樣式 ---------- */
 
   function injectStyle() {
@@ -1325,6 +1460,15 @@
       .dm-book b { font-size: 13px; } .dm-book small { font-size: 11px; opacity: .75; }
       .dm-book.off { opacity: .45; }
       .dm-stash.done summary { color: #f9a825; }
+      .dm-subtabs { display: flex; gap: 6px; margin: 0 0 12px; } .dm-subtabs button { flex: 1; padding: 8px; border-radius: 10px; border: 0; background: rgba(127,127,127,.15); color: inherit; font-weight: 700; cursor: pointer; } .dm-subtabs button.on { background: #ff9800; color: #1b1f2e; }
+      .dm-proj, .dm-craft, .dm-exp { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid rgba(127,127,127,.15); }
+      .dm-proj.off, .dm-exp.off { opacity: .5; } .dm-proj.done { background: linear-gradient(90deg, rgba(255,193,7,.12), transparent); border-radius: 10px; }
+      .dm-proj-b { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; } .dm-proj-b small { opacity: .75; font-size: 12px; }
+      .dm-proj-b .btn { align-self: flex-start; margin-top: 4px; }
+      .dm-pips { display: inline-flex; gap: 4px; } .dm-pips i { width: 18px; height: 6px; border-radius: 3px; background: rgba(127,127,127,.3); } .dm-pips i.on { background: #ffb300; }
+      .dm-craft-btns { display: flex; flex-direction: column; gap: 4px; } .dm-done { color: #66bb6a; font-weight: 700; font-size: 13px; }
+      .dm-btn.ghost { background: rgba(127,127,127,.2); color: inherit; }
+      #dm-exp-comp { margin-left: 4px; padding: 4px 8px; border-radius: 8px; }
       .dm-trk { margin-top: 10px; } .dm-trk-h { font-weight: 700; margin: 4px 0 6px; }
       .dm-stash { margin-top: 8px; } .dm-stash summary { cursor: pointer; font-weight: 700; padding: 6px 0; } .dm-stash summary b { opacity: .7; font-weight: 600; margin-left: 4px; }
       .dm-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center; margin: 8px 0; }
