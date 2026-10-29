@@ -1062,6 +1062,19 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     return "ok";
   }
 
+  function orchardRipeKeys() {
+    return Object.keys(S.orchard.trees).filter(k => treeState(S.orchard.trees[k]) === "ripe");
+  }
+
+  function harvestOrchard() {
+    let n = 0, exp = 0, full = false;
+    for (const k of orchardRipeKeys()) {
+      const res = harvestTree(Number(k));
+      if (res) { n++; exp += res.exp; } else full = true;
+    }
+    return { n, exp, full };
+  }
+
   function harvestTree(slot) {
     const t = S.orchard.trees[slot];
     if (treeState(t) !== "ripe") return null;
@@ -3975,7 +3988,8 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     const tw = 34, th = 17;
     let fence = `<g pointer-events="none">${pad(x, y - 40, 168, 80, "#b9dc8a")}</g>`;
     if (BLD.orchardfence) fence += `<g pointer-events="none">${building("orchardfence", x - 150, y - 6, 92)}</g>`;
-    items.push({ y: y - 120, svg: fence + nameplate(x - 120, y - 2, "果園") });
+    items.push({ y: y - 120, svg: fence });
+    HITS.push({ y: y + 10, svg: `<g class="tap" data-act="orchardlist" role="button" tabindex="0" aria-label="果園清單">${nameplate(x - 120, y - 2, "果園 ☰").replace('pointer-events="none"', "")}</g>` });
     for (let i = 0; i < n; i++) {
       const r = Math.floor(i / cols), c = i % cols;
       /* 間距拉開一點，後排的樹才點得到 */
@@ -4382,13 +4396,28 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       const i = Number(el.dataset.key);
       const tr = S.orchard.trees[i];
       if (!tr) return openSheet("seeds", { zone: "orchard", key: i });
-      if (treeState(tr) === "ripe") {
-        const res = harvestTree(i);
-        if (!res) return toast("倉庫滿了");
-        floatAt(el, `+${res.qty} ${itemIconInline(res.crop)} <small>+${res.exp} EXP</small>`);
+      /* 點任何一棵：只要果園裡有熟的就全部收（後排的樹點不到也收得到） */
+      if (orchardRipeKeys().length) {
+        const got = harvestOrchard();
+        if (!got.n) return toast("倉庫滿了");
+        floatAt(el, `🍎 收了 ${got.n} 棵 <small>+${got.exp} EXP</small>${got.full ? " 倉庫滿了" : ""}`);
         return after();
       }
       openPop({ type: "tree", key: i, el });
+    },
+
+    orchardlist: () => openSheet("orchard"),
+    orchardslot: el => {
+      const i = Number(el.dataset.key);
+      const tr = S.orchard.trees[i];
+      if (!tr) return openSheet("seeds", { zone: "orchard", key: i });
+      if (treeState(tr) === "ripe") {
+        const got = harvestOrchard();
+        toast(got.n ? `🍎 收了 ${got.n} 棵，+${got.exp} EXP` : "倉庫滿了");
+        after();
+        return openSheet("orchard");
+      }
+      toast(treeState(tr) === "growing" ? `樹苗長大中，還要 ${dur(tr.grown - now())}` : `還要 ${dur(tr.next - now())}結果`);
     },
 
     teabush: el => {
@@ -5385,6 +5414,20 @@ const FARM_JS_VERSION = "2026-10-28 v2";
 
       return sheetTop("碼頭", `${miniIcon("bait", "🪱")} ${bait}`) + tabs([["fish", "釣魚"], ["dex", "魚類圖鑑"], ["rod", "釣竿"], ["tank", "魚缸"]], tab) + body;
 
+    },
+
+    /* ---------- 果園清單（每一棵都點得到） ---------- */
+    orchard() {
+      const tiles = [];
+      for (let i = 0; i < orchardSlots(); i++) {
+        const tr = S.orchard.trees[i];
+        const st = treeState(tr);
+        if (!tr) { tiles.push(`<button type="button" class="fm-card" data-act="orchardslot" data-key="${i}"><div class="fm-card-art">＋</div><div class="fm-card-name ol">空位</div></button>`); continue; }
+        const t = st === "ripe" ? "可以收" : st === "growing" ? `<span data-until="${tr.grown}">${dur(tr.grown - now())}</span>` : `<span data-until="${tr.next}">${dur(tr.next - now())}</span>`;
+        tiles.push(`<button type="button" class="fm-card ${rarityClass(tr.c)}" data-act="orchardslot" data-key="${i}"><div class="fm-card-art">${itemIcon(tr.c)}</div><div class="fm-card-name ol">${t}</div></button>`);
+      }
+      const ripe = orchardRipeKeys().length;
+      return sheetTop("果園") + `<div class="fm-panel"><p class="fm-note" style="margin:0 0 10px">${ripe ? `有 ${ripe} 棵可以收，點任何一棵就全部收。` : "點空位種樹；樹苗明天長大，之後一直結果。"}</p><div class="fm-grid three">${tiles.join("")}</div></div>`;
     },
 
     /* ---------- 溫室 ---------- */
