@@ -6441,6 +6441,8 @@ async function askFocusNote(sessionId, subject) {
 
   const recent = await recentFocusNotes(subject);
 
+  pickedFocusQuality = null;
+
   openModal({
 
     title: "📝 這次完成了什麼？",
@@ -6449,6 +6451,13 @@ async function askFocusNote(sessionId, subject) {
       <p class="small-note" style="margin-top:0;">
         ${escapeHtml(subject)}・可以不填。之後在「今日專注紀錄」按 ✏️ 也能補。
       </p>
+
+      <div class="fq-row" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+        <span class="small-note">這次專心嗎？</span>
+        <button type="button" class="chip fq" data-q="3" onclick="pickFocusQuality(this)">😤 很專心</button>
+        <button type="button" class="chip fq" data-q="2" onclick="pickFocusQuality(this)">🙂 普通</button>
+        <button type="button" class="chip fq" data-q="1" onclick="pickFocusQuality(this)">😵 分心</button>
+      </div>
 
       <div class="modal-field">
         <input type="text" id="fn-note" maxlength="200" placeholder="例如：第 4 章 樹的走訪"
@@ -6463,7 +6472,7 @@ async function askFocusNote(sessionId, subject) {
     `,
 
     buttons: [
-      { label: "略過", className: "btn" },
+      { label: "略過", className: "btn", onClick: () => { saveFocusQuality(sessionId); return true; } },
       { label: "記下", className: "btn btn-primary", onClick: () => saveFocusNote(sessionId) }
     ],
 
@@ -6481,9 +6490,27 @@ function focusNoteMissing(error) {
 }
 
 
+/* ⭐ 專注品質：很專心 3、普通 2、分心 1（週回顧裡看哪個科目、時段最專心） */
+let pickedFocusQuality = null;
+
+function pickFocusQuality(btn) {
+  pickedFocusQuality = Number(btn.dataset.q);
+  document.querySelectorAll(".fq").forEach(b => b.classList.toggle("active", b === btn));
+}
+
+async function saveFocusQuality(sessionId) {
+  if (!pickedFocusQuality) return;
+  const q = pickedFocusQuality;
+  pickedFocusQuality = null;
+  const { error } = await db.from("focus_sessions").update({ quality: q }).eq("id", sessionId).eq("user_id", currentUser.id);
+  if (error && !/quality/.test(error.message || "")) console.warn("專注品質存不進去：", error.message);
+}
+
 async function saveFocusNote(sessionId) {
 
   const note = document.getElementById("fn-note").value.trim();
+
+  await saveFocusQuality(sessionId);
 
   if (!note) return true;
 

@@ -24,7 +24,11 @@
   async function load() {
     OV.err = null;
     try {
-      if (OV.tab === "week") {
+      if (OV.tab === "year") {
+        const { data, error } = await db.rpc("life_year", { p_year: OV.year || null });
+        if (error) throw error;
+        OV.yr = data;
+      } else if (OV.tab === "week") {
         const { data, error } = await db.rpc("life_week", { p_offset: OV.offset });
         if (error) throw error;
         OV.week = data;
@@ -34,7 +38,7 @@
         OV.coll = data;
       }
     } catch (e) {
-      OV.err = /life_week|life_collection|PGRST202|42883/.test(e.message || "") ? "setup" : (e.message || String(e));
+      OV.err = /life_year/.test(e.message || "") ? "setup2" : /life_week|life_collection|PGRST202|42883/.test(e.message || "") ? "setup" : (e.message || String(e));
     }
     render();
   }
@@ -78,6 +82,47 @@
       <div class="ov-box"><div class="ov-sec">每天專注・任務完成率・簽到</div><div class="ov-chart">${bars}</div>
         <p class="ov-note">${best && best.focus ? `最認真的一天是週${DAY[days.indexOf(best)]}（${hm(best.focus)}）。` : ""}平均每天 ${hm(Math.round(tf / past))}。${words}</p></div>
       <div class="ov-box"><div class="ov-sec">各科目專注時間</div>${subjHtml}</div>`;
+  }
+
+  /* 🗓️ 年度熱力圖：一年 365 格，專注越久越亮 */
+  function yearHtml() {
+    const y = OV.yr;
+    if (!y) return `<div class="ov-empty">載入中…</div>`;
+    const days = y.days || {};
+    const start = new Date(Date.UTC(y.year, 0, 1));
+    const end = new Date(Date.UTC(y.year, 11, 31));
+    const lead = (start.getUTCDay() + 6) % 7;          // 週一開頭
+    const lv = m => !m ? 0 : m < 30 ? 1 : m < 90 ? 2 : m < 180 ? 3 : m < 300 ? 4 : 5;
+    let cells = "", months = "", total = 0, active = 0, best = null, cur = 0, longest = 0;
+    for (let i = 0; i < lead; i++) cells += `<i class="ov-hc blank"></i>`;
+    let lastMonth = -1, col = 0;
+    for (let d = new Date(start), idx = lead; d <= end; d.setUTCDate(d.getUTCDate() + 1), idx++) {
+      const key = d.toISOString().slice(0, 10);
+      const m = days[key] || 0;
+      const future = key > y.today;
+      if (!future) {
+        total += m;
+        if (m > 0) { active++; cur++; longest = Math.max(longest, cur); } else if (key !== y.today) cur = 0;
+        if (!best || m > best[1]) best = [key, m];
+      }
+      cells += `<i class="ov-hc l${future ? "f" : lv(m)} ${key === y.today ? "td" : ""}" title="${key.slice(5).replace("-", "/")}　${hm(m)}"></i>`;
+      col = Math.floor(idx / 7);
+      if (d.getUTCMonth() !== lastMonth) { lastMonth = d.getUTCMonth(); months += `<span style="grid-column:${col + 1}">${lastMonth + 1}月</span>`; }
+    }
+    const q = y.quality || [], qh = y.quality_hour || [];
+    const qName = v => v >= 2.6 ? "😤 很專心" : v >= 1.8 ? "🙂 普通" : "😵 容易分心";
+    const qHtml = q.length
+      ? q.map(r => `<div class="ov-subj"><span>${esc(r.subject || "未分類")}</span><div class="ov-hbar"><i style="width:${(r.avg - 1) / 2 * 100}%"></i></div><b>${qName(r.avg)}</b></div>`).join("")
+        + (qh.length ? `<p class="ov-note">最專心的時段：${(() => { const b = qh.slice().sort((a, b) => b.avg - a.avg || b.n - a.n)[0]; return `${String(b.h).padStart(2, "0")}:00～${String(b.h + 3).padStart(2, "0")}:00`; })()}・最常分心：${(() => { const w = qh.slice().sort((a, b) => a.avg - b.avg || b.n - a.n)[0]; return `${String(w.h).padStart(2, "0")}:00～${String(w.h + 3).padStart(2, "0")}:00`; })()}</p>` : "")
+      : `<p class="ov-note">專注結束時選「很專心／普通／分心」，這裡就會分析你哪個科目、哪個時段最專心。</p>`;
+    return `<div class="ov-nav"><button type="button" class="ov-btn ghost" data-ov="yprev">‹ ${y.year - 1}</button><b>${y.year} 年</b>
+        <button type="button" class="ov-btn ghost" data-ov="ynext" ${y.year >= Number(y.today.slice(0, 4)) ? "disabled" : ""}>${y.year + 1} ›</button></div>
+      <div class="ov-cards"><div><b>${Math.round(total / 60)} 小時</b><span>今年專注</span></div><div><b>${active} 天</b><span>有專注的日子</span></div>
+        <div><b>${longest} 天</b><span>最長連續專注</span></div><div><b>${best && best[1] ? hm(best[1]) : "—"}</b><span>單日最高${best && best[1] ? `（${best[0].slice(5).replace("-", "/")}）` : ""}</span></div></div>
+      <div class="ov-box"><div class="ov-sec">每天專注熱力圖</div>
+        <div class="ov-heat-wrap"><div class="ov-months">${months}</div><div class="ov-heat">${cells}</div></div>
+        <div class="ov-legend">少 <i class="ov-hc l0"></i><i class="ov-hc l1"></i><i class="ov-hc l2"></i><i class="ov-hc l3"></i><i class="ov-hc l4"></i><i class="ov-hc l5"></i> 多（30 分／1.5／3／5 小時）</div></div>
+      <div class="ov-box"><div class="ov-sec">⭐ 專注品質（最近 30 天）</div>${qHtml}</div>`;
   }
 
   function collHtml() {
@@ -128,9 +173,10 @@
     let body;
     if (OV.err === "setup") body = `<p class="ov-note">⚠️ 回顧的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-10-30_通知與回顧.sql</b>。</p>`;
     else if (OV.err) body = `<p class="ov-note">載入失敗：${esc(OV.err)}</p>`;
-    else body = OV.tab === "week" ? weekHtml() : collHtml();
+    else if (OV.err === "setup2") body = `<p class="ov-note">⚠️ 年度熱力圖的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-10-30_目標與作息.sql</b>。</p>`;
+    else body = OV.tab === "week" ? weekHtml() : OV.tab === "year" ? yearHtml() : collHtml();
     ov.querySelector(".ov-panel").innerHTML = `<div class="ov-head"><h2>📊 回顧</h2><button type="button" class="ov-x" data-ov="close" aria-label="關閉">✕</button></div>
-      <div class="ov-tabs"><button type="button" class="${OV.tab === "week" ? "on" : ""}" data-ov="tab" data-v="week">📅 週回顧</button><button type="button" class="${OV.tab === "coll" ? "on" : ""}" data-ov="tab" data-v="coll">🏆 收藏總表</button></div>${body}`;
+      <div class="ov-tabs"><button type="button" class="${OV.tab === "week" ? "on" : ""}" data-ov="tab" data-v="week">📅 週回顧</button><button type="button" class="${OV.tab === "year" ? "on" : ""}" data-ov="tab" data-v="year">🗓️ 年度</button><button type="button" class="${OV.tab === "coll" ? "on" : ""}" data-ov="tab" data-v="coll">🏆 收藏</button></div>${body}`;
   }
 
   function openPanel() {
@@ -147,6 +193,7 @@
     const a = el.dataset.ov;
     if (a === "close") { OV.open = false; document.getElementById("ov-overlay").hidden = true; return; }
     if (a === "tab") { OV.tab = el.dataset.v; render(); load(); return; }
+    if (a === "yprev" || a === "ynext") { OV.year = (OV.yr ? OV.yr.year : new Date().getFullYear()) + (a === "yprev" ? -1 : 1); OV.yr = null; render(); load(); return; }
     if (a === "prev") { OV.offset--; OV.week = null; render(); load(); return; }
     if (a === "next" && OV.offset < 0) { OV.offset++; OV.week = null; render(); load(); }
   }
@@ -184,6 +231,15 @@
         .ov-total div:last-child { display: flex; flex-direction: column; gap: 2px; }
         .ov-ring { width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(#ffb300 calc(var(--p) * 1%), rgba(127,127,127,.2) 0); }
         .ov-ring b { background: #151927; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; font-size: 16px; }
+        .ov-heat-wrap { overflow-x: auto; padding-bottom: 4px; }
+        .ov-months { display: grid; grid-template-columns: repeat(53, 11px); gap: 2px; font-size: 9px; color: #8f98b6; height: 12px; }
+        .ov-months span { white-space: nowrap; }
+        .ov-heat { display: grid; grid-template-rows: repeat(7, 11px); grid-auto-flow: column; grid-auto-columns: 11px; gap: 2px; }
+        .ov-hc { display: inline-block; width: 11px; height: 11px; border-radius: 3px; background: rgba(127,127,127,.15); }
+        .ov-hc.blank { background: transparent; } .ov-hc.lf { background: rgba(127,127,127,.06); }
+        .ov-hc.l1 { background: #5b3d1e; } .ov-hc.l2 { background: #8a5a20; } .ov-hc.l3 { background: #c9801f; } .ov-hc.l4 { background: #f2a33a; } .ov-hc.l5 { background: #ffd166; box-shadow: 0 0 4px #ffd166; }
+        .ov-hc.td { outline: 1.5px solid #fff; }
+        .ov-legend { display: flex; gap: 3px; align-items: center; font-size: 11px; color: #8f98b6; margin-top: 6px; flex-wrap: wrap; }
         .ov-note { font-size: 12.5px; color: #8f98b6; margin: 8px 0 0; } .ov-empty { text-align: center; color: #8f98b6; padding: 20px; }
         @media (max-width: 480px) { .ov-open-btn .ov-open-txt { display: none; } }
       `;
