@@ -409,7 +409,8 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       wishApplied: [],              // 已經放進島上的抽獎紀錄（避免重複）
       ownedCache: {},
       subjLv: {},                   // 各科等級（累積系統），升級送星露用
-      fish: { rod: "bamboo", rods: { bamboo: 1 }, caught: {}, total: 0 }   // 釣魚
+      fish: { rod: "bamboo", rods: { bamboo: 1 }, caught: {}, total: 0 },  // 釣魚
+      big: null                                                              // 今日大訂單
     };
 
   }
@@ -1211,6 +1212,12 @@ const FARM_JS_VERSION = "2026-10-28 v2";
   const COOK_MAX = 20;      // 一個爐子一次最多做幾份
 
   /* 食材夠做幾份 */
+  /* 訂單上的「做」按鈕：食材夠、有空爐子就直接開始做 */
+  function cookBtn(k, n) {
+    const can = cookableCount(k) > 0 && freeStoves() > 0;
+    return `<button type="button" class="fm-btn small ${can ? "green" : ""}" data-act="cookfor" data-dish="${k}" data-n="${n}">${can ? "🍳 做" : "缺料"}</button>`;
+  }
+
   function cookableCount(k) {
     const d = D.dishes[k];
     let n = COOK_MAX;
@@ -1324,6 +1331,49 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     const names = { stardust: "⭐ 星屑", wish_normal: "🎫 普通星願券", ticket_normal: "🎟️ 普通召喚券" };
     if (r.already) toast("這張訂單的獎勵已經領過了");
     else toast(`📋 訂單完成！獲得 ${names[r.item] || r.item} ×${r.qty}`);
+    after();
+  }
+
+  /* =========================================================
+     📦 大訂單：每天 2 張，一大批同一種食材，交了換很多星屑
+     第 1 張：星屑 30；第 2 張（數量兩倍）：星屑 60。另外照數量給星露
+  ========================================================= */
+  const BIG_DUST = [30, 60];
+
+  function bigOrders() {
+    const day = todayKey();
+    if (!S.big || S.big.day !== day) {
+      const cands = [];
+      for (const [k, c] of Object.entries(D.crops)) {
+        if ((c.zone === "菜田" || c.zone === "果園") && c.lv > 0 && cropUnlocked(k)) cands.push([k, c.zone === "果園" ? 12 : 24]);
+      }
+      const owned = new Set((S.ranch.animals || []).filter(a => a.adult).map(a => a.sp));
+      for (const sp of owned) { const pr = D.animals[sp] && D.animals[sp].product; if (pr) cands.push([pr, 10]); }
+      const list = [];
+      for (let i = 0; i < 2 && cands.length; i++) {
+        const [item, base] = cands[hash(day + ":big:" + i) % cands.length];
+        const qty = Math.round((base + Math.floor(S.lv / 3)) * (i + 1) / 5) * 5;
+        list.push({ item, qty, done: false });
+      }
+      S.big = { day, list };
+    }
+    return S.big;
+  }
+
+  async function submitBig(i) {
+    const b = bigOrders(), o = b.list[i];
+    if (!o || o.done) return toast("這張大訂單已經完成了");
+    if (have(o.item) < o.qty) return toast(`${itemName(o.item)}還差 ${o.qty - have(o.item)} 個`);
+    if (net.mode !== "server") return toast("資料庫設定好之後才能交大訂單");
+    const { data, error } = await db.rpc("farm_bigorder_claim", { p_slot: i });
+    if (error) return toast(/farm_bigorder_claim|PGRST202/.test(error.message || "") ? "要先在 Supabase 執行 sql/2026-10-30_農場大訂單.sql" : "交單失敗：" + error.message);
+    takeItem(o.item, o.qty);
+    o.done = true;
+    const dew = Math.round(((D.items[o.item] && D.items[o.item].sell) || 10) * o.qty * 1.2);
+    addDew(dew);
+    addExp(30 * (i + 1));
+    toast(data && data.already ? "這張大訂單的獎勵已經領過了" : `📦 大訂單完成！⭐ 星屑 ×${data ? data.qty : BIG_DUST[i]}、${num(dew)} 星露`);
+    if (net.ws && net.ws.items && data && !data.already) net.ws.items.stardust = (net.ws.items.stardust || 0) + (data.qty || 0);
     after();
   }
 
@@ -4532,6 +4582,24 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     },
 
     ordersubmit: el => { submitOrder(Number(el.dataset.i)); },
+    bigsubmit: el => { submitBig(Number(el.dataset.i)); },
+
+    /* 點訂單上的菜：直接開始做（缺幾份做幾份），做不了就跳到上面那道菜 */
+    cookfor: el => {
+      const k = el.dataset.dish;
+      const want = Math.max(1, Number(el.dataset.n) || 1);
+      const n = Math.min(want, cookableCount(k));
+      if (n > 0 && freeStoves() > 0) {
+        const res = cookDish(k, n);
+        if (res === "ok") { toast(`🍳 開始做「${D.dishes[k].name}」×${n}，做好會自動放進倉庫`); return after(); }
+      }
+      UI.kitchenPick = k;
+      UI.cookQty = want;
+      renderSheet();
+      const top = document.querySelector(".fm-sheet .fm-panel:nth-of-type(2)") || document.querySelector(".fm-sheet");
+      if (top && top.scrollIntoView) top.scrollIntoView({ behavior: "smooth", block: "start" });
+      toast(freeStoves() > 0 ? "食材不夠，看看還缺什麼" : "爐子都在用，等一下再做");
+    },
 
     serve: el => {
       if (!serveOrder(Number(el.dataset.i))) return toast("倉庫裡沒有這道菜");
@@ -5259,9 +5327,9 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       if (S.orders && S.orders.list.length) {
         orders = `<div class="fm-panel"><div class="fm-sec ol">今日客人點餐</div><div class="fm-list">${S.orders.list.map((o, i) => {
           const d = D.dishes[o.d];
-          return `<div class="fm-row ${rarityClass(o.d)}"><div class="fm-row-art">${itemIcon(o.d)}</div><div><div class="fm-row-name">${esc(d.name)}</div>
+          return `<div class="fm-row ${rarityClass(o.d)}"><div class="fm-row-art" data-act="cookfor" data-dish="${o.d}" role="button" style="cursor:pointer">${itemIcon(o.d)}</div><div><div class="fm-row-name">${esc(d.name)}</div>
             <div class="fm-row-sub">付 ${num(Math.round(d.sell * 1.5))} 星露・+10 EXP・倉庫有 ${have(o.d)} 份</div></div>
-            <div class="fm-row-btns">${o.done ? "✅" : `<button type="button" class="fm-btn small" data-act="serve" data-i="${i}" ${have(o.d) ? "" : "disabled"}>上菜</button>`}</div></div>`;
+            <div class="fm-row-btns">${o.done ? "✅" : have(o.d) ? `<button type="button" class="fm-btn small" data-act="serve" data-i="${i}">上菜</button>` : cookBtn(o.d, 1)}</div></div>`;
         }).join("")}</div></div>`;
       }
 
@@ -5270,11 +5338,22 @@ const FARM_JS_VERSION = "2026-10-28 v2";
         if (slot.done) return `<div class="fm-row"><div class="fm-row-art">✅</div><div><div class="fm-row-name">訂單 ${i + 1} 已完成</div><div class="fm-row-sub">明天會有新訂單</div></div></div>`;
         if (!slot.d) return `<div class="fm-row"><div class="fm-row-art">📋</div><div><div class="fm-row-name">訂單 ${i + 1}</div><div class="fm-row-sub">現有食材做不出可以接的料理，先去備料吧</div></div></div>`;
         const d = D.dishes[slot.d];
-        return `<div class="fm-row ${rarityClass(slot.d)}"><div class="fm-row-art">${itemIcon(slot.d)}</div><div><div class="fm-row-name">${esc(d.name)}</div>
+        return `<div class="fm-row ${rarityClass(slot.d)}"><div class="fm-row-art" data-act="cookfor" data-dish="${slot.d}" role="button" style="cursor:pointer">${itemIcon(slot.d)}</div><div><div class="fm-row-name">${esc(d.name)}</div>
           <div class="fm-row-sub">交單隨機獲得星屑、星願券或召喚券・+10 EXP・倉庫有 ${have(slot.d)} 份</div></div>
-          <div class="fm-row-btns"><button type="button" class="fm-btn small" data-act="ordersubmit" data-i="${i}" ${have(slot.d) ? "" : "disabled"}>繳交</button></div></div>`;
+          <div class="fm-row-btns">${have(slot.d) ? `<button type="button" class="fm-btn small" data-act="ordersubmit" data-i="${i}">繳交</button>` : cookBtn(slot.d, 1)}</div></div>`;
       }).join("");
-      const orderPanel = `<div class="fm-panel"><div class="fm-sec ol">📋 訂單任務</div><div class="fm-list">${ordRows}</div></div>`;
+      const big = bigOrders();
+      const bigRows = big.list.map((o, i) => {
+        const h = have(o.item), ok = h >= o.qty;
+        return o.done
+          ? `<div class="fm-row"><div class="fm-row-art">✅</div><div><div class="fm-row-name">${i ? "超大訂單" : "大訂單"}完成了</div><div class="fm-row-sub">明天會有新的大訂單</div></div></div>`
+          : `<div class="fm-row ${i ? "r-x" : "r-l"}"><div class="fm-row-art">${itemIcon(o.item)}</div><div><div class="fm-row-name">${i ? "🚚 超大訂單" : "📦 大訂單"}：${esc(itemName(o.item))} ×${o.qty}</div>
+            <div class="fm-row-sub">⭐ 星屑 ×${BIG_DUST[i]}・約 ${num(Math.round(((D.items[o.item] && D.items[o.item].sell) || 10) * o.qty * 1.2))} 星露・${30 * (i + 1)} EXP</div>
+            <div class="fm-bar" style="margin-top:4px"><i style="width:${Math.min(100, h / o.qty * 100)}%"></i></div><div class="fm-row-sub">倉庫有 ${h} / ${o.qty}</div></div>
+            <div class="fm-row-btns"><button type="button" class="fm-btn small ${ok ? "green" : ""}" data-act="bigsubmit" data-i="${i}" ${ok ? "" : "disabled"}>交貨</button></div></div>`;
+      }).join("");
+      const orderPanel = `${bigRows ? `<div class="fm-panel"><div class="fm-sec ol">📦 今日大訂單</div><p class="fm-note" style="margin:0 0 6px">一大批同一種食材，交了換很多星屑。每天換新的。</p><div class="fm-list">${bigRows}</div></div>` : ""}
+        <div class="fm-panel"><div class="fm-sec ol">📋 訂單任務</div><p class="fm-note" style="margin:0 0 6px">點菜的圖或「做」就直接開始做，不用往上找。</p><div class="fm-list">${ordRows}</div></div>`;
 
       const up = next ? (S.lv >= next[0]
         ? `<button type="button" class="fm-btn small" data-act="upgradekitchen">⬆ 升級成${next[2]}</button>`
