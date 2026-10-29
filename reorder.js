@@ -198,7 +198,121 @@
     }
   }
 
-  window.TodayReorder = { reset() { save([]); location.reload(); } };
+  /* =========================================================
+     ⚙️ 自訂主頁：每張卡片可以隱藏／顯示、上下移動（記在這台裝置）
+  ========================================================= */
+  const HKEY = "todayHidden";
+  const loadHidden = () => { try { const v = JSON.parse(localStorage.getItem(HKEY) || "[]"); return new Set(Array.isArray(v) ? v : []); } catch (_) { return new Set(); } };
+  const saveHidden = set => { try { localStorage.setItem(HKEY, JSON.stringify([...set])); } catch (_) {} };
+  let hidden = loadHidden();
+
+  const NAMES = { "gl-host": "🎯 今日目標", "vc-today": "📖 今日單字", "fn-today": "🎁 每日驚喜", "ev-today": "🎉 限時活動",
+    "countdown-strip": "⏳ 倒數日", "dc-progress": "📈 今日進度條" };
+  function nameOf(el) {
+    if (NAMES[el.id]) return NAMES[el.id];
+    const h = el.querySelector("h2, h3, .section-title, b");
+    const t = h ? h.textContent.replace(/[▾▸]/g, "").replace(/\s+/g, " ").trim() : "";
+    return t.slice(0, 30) || keyOf(el);
+  }
+
+  function applyHidden() {
+    items().forEach(el => el.classList.toggle("today-hidden", hidden.has(keyOf(el))));
+    const btn = document.getElementById("tl-open");
+    if (btn) btn.textContent = hidden.size ? `⚙️ 自訂（藏了 ${hidden.size} 個）` : "⚙️ 自訂主頁";
+  }
+
+  function move(key, dir) {
+    const list = items().map(keyOf);
+    const i = list.indexOf(key), j = i + dir;
+    if (i < 0 || j < 0 || j >= list.length) return;
+    [list[i], list[j]] = [list[j], list[i]];
+    save(list);
+    applyOrder();
+  }
+
+  function panelHtml() {
+    const list = items();
+    return `<div class="tl-head"><h2>⚙️ 自訂主頁</h2><button type="button" class="tl-x" data-tl="close" aria-label="關閉">✕</button></div>
+      <p class="tl-note">勾掉的卡片會藏起來，主頁就不用拉那麼長；用 ↑↓ 調整順序（也可以在主頁長按卡片拖曳）。只影響這台裝置。</p>
+      <div class="tl-list">${list.map((el, i) => { const k = keyOf(el); const on = !hidden.has(k);
+        return `<div class="tl-row ${on ? "" : "off"}"><label><input type="checkbox" data-tl="toggle" data-k="${k.replace(/"/g, "&quot;")}" ${on ? "checked" : ""}> <span>${nameOf(el).replace(/</g, "&lt;")}</span></label>
+          <span><button type="button" data-tl="up" data-k="${k.replace(/"/g, "&quot;")}" ${i ? "" : "disabled"}>↑</button><button type="button" data-tl="down" data-k="${k.replace(/"/g, "&quot;")}" ${i < list.length - 1 ? "" : "disabled"}>↓</button></span></div>`; }).join("")}</div>
+      <div class="tl-foot"><button type="button" data-tl="showall">全部顯示</button><button type="button" data-tl="reset">恢復預設順序</button><button type="button" class="pri" data-tl="close">完成</button></div>`;
+  }
+
+  function renderPanel() {
+    const ov = document.getElementById("tl-overlay");
+    if (ov && !ov.hidden) ov.querySelector(".tl-panel").innerHTML = panelHtml();
+  }
+
+  function openPanel() {
+    let ov = document.getElementById("tl-overlay");
+    if (!ov) {
+      ov = document.createElement("div");
+      ov.id = "tl-overlay";
+      ov.innerHTML = `<div class="tl-panel" role="dialog" aria-modal="true" aria-label="自訂主頁"></div>`;
+      ov.addEventListener("click", e => {
+        const el = e.target.closest("[data-tl]");
+        if (!el) { if (e.target === ov) ov.hidden = true; return; }
+        const a = el.dataset.tl, k = el.dataset.k;
+        if (a === "close") { ov.hidden = true; return; }
+        if (a === "toggle") { if (el.checked) hidden.delete(k); else hidden.add(k); saveHidden(hidden); applyHidden(); }
+        if (a === "up" || a === "down") move(k, a === "up" ? -1 : 1);
+        if (a === "showall") { hidden = new Set(); saveHidden(hidden); applyHidden(); }
+        if (a === "reset") { save([]); location.reload(); return; }
+        renderPanel();
+      });
+      document.body.appendChild(ov);
+    }
+    ov.hidden = false;
+    renderPanel();
+  }
+
+  function setupLayout() {
+    if (!document.getElementById("tl-style")) {
+      const st = document.createElement("style");
+      st.id = "tl-style";
+      st.textContent = `
+        .today-hidden { display: none !important; }
+        #tl-open { margin-left: auto; font-size: 13px; padding: 6px 12px; border-radius: 10px; border: 0; background: rgba(127,127,127,.18); color: inherit; cursor: pointer; white-space: nowrap; }
+        #tl-overlay { position: fixed; inset: 0; background: rgba(5,8,18,.6); z-index: 9998; display: flex; justify-content: center; align-items: flex-start; padding: 60px 12px 20px; overflow-y: auto; }
+        #tl-overlay[hidden] { display: none; }
+        .tl-panel { width: 100%; max-width: 440px; background: #1f2436; color: #e8ebf5; border-radius: 16px; padding: 16px; }
+        .tl-head { display: flex; justify-content: space-between; align-items: center; } .tl-head h2 { margin: 0; font-size: 19px; }
+        .tl-x { background: none; border: 0; color: #8f98b6; font-size: 20px; cursor: pointer; }
+        .tl-note { font-size: 12.5px; color: #8f98b6; margin: 6px 0 10px; }
+        .tl-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: #151927; margin-bottom: 6px; }
+        .tl-row.off { opacity: .5; }
+        .tl-row label { display: flex; gap: 8px; align-items: center; flex: 1; min-width: 0; cursor: pointer; font-size: 14px; }
+        .tl-row label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .tl-row button { background: #2c3350; color: #e8ebf5; border: 0; border-radius: 8px; width: 32px; height: 30px; margin-left: 4px; cursor: pointer; }
+        .tl-row button:disabled { opacity: .3; }
+        .tl-foot { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+        .tl-foot button { flex: 1; background: #2c3350; color: #e8ebf5; border: 0; border-radius: 10px; padding: 9px; cursor: pointer; font-weight: 700; }
+        .tl-foot button.pri { background: #ff9f43; color: #1b1f2e; }
+      `;
+      document.head.appendChild(st);
+    }
+    const p = page();
+    const title = p && p.querySelector(".page-title");
+    if (title && !document.getElementById("tl-open")) {
+      const b = document.createElement("button");
+      b.id = "tl-open"; b.type = "button";
+      b.addEventListener("click", openPanel);
+      title.style.display = "flex"; title.style.alignItems = "center"; title.style.gap = "8px"; title.style.flexWrap = "wrap";
+      title.appendChild(b);
+    }
+    applyHidden();
+    if (p) {
+      let t = 0;
+      new MutationObserver(() => { clearTimeout(t); t = setTimeout(applyHidden, 150); }).observe(p, { childList: true });
+    }
+  }
+
+  window.TodayReorder = { reset() { save([]); location.reload(); }, open: openPanel, apply: applyHidden };
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", setupLayout);
+  else setupLayout();
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", setup);
   else setup();
