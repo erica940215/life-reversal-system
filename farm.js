@@ -4527,7 +4527,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
         n++;
       }
       if (!n) return toast(why);
-      toast(`🌾 一次排了 ${n} 批${why === "材料不夠" ? "（材料用完了）" : ""}`);
+      toast(`${D.recipes[rk] && D.recipes[rk].machine === "feedmill" ? "🌾" : "⚙️"} 一次排了 ${n} 批${why === "材料不夠" ? "（材料用完了）" : ""}`);
       after();
     },
 
@@ -5779,7 +5779,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       const ok = hasAll(r.need);
       return `<div class="fm-row ${rarityClass(r.out)}"><div class="fm-row-art">${itemIcon(r.out)}</div>
         <div><div class="fm-row-name">${esc(itemName(r.out))} ×${r.qty}</div>${ingsHtml(r.need)}<div class="fm-row-sub">⏱ ${machineMinutes(r)} 分鐘・+3 EXP</div></div>
-        <div class="fm-row-btns"><button type="button" class="fm-btn small green" data-act="startrecipe" data-r="${k}" ${ok && q.filter(j => laneOf(j.r) === laneOf(k)).length < queueMax(m) ? "" : "disabled"}>做</button>${m === "feedmill" ? `<button type="button" class="fm-btn small green" data-act="startrecipemax" data-r="${k}" ${ok && q.filter(j => laneOf(j.r) === laneOf(k)).length < queueMax(m) ? "" : "disabled"}>一次做滿</button>` : ""}</div></div>`;
+        <div class="fm-row-btns"><button type="button" class="fm-btn small green" data-act="startrecipe" data-r="${k}" ${ok && q.filter(j => laneOf(j.r) === laneOf(k)).length < queueMax(m) ? "" : "disabled"}>做</button>${m !== "baitline" ? `<button type="button" class="fm-btn small green" data-act="startrecipemax" data-r="${k}" ${ok && q.filter(j => laneOf(j.r) === laneOf(k)).length < queueMax(m) ? "" : "disabled"}>一次做滿</button>` : ""}</div></div>`;
     }).join("");
 
     return `<div class="${inRanch ? "fm-pen" : "fm-panel"}"><div class="fm-pen-head"><h3 class="ol" style="--olc:#6a4220">${machineTag(info)} ${esc(info.name)}</h3>
