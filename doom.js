@@ -105,6 +105,7 @@
       }
       if (!DM.city) loadCity();
       if (!DM.pan) loadPantry();
+      if (!DM.pw) loadPower();
       if (!DM.trk) {
         const t = await db.rpc("doom_trinket_cat");
         if (!t.error && t.data) DM.trk = t.data;
@@ -424,9 +425,9 @@
     if (DM.error) { root.innerHTML = `<div class="card"><p>載入失敗：${esc(DM.error)}</p><button type="button" class="btn" data-dm="reload">再試一次</button></div>`; return; }
     if (!DM.s || !DM.cat) { root.innerHTML = `<div class="card"><p>☢️ 正在連線到序光電台…</p></div>`; return; }
 
-    const tabs = [["today", "📻 今日"], ["draw", `🎟️ 搜刮${DM.s.state.scav ? `<i class="dm-dot">${DM.s.state.scav}</i>` : ""}`], ["base", "🏚️ 基地"], ["chapter", "📖 章節"], ["city", `🏙️ 城市${cityDot()}`], ["food", `🍱 食物${foodDot()}`], ["book", "🔮 圖鑑"]];
+    const tabs = [["today", "📻 今日"], ["draw", `🎟️ 搜刮${DM.s.state.scav ? `<i class="dm-dot">${DM.s.state.scav}</i>` : ""}`], ["base", "🏚️ 基地"], ["chapter", "📖 章節"], ["city", `🏙️ 城市${cityDot()}`], ["food", `🍱 食物${foodDot()}`], ["power", `⚡ 異能${powerDot()}`], ["book", "🔮 圖鑑"]];
     const body = DM.tab === "draw" ? drawHtml() : DM.tab === "base" ? baseHtml() : DM.tab === "chapter" ? chapterHtml()
-      : DM.tab === "book" ? bookHtml() : DM.tab === "city" ? cityHtml() : DM.tab === "food" ? foodHtml() : todayHtml();
+      : DM.tab === "book" ? bookHtml() : DM.tab === "city" ? cityHtml() : DM.tab === "food" ? foodHtml() : DM.tab === "power" ? powerHtml() : todayHtml();
     root.innerHTML = headHtml() + reportHtml() + newsHtml() +
       `<div class="dm-tabs">${tabs.map(([k, n]) => `<button type="button" class="${DM.tab === k ? "on" : ""}" data-dm="tab" data-v="${k}">${n}</button>`).join("")}</div>` +
       body;
@@ -439,6 +440,8 @@
     const el = e.target.closest("[data-dm]");
     if (!el || el.disabled) return;
     const act = el.dataset.dm;
+    if (act === "pwup") { call("doom_power_up", { p_id: el.dataset.v }, async d => { sfx("level"); toast(`⚡ ${d.lv === 1 ? "覺醒" : "升級"}成功！Lv${d.lv}`); await loadPower(); }); return; }
+    if (act === "req") { const ok = el.dataset.ok === "1"; call("doom_req_answer", { p_i: Number(el.dataset.i), p_accept: ok }, async d => { if (ok) { sfx("coin"); toast(`💠 收到 ${d.cores} 顆精核，對方很開心！`); } else toast("婉拒了"); await loadPower(); await loadPantry(); }); return; }
     if (act === "fcat") { DM.fsec = el.dataset.v; render(); return; }
     if (act === "eat") {
       const f = (document.getElementById("dm-meal-food") || {}).value || "", dr = (document.getElementById("dm-meal-drink") || {}).value || "";
@@ -816,6 +819,8 @@
     r.trinkets = [].concat(...list.map(x => x.trinkets || []));
     r.rescued = list.reduce((a, x) => a + (x.rescued || 0), 0);
     r.pantry = [].concat(...list.map(x => x.pantry || []));
+    const zs = list.map(x => x.zombies).filter(Boolean);
+    r.zombies = zs.length ? zs.reduce((a, z) => ({ walker: a.walker + z.walker, mutant: a.mutant + z.mutant, king: a.king + z.king, cores: a.cores + z.cores }), { walker: 0, mutant: 0, king: 0, cores: 0 }) : null;
     r.rewards = [].concat(...list.map(x => x.rewards || []));
     r.unlocked = list.map(x => x.unlocked).filter(Boolean)[0] || null;
     r.signal = list.map(x => x.signal).filter(Boolean)[0] || null;
@@ -902,6 +907,7 @@
       ${r.downgraded ? `<p class="dm-warn">${esc(r.downgraded)}</p>` : ""}
       ${r.unlocked ? `<div class="dm-rv-news">🗺️ 發現隱藏區域：<b>${esc((zoneById(r.unlocked) || {}).name || r.unlocked)}</b>！下次專注可以去了。</div>` : ""}
       ${r.signal ? `<div class="dm-rv-news">📡 解開第 ${r.signal.no} 段神秘訊號：「${esc(r.signal.cipher)}」${r.signal.unlock ? `<br>找到新地方：<b>${esc((zoneById(r.signal.unlock) || {}).name || "")}</b>` : ""}${gainsHtml(r.signal.gains)}</div>` : ""}
+      ${zombieHtml(r.zombies)}
       ${r.rescued ? `<div class="dm-rv-news">🧑 救回了 <b>${r.rescued}</b> 個倖存者，帶他們回城市！</div>` : ""}
       ${r.double ? `<div class="dm-rv-tag">✖️ 翻倍卡生效：這趟的東西翻倍</div>` : ""}
       ${r.mastery ? `<div class="dm-rv-tag">${esc(r.zone_emoji)} ${esc(r.zone_name)}熟練度 Lv${masteryLv(r.mastery.minutes)}（累積 ${r.mastery.minutes} 分鐘）</div>` : ""}
@@ -939,7 +945,7 @@
   const EXTRA_RES = {
     box_bronze: { name: "銅補給箱", emoji: "📦" }, box_silver: { name: "銀補給箱", emoji: "🎁" },
     box_gold: { name: "金補給箱", emoji: "👑" }, double: { name: "翻倍卡", emoji: "✖️" },
-    unid: { name: "未鑑定物品", emoji: "❓" }, survivor: { name: "倖存者", emoji: "🧑" },
+    unid: { name: "未鑑定物品", emoji: "❓" }, survivor: { name: "倖存者", emoji: "🧑" }, cores: { name: "精核", emoji: "💠" },
     stardust: { name: "星屑", emoji: "✨" }, gold: { name: "金幣", emoji: "🪙" },
     wish_normal: { name: "星願券", emoji: "🎫" }, ticket_normal: { name: "召喚券", emoji: "🎟️" }
   };
@@ -1245,6 +1251,76 @@
     return `<div class="card"><h3>📚 收藏組合</h3><p class="dm-note">收齊一組送補給箱，而且幸運永久 +2。</p>
       ${sets.map(s => { const [a, b] = prog(s), done = rw["set:" + s.id];
         return `<div class="dm-goal"><span>${s.emoji} ${esc(s.name)}${done ? " ✅" : ""}</span><b>${a}/${b}</b>${bar(a, b || 1, done ? "#66bb6a" : "#ab47bc")}</div>`; }).join("")}</div>`;
+  }
+
+  /* =========================================================
+     ⚡ 異能：殺喪屍拿精核、升級異能、居民繳住宿費和提出請求
+  ========================================================= */
+  async function loadPower() {
+    if (!hasDb()) return;
+    try {
+      if (!DM.pcat) { const c = await db.rpc("doom_power_cat"); if (c.error) { DM.powErr = /doom_power_cat|PGRST202|42883/.test(c.error.message || "") ? "setup" : c.error.message; return; } DM.pcat = c.data; }
+      const { data, error } = await db.rpc("doom_power_status");
+      if (error) { DM.powErr = error.message; return; }
+      DM.powErr = null; DM.pw = data;
+      if (data.notes && data.notes.length) DM.news = (DM.news || []).concat(data.notes.map(n => ({ icon: n.kind === "raid" ? "🌙" : "🏙️", title: n.title, body: "", gains: n.gains })));
+    } catch (e) { DM.powErr = e.message || String(e); }
+  }
+  function powerDot() {
+    const p = DM.pw;
+    if (!p) return "";
+    const open = (p.reqs || []).filter(r => r.state === "open").length;
+    return open ? `<i class="dm-dot">${open}</i>` : "";
+  }
+  function zombieHtml(z) {
+    if (!z || !(z.walker + z.mutant + z.king)) return "";
+    return `<div class="dm-rv-news dm-zb">🧟 一路上打倒了 <b>${z.walker}</b> 隻喪屍${z.mutant ? `、<b>${z.mutant}</b> 隻變異喪屍` : ""}${z.king ? `，還有 <b>👹 喪屍王</b>！` : ""}　💠 精核 +${z.cores}</div>`;
+  }
+
+  function reqOk(r) {
+    const st = DM.s.state, pan = (DM.pan && DM.pan.pantry) || st.pantry || {};
+    if (r.type === "res") return Object.entries(r.cost).every(([k, n]) => st[k] >= n);
+    if (r.type === "item") return (pan[r.id] || 0) >= r.qty;
+    if (r.type === "cat" && DM.fcat) return DM.fcat.items.filter(x => x.c === r.cat).reduce((a, x) => a + (pan[x.id] || 0), 0) >= r.qty;
+    return true;
+  }
+
+  function powerHtml() {
+    if (DM.powErr === "setup") return `<div class="card"><p>⚠️ 異能的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-10-30_末世_異能.sql</b>。</p></div>`;
+    if (DM.powErr) return `<div class="card"><p>載入失敗：${esc(DM.powErr)}</p></div>`;
+    if (!DM.pw || !DM.pcat) { loadPower().then(render); if (!DM.fcat) loadPantry(); return `<div class="card"><p>⚡ 感應異能中…</p></div>`; }
+    const p = DM.pw, cat = DM.pcat, zk = p.zkills || {};
+    const head = `<div class="card dm-pw-head"><div class="dm-stats">
+        <div>${ic("power", "core", "💠", "big")}<b>${p.cores}</b><small>精核</small></div>
+        <div><b>${p.kills}</b><small>打倒的喪屍</small></div>
+        <div><b>${zk.mutant || 0}</b><small>變異喪屍</small></div>
+        <div><b>${zk.king || 0}</b><small>喪屍王</small></div></div>
+      <p class="dm-note">專注搜刮時會遇到喪屍：普通 💠1、變異 💠3、喪屍王 💠12（專注滿 60 分鐘才會出現）。居民每人每天繳 💠1 住宿費。</p></div>`;
+    const pws = cat.powers.map(x => {
+      const lv = (p.powers || {})[x.id] || 0, max = cat.max, cost = lv < max ? p.costs[lv] : null;
+      const pips = Array.from({ length: max }, (_, i) => `<i class="${i < lv ? "on" : ""}"></i>`).join("");
+      return `<div class="dm-pw ${lv ? "" : "sleep"}">${ic("power", x.id, x.emoji, "big")}
+        <div class="dm-proj-b"><b>${esc(x.name)} <small>Lv${lv}/${max}</small></b><span class="dm-pips pw">${pips}</span>
+          <small>${esc(x.desc)}・每級 ${esc(x.per)}</small></div>
+        ${cost == null ? `<span class="dm-done">✨ 滿級</span>` : `<button type="button" class="btn dm-btn" data-dm="pwup" data-v="${x.id}" ${p.cores >= cost && !DM.busy ? "" : "disabled"}>${lv ? "升級" : "覺醒"}<br><small>💠${cost}</small></button>`}</div>`;
+    }).join("");
+    const fi = id => DM.fcat && DM.fcat.items.find(x => x.id === id);
+    const fc = id => DM.fcat && DM.fcat.cats.find(x => x.id === id);
+    const reqs = (p.reqs || []).map((r, i) => {
+      let want;
+      if (r.type === "item") { const it = fi(r.id); want = it ? `${ic("pantry", it.id, it.emoji, "sm")} ${esc(it.name)} ×${r.qty}` : esc(r.id); }
+      else if (r.type === "cat") { const c = fc(r.cat); want = `${c ? c.emoji + " " + esc(c.name) : esc(r.cat)}類 ×${r.qty}`; }
+      else want = Object.entries(r.cost).map(([k, n]) => `${resInfo(k).emoji} ${n}`).join(" ");
+      const ok = reqOk(r);
+      return `<div class="dm-req ${r.state}"><span class="dm-req-face">${r.emoji}</span><div class="dm-proj-b"><b>${esc(r.name)}</b><small>「${esc(r.text)}」</small>
+          <div class="dm-chips"><span class="dm-chip">要：${want}</span><span class="dm-chip">付 💠${r.reward}</span></div></div>
+        <div class="dm-craft-btns">${r.state === "open" ? `<button type="button" class="btn dm-btn" data-dm="req" data-i="${i}" data-ok="1" ${ok && !DM.busy ? "" : "disabled"}>${ok ? "幫忙" : "沒有"}</button>
+          <button type="button" class="btn dm-btn ghost" data-dm="req" data-i="${i}" data-ok="0" ${DM.busy ? "disabled" : ""}>婉拒</button>` : r.state === "done" ? `<span class="dm-done">✅ 幫了</span>` : `<span class="dm-note">婉拒了</span>`}</div></div>`;
+    }).join("");
+    return head + `<div class="card"><h3>⚡ 異能</h3><p class="dm-note">用精核覺醒、升級異能，效果永久有效，每種最高 Lv10。</p>${pws}</div>
+      <div class="card"><h3>🏠 居民的請求（${p.survivors} 位居民）</h3>
+        ${reqs || `<p class="dm-note">${p.survivors ? "今天沒有人來找你。" : "基地還沒有居民。專注搜刮、遠征可以救回倖存者，他們會住進來。"}</p>`}
+        <p class="dm-note">每天換新的請求，居民越多請求越多。幫忙會拿到精核，士氣也會 +2；不想幫就婉拒，不會扣任何東西。要求「某一類」的時候，會先用那一類裡最普通、最多的。</p></div>`;
   }
 
   /* =========================================================
@@ -1562,6 +1638,12 @@
       .dm-pin.lv3 .dm-img, .dm-pin.lv3 .dm-emo { width: 30px; height: 30px; box-shadow: 0 0 20px 8px rgba(255,220,130,.9); }
       .dm-pin i { font-style: normal; font-size: 9px; color: #ffd54f; text-shadow: 0 0 4px #000; line-height: 1; }
       @keyframes dm-pin { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.35); } }
+      .dm-pw, .dm-req { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid rgba(127,127,127,.15); }
+      .dm-pw.sleep .dm-img { filter: grayscale(.7); opacity: .7; }
+      .dm-pips.pw i { width: 10px; height: 6px; } .dm-pips.pw i.on { background: linear-gradient(90deg,#7c4dff,#00e5ff); }
+      .dm-req-face { font-size: 34px; width: 48px; text-align: center; } .dm-req.done, .dm-req.no { opacity: .55; }
+      .dm-zb { border-left: 4px solid #7c4dff; }
+      .dm-pw-head .dm-stats .dm-img.big { width: 36px; height: 36px; display: block; margin: 0 auto; }
       .dm-meal { display: flex; gap: 8px; align-items: center; } .dm-meal > div { display: flex; flex-direction: column; gap: 4px; }
       .dm-meal-pick { display: flex; flex-direction: column; gap: 8px; } .dm-meal-pick label { display: flex; flex-direction: column; gap: 4px; font-weight: 700; font-size: 13px; }
       .dm-meal-pick select { padding: 8px; border-radius: 10px; font-size: 14px; max-width: 100%; }
