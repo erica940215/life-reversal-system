@@ -249,9 +249,9 @@
     box.innerHTML = `<div class="st-row"><span class="st-fire ${m.streak ? "on" : ""}">🎯</span>
       <div class="st-grow"><b>主線連擊 ${m.streak} 天</b><span class="st-sub">${m.today_done ? "今天的主線完成了 ✓ 星屑 +2" : m.today_set ? "完成今天的主線就能接上連擊（星屑 +2）" : "先設定今天的主線吧"}${next ? `・連續 ${next} 天送寶箱` : ""}</span></div>
       <button type="button" class="st-rest" data-st="rest">🛌 休息券 ${r.left}</button></div>
-      ${ST.restOpen ? `<div class="st-restbox"><p class="st-sub">休息券每月 2 張：補簽這個月沒簽到的一天（免費），連續簽到和主線連擊都會接上。生病、考試週就用吧，休息也是冒險的一部分。</p>
+      ${ST.restOpen ? `<div class="st-restbox"><p class="st-sub">休息券每月免費 2 張${r.extra ? `，另外還有工坊做的 ${r.extra} 張` : ""}：補簽這個月沒簽到的一天，連續簽到和主線連擊都會接上。免費的用完了，可以到末世「城市 → 工坊」用物資做休息券。生病、考試週就用吧，休息也是冒險的一部分。</p>
         ${r.left && missed.length ? `<div class="rp-row">${missed.map(d => `<button type="button" class="btn btn-small" data-st="restuse" data-v="${d}">${d.slice(5).replace("-", "/")}</button>`).join("")}</div>`
-          : `<p class="st-sub">${r.left ? "這個月最近沒有漏簽的日子 👍" : "這個月的休息券用完了。"}</p>`}</div>` : ""}`;
+          : `<p class="st-sub">${r.left ? "這個月最近沒有漏簽的日子 👍" : "這個月的休息券用完了（末世工坊可以再做）。"}</p>`}</div>` : ""}`;
   }
 
 

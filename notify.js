@@ -97,6 +97,15 @@
     render();
   }
 
+  async function saveMore(m) {
+    NT.busy = true; render();
+    const { data, error } = await db.rpc("push_save_more", { p_exp: m.n_exp, p_farm: m.n_farm, p_summary: m.n_summary, p_summary_time: m.summary_time });
+    NT.busy = false;
+    if (error) NT.msg = /push_save_more|PGRST202/.test(error.message || "") ? "⚠️ 要先執行 sql/2026-10-30_通知與回顧.sql" : "❌ " + error.message;
+    else { NT.set = data; NT.msg = "已儲存"; }
+    render();
+  }
+
   async function test() {
     NT.busy = true; NT.msg = "送出中…"; render();
     try {
@@ -145,6 +154,12 @@
         <label class="nt-toggle"><input type="checkbox" data-nt="only" ${s.only_pending ? "checked" : ""}> 只有還有任務沒完成時才提醒（全部做完就不吵你）</label>
         <p class="nt-note">通知會寫還剩幾個任務、前三個是什麼。每個時間每天最多一則，時間到之後 10 分鐘內會送到。目前有 ${s.devices || 0} 台裝置會收到。</p>
       </div>
+      <div class="nt-box"><div class="nt-sec">其他通知</div>
+        <label class="nt-toggle"><input type="checkbox" data-nt="m" data-k="n_exp" ${s.n_exp !== false ? "checked" : ""}> 🧭 末世遠征隊回來了</label>
+        <label class="nt-toggle"><input type="checkbox" data-nt="m" data-k="n_farm" ${s.n_farm !== false ? "checked" : ""}> 🌾 農場的作物都熟了</label>
+        <label class="nt-toggle"><input type="checkbox" data-nt="m" data-k="n_summary" ${s.n_summary !== false ? "checked" : ""}> 📊 每日總結（今天專注多久、任務完成幾個）</label>
+        <div class="nt-row"><span>每日總結時間</span><input type="time" id="nt-sum" value="${esc(s.summary_time || "22:30")}" step="300"><button type="button" class="nt-btn ghost" data-nt="sumtime" ${NT.busy ? "disabled" : ""}>儲存</button></div>
+      </div>
       <div class="nt-msg">${esc(NT.msg)}</div>`;
   }
 
@@ -182,6 +197,12 @@
     if (a === "test") return test();
     if (a === "enabled") return save({ enabled: el.checked });
     if (a === "only") return save({ only_pending: el.checked });
+    if (a === "m" || a === "sumtime") {
+      const m = { n_exp: s.n_exp !== false, n_farm: s.n_farm !== false, n_summary: s.n_summary !== false, summary_time: s.summary_time || "22:30" };
+      if (a === "m") m[el.dataset.k] = el.checked;
+      else m.summary_time = (document.getElementById("nt-sum") || {}).value || m.summary_time;
+      return saveMore(m);
+    }
     if (a === "del") return save({ times: (s.times || []).filter(t => t !== el.dataset.v) });
     if (a === "add") {
       const v = (document.getElementById("nt-time") || {}).value;

@@ -794,6 +794,6 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();
 
-  window.FunGame = { version: FUN_JS_VERSION, html, reload: load, state: FN, avatar };
+  window.FunGame = { version: FUN_JS_VERSION, html, reload: load, state: FN, avatar, totals: { monsters: MONSTERS.length + ZODIAC.length, frames: FRAMES.length } };
 
 })();

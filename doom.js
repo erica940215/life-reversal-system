@@ -1277,12 +1277,25 @@
     if (!DM.city) { loadCity().then(render); return `<div class="card"><p>🏙️ 走向城市廢墟中…</p></div>`; }
     const c = DM.city, sec = DM.csec || "city";
     const tabs = [["city", "🏗️ 重建"], ["craft", "🛠️ 工坊"], ["exp", `🧭 遠征${cityDot()}`]];
-    const head = `<div class="card dm-city-head">${ic("city", "banner", "🏙️", "banner")}
+    const head = `<div class="card dm-city-head">${cityScene(c)}
       <div class="dm-stats"><div><b>Lv${c.city_lv}</b><small>城市等級</small></div><div><b>${c.survivors}</b><small>倖存者</small></div>
       <div><b>${c.defense}</b><small>防禦（夜襲約 ${c.threat}）</small></div><div><b>${c.raids.win || 0}勝 ${c.raids.lose || 0}敗</b><small>夜襲紀錄</small></div></div>
       <p class="dm-note">倖存者靠專注搜刮救回來（越久越容易），遠征也會帶回來。每 4 個人每天吃 1 份食物、喝 1 份水（最多吃掉 5%），每 3 個人每天做 1 個零件。</p></div>
       <div class="dm-subtabs">${tabs.map(([k, n]) => `<button type="button" class="${sec === k ? "on" : ""}" data-dm="csec" data-v="${k}">${n}</button>`).join("")}</div>`;
     return head + (sec === "craft" ? craftHtml() : sec === "exp" ? expHtml() : projHtml());
+  }
+
+  /* 城市主圖：蓋好的工程在圖上亮起來（階段越高越亮），城市等級越高整張圖越暖 */
+  const SPOT = { clinic: [17, 66], greenhouse: [93, 42], waterplant: [73, 76], powerplant: [46, 30], school: [41, 62], radiotower: [29, 22], citywall: [7, 82], lighthouse: [59, 50] };
+  function cityScene(c) {
+    const pins = cityCat().projects.map(p => {
+      const lv = (c.projects || {})[p.id] || 0;
+      if (!lv) return "";
+      const [x, y] = SPOT[p.id] || [50, 50];
+      return `<span class="dm-pin lv${lv}" style="left:${x}%;top:${y}%" title="${esc(p.name)} 第 ${lv} 階段">${ic("city", p.id, p.emoji, "sm")}<i>${"★".repeat(lv)}</i></span>`;
+    }).join("");
+    const warm = Math.min(0.45, (c.city_lv - 1) * 0.03);
+    return `<div class="dm-scene-city">${ic("city", "banner", "🏙️", "banner")}<span class="dm-glow" style="opacity:${warm}"></span>${pins}</div>`;
   }
 
   function projHtml() {
@@ -1460,6 +1473,15 @@
       .dm-book b { font-size: 13px; } .dm-book small { font-size: 11px; opacity: .75; }
       .dm-book.off { opacity: .45; }
       .dm-stash.done summary { color: #f9a825; }
+      .dm-scene-city { position: relative; border-radius: 12px; overflow: hidden; margin-bottom: 8px; }
+      .dm-scene-city .dm-img.banner { margin: 0; display: block; }
+      .dm-glow { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 80%, rgba(255,190,90,.9), transparent 70%); mix-blend-mode: screen; pointer-events: none; }
+      .dm-pin { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; animation: dm-pin 2.4s ease-in-out infinite; }
+      .dm-pin .dm-img, .dm-pin .dm-emo { width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 0 10px 3px rgba(255,210,120,.6); }
+      .dm-pin.lv2 .dm-img, .dm-pin.lv2 .dm-emo { box-shadow: 0 0 14px 5px rgba(255,210,120,.75); }
+      .dm-pin.lv3 .dm-img, .dm-pin.lv3 .dm-emo { width: 30px; height: 30px; box-shadow: 0 0 20px 8px rgba(255,220,130,.9); }
+      .dm-pin i { font-style: normal; font-size: 9px; color: #ffd54f; text-shadow: 0 0 4px #000; line-height: 1; }
+      @keyframes dm-pin { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.35); } }
       .dm-subtabs { display: flex; gap: 6px; margin: 0 0 12px; } .dm-subtabs button { flex: 1; padding: 8px; border-radius: 10px; border: 0; background: rgba(127,127,127,.15); color: inherit; font-weight: 700; cursor: pointer; } .dm-subtabs button.on { background: #ff9800; color: #1b1f2e; }
       .dm-proj, .dm-craft, .dm-exp { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid rgba(127,127,127,.15); }
       .dm-proj.off, .dm-exp.off { opacity: .5; } .dm-proj.done { background: linear-gradient(90deg, rgba(255,193,7,.12), transparent); border-radius: 10px; }

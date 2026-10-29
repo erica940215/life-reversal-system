@@ -77,7 +77,8 @@ select $json${
   {"id":"r_medkit","name":"急救包","emoji":"🩹","icon":"craft/medkit","cost":{"water":10,"parts":15},"gain":{"hp":20,"morale":5}},
   {"id":"r_party","name":"營火晚會","emoji":"🔥","icon":"craft/party","cost":{"food":20,"water":10},"gain":{"morale":20}},
   {"id":"r_dust","name":"星屑 ×15","emoji":"✨","icon":"craft/dust","cost":{"parts":30,"water":10},"gain":{"stardust":15}},
-  {"id":"r_recruit","name":"招募倖存者","emoji":"🧑‍🤝‍🧑","icon":"craft/recruit","cost":{"food":30,"water":30},"gain":{"survivor":1}}
+  {"id":"r_recruit","name":"招募倖存者","emoji":"🧑‍🤝‍🧑","icon":"craft/recruit","cost":{"food":30,"water":30},"gain":{"survivor":1}},
+  {"id":"r_rest","name":"休息券","emoji":"🛌","icon":"craft/rest","cost":{"food":60,"water":60,"parts":40},"gain":{"item":"rest_extra"}}
 ],
 "dests": [
   {"id":"farmland","name":"郊外農場","emoji":"🌾","desc":"安全，帶回很多食物。","city":1,"hours":1,"cost":{"food":5,"water":5},
@@ -303,7 +304,10 @@ begin
     select * into st from public.doom_state where user_id = u for update;
     exit when not public.doom_can_pay(st, r->'cost');
     perform public.doom_apply(u, public.doom_neg(r->'cost'), 'doom-craft-pay:' || gen_random_uuid());
-    if r->'gain' ? 'survivor' then
+    if r->'gain' ? 'item' then
+      perform public.grant_item(u, r->'gain'->>'item', 1, 'doom-craft-item:' || gen_random_uuid());
+      out := out || jsonb_build_object('k', r->'gain'->>'item', 'n', 1);
+    elsif r->'gain' ? 'survivor' then
       update public.doom_state set survivors = survivors + (r->'gain'->>'survivor')::int where user_id = u;
       out := out || jsonb_build_object('k', 'survivor', 'n', 1);
     else
