@@ -1065,6 +1065,26 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     return "ok";
   }
 
+  /* 果樹換位置：先選一棵，再點另一個位置（空位就搬過去，有樹就互換） */
+  function swapTrees(a, b) {
+    a = String(a); b = String(b);
+    if (a === b) return false;
+    const ta = S.orchard.trees[a], tb = S.orchard.trees[b];
+    if (!ta) return false;
+    S.orchard.trees[b] = ta;
+    if (tb) S.orchard.trees[a] = tb; else delete S.orchard.trees[a];
+    return tb ? "swap" : "move";
+  }
+
+  function treeMovePick(i) {
+    const src = UI.treeMove;
+    UI.treeMove = null;
+    if (String(src) === String(i)) { toast("取消移動"); return after(); }
+    const r = swapTrees(src, i);
+    toast(r === "swap" ? "🔁 兩棵果樹換好位置了" : r === "move" ? "🌳 果樹搬好了" : "取消移動");
+    after();
+  }
+
   function orchardRipeKeys() {
     return Object.keys(S.orchard.trees).filter(k => treeState(S.orchard.trees[k]) === "ripe");
   }
@@ -4273,6 +4293,8 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       HITS.push({ y: ty, svg: `<ellipse class="tap fm-hit" data-act="tree" data-key="${i}" role="button" tabindex="0" aria-label="${tr ? `${D.crops[tr.c].name}樹，${st === "ripe" ? "結果了" : st === "growing" ? "樹苗長大中" : "等結果"}` : "空的樹位，點一下種樹"}" cx="${tx}" cy="${ty - 12}" rx="${tw * 0.62}" ry="${th * 1.05}" fill="#fff" fill-opacity="0" pointer-events="all"/>` });
       let s = `<g pointer-events="none">`;
       s += `<ellipse cx="${tx}" cy="${ty}" rx="${tw * 0.8}" ry="${th * 0.8}" fill="#8fbf5a" stroke="#fff" stroke-width="1.5" ${tr ? "" : 'stroke-dasharray="5 4"'}/>`;
+      if (UI.treeMove != null && String(UI.treeMove) === String(i)) s += `<ellipse cx="${tx}" cy="${ty}" rx="${tw * 0.95}" ry="${th * 0.95}" fill="none" stroke="#ffd34d" stroke-width="4"/>`;
+      else if (UI.treeMove != null) s += `<ellipse cx="${tx}" cy="${ty}" rx="${tw * 0.85}" ry="${th * 0.85}" fill="none" stroke="#fff" stroke-width="2" stroke-dasharray="3 3"/>`;
       if (!tr) {
         s += `<text x="${tx}" y="${ty + 5}" text-anchor="middle" font-size="16" fill="#fff">＋</text>`;
       } else {
@@ -4671,6 +4693,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
 
     tree: el => {
       const i = Number(el.dataset.key);
+      if (UI.treeMove != null) return treeMovePick(i);
       const tr = S.orchard.trees[i];
       if (!tr) return openSheet("seeds", { zone: "orchard", key: i });
       /* 點任何一棵：只要果園裡有熟的就全部收（後排的樹點不到也收得到） */
@@ -4684,8 +4707,19 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     },
 
     orchardlist: () => openSheet("orchard"),
+    orchmove: () => {
+      if (UI.treeMove != null || UI.orchMoveMode) { UI.treeMove = null; UI.orchMoveMode = false; toast("取消移動"); renderAll(); return openSheet("orchard"); }
+      UI.orchMoveMode = true; toast("先點要移動的那棵樹"); openSheet("orchard");
+    },
     orchardslot: el => {
       const i = Number(el.dataset.key);
+      if (UI.treeMove != null) { treeMovePick(i); return openSheet("orchard"); }
+      if (UI.orchMoveMode) {
+        if (!S.orchard.trees[i]) return toast("先點一棵要移動的樹");
+        UI.treeMove = i; UI.orchMoveMode = false;
+        toast("再點要搬去的位置（有樹就互換）");
+        return openSheet("orchard");
+      }
       const tr = S.orchard.trees[i];
       if (!tr) return openSheet("seeds", { zone: "orchard", key: i });
       if (treeState(tr) === "ripe") {
@@ -5203,7 +5237,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       const st = treeState(tr);
       title = `${D.crops[tr.c].name}樹`;
       sub = st === "growing" ? `樹苗長大還要 <span data-until="${tr.grown}">${dur(tr.grown - now())}</span>` : `下次結果 <span data-until="${tr.next}">${dur(tr.next - now())}</span>`;
-      opts = popOpt("removetree", uiIcon("chop"), "砍掉");
+      opts = popOpt("movetree", "↔️", "移動") + popOpt("removetree", uiIcon("chop"), "砍掉");
     } else if (info.type === "log") {
       const l = S.logs.slots[info.key];
       if (!l) { closePop(); return; }
@@ -5279,6 +5313,11 @@ const FARM_JS_VERSION = "2026-10-28 v2";
         delete z.store[info.key];
         toast("清掉了");
       }
+    } else if (opt === "movetree") {
+      UI.treeMove = info.key;
+      closePop();
+      toast("再點要搬去的位置（空位或另一棵樹，有樹就互換）");
+      return renderAll();
     } else if (opt === "removetree") {
       return openModal("confirmremove", { kind: "tree", key: info.key });
     } else if (opt === "removelog") {
@@ -5738,10 +5777,12 @@ const FARM_JS_VERSION = "2026-10-28 v2";
         const st = treeState(tr);
         if (!tr) { tiles.push(`<button type="button" class="fm-card" data-act="orchardslot" data-key="${i}"><div class="fm-card-art">＋</div><div class="fm-card-name ol">空位</div></button>`); continue; }
         const t = st === "ripe" ? "可以收" : st === "growing" ? `<span data-until="${tr.grown}">${dur(tr.grown - now())}</span>` : `<span data-until="${tr.next}">${dur(tr.next - now())}</span>`;
-        tiles.push(`<button type="button" class="fm-card ${rarityClass(tr.c)}" data-act="orchardslot" data-key="${i}"><div class="fm-card-art">${itemIcon(tr.c)}</div><div class="fm-card-name ol">${t}</div></button>`);
+        tiles.push(`<button type="button" class="fm-card ${rarityClass(tr.c)}" style="${String(UI.treeMove) === String(i) ? "outline:3px solid #ffd34d" : ""}" data-act="orchardslot" data-key="${i}"><div class="fm-card-art">${itemIcon(tr.c)}</div><div class="fm-card-name ol">${t}</div></button>`);
       }
       const ripe = orchardRipeKeys().length;
-      return sheetTop("果園") + `<div class="fm-panel"><p class="fm-note" style="margin:0 0 10px">${ripe ? `有 ${ripe} 棵可以收，點任何一棵就全部收。` : "點空位種樹；樹苗明天長大，之後一直結果。"}</p><div class="fm-grid three">${tiles.join("")}</div></div>`;
+      const moving = UI.treeMove != null || UI.orchMoveMode;
+      return sheetTop("果園") + `<div class="fm-panel"><p class="fm-note" style="margin:0 0 10px">${moving ? (UI.treeMove != null ? "👉 再點要搬去的位置：空位就搬過去，有樹就互換。" : "👉 先點要移動的那棵樹。") : ripe ? `有 ${ripe} 棵可以收，點任何一棵就全部收。` : "點空位種樹；樹苗明天長大，之後一直結果。"}</p>
+        <button type="button" class="fm-btn small ${moving ? "" : "green"}" style="margin-bottom:10px" data-act="orchmove">${moving ? "取消移動" : "↔️ 移動果樹位置"}</button><div class="fm-grid three">${tiles.join("")}</div></div>`;
     },
 
     /* ---------- 溫室 ---------- */
