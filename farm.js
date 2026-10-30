@@ -3257,6 +3257,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
           <div class="fm-exp"><i style="width:${pct}%"></i><span>${S.lv >= MAX_LV ? "MAX" : `${num(S.exp)} / ${num(need)}`}</span></div>
         </div>
         <div class="fm-pname ol">${esc(name)}</div>
+        <div class="fm-gatetime ol" id="fm-gatetime" style="display:${gateLeftText() ? "inline-block" : "none"};margin-top:calc(var(--u) * 4);padding:0 calc(var(--u) * 10);border-radius:999px;background:rgba(40,60,80,.72);color:#fff;font-size:calc(var(--u) * 15);line-height:calc(var(--u) * 26);font-variant-numeric:tabular-nums">${gateLeftText()}</div>
       </div>`;
 
     const banners = [];
@@ -6651,6 +6652,24 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     net.gated = false;
     await startFarm();
   }
+
+  /* 入場剩下的時間：「⏳ 還剩 12 分 05 秒」；免費（沒有入場限制）就不顯示 */
+  function gateLeftText() {
+    const g = net.gate;
+    if (!g || g.free || !g.active_until) return "";
+    const ms = Date.parse(g.active_until) - Date.now();
+    if (!(ms > 0)) return "⏳ 時間到了";
+    const t = Math.ceil(ms / 1000), m = Math.floor(t / 60), sec = t % 60;
+    return `⏳ 還剩 ${m} 分 ${String(sec).padStart(2, "0")} 秒${ms < 60000 ? "，快要出去了" : ""}`;
+  }
+  setInterval(() => {
+    const el = UI.root && UI.root.querySelector("#fm-gatetime");
+    if (!el) return;
+    const t = gateLeftText();
+    el.style.display = t ? "inline-block" : "none";
+    el.textContent = t;
+    el.style.background = t && Date.parse((net.gate || {}).active_until) - Date.now() < 60000 ? "rgba(200,50,50,.85)" : "rgba(40,60,80,.72)";
+  }, 1000);
 
   /* 時間到了就關回入場頁；農場裡面不會被蓋掉，只在超過時間時才切換 */
   setInterval(() => {
