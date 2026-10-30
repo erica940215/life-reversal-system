@@ -950,6 +950,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
   function harvestQty(base) {
     let qty = base, fox = false, x2 = false;
     if (own("p_fox") && Math.random() < 0.1) { qty += 1; fox = true; }
+    if (own("p_lanternbunny") && isNightNow()) qty += 1;                 // 燈籠兔：晚上收成多 1 個
     if (S.boost.x2 > 0) { S.boost.x2 -= 1; qty *= 2; x2 = true; }
     return { qty, fox, x2 };
   }
@@ -1198,11 +1199,12 @@ const FARM_JS_VERSION = "2026-10-28 v2";
 
   /* 魔法鍋：料理時間 -30% */
   function dishMinutes(d) {
-    return own("tool_magicpot") ? Math.max(1, Math.round(d.minutes * 0.7)) : d.minutes;
+    const m = d.minutes * (own("tool_magicpot") ? 0.7 : 1) * (own("p_sakurafox") ? 0.85 : 1);   // 魔法鍋 -30%、櫻花狐 -15%
+    return Math.max(1, Math.round(m));
   }
 
   function stoveCount() {
-    return kitchenTier()[3];
+    return kitchenTier()[3] + (own("s_mosscabin") ? 1 : 0);          // 苔蘚小屋：爐子 +1
   }
 
   function freeStoves() {
@@ -3615,6 +3617,25 @@ const FARM_JS_VERSION = "2026-10-28 v2";
         const c = ["#e2552f", "#f08a2a", "#d8402c", "#f4b23c"][i % 4];
         s += `<path transform="translate(${x} ${y}) rotate(${hash("mr" + i) % 360}) scale(.9)" d="M0 -9 L3 -3 L9 -4 L5 1 L7 7 L0 4 L-7 7 L-5 1 L-9 -4 L-3 -3Z" fill="${c}" opacity=".85"/>`;
       }
+    } else if (S && skinOn("lanternground")) {
+      s += `<path d="${grass}" fill="#2d3b2a" opacity=".18"/>`;
+      for (let i = 0; i < 80; i++) {
+        const x = 120 + (hash("lx" + i) % 1260), y = 330 + (hash("ly" + i) % 1000);
+        s += `<circle cx="${x}" cy="${y}" r="${9 + (i % 4) * 2}" fill="#ffd36b" opacity=".18"/><circle cx="${x}" cy="${y}" r="${2.5 + (i % 3)}" fill="#fff1b8" opacity=".95"/>`;
+      }
+    } else if (S && skinOn("petalground")) {
+      s += `<path d="${grass}" fill="#f6b8cf" opacity=".16"/>`;
+      for (let i = 0; i < 110; i++) {
+        const x = 110 + (hash("px" + i) % 1280), y = 320 + (hash("py" + i) % 1020);
+        const c = ["#f7c3d6", "#f29fbd", "#fbe0ea"][i % 3];
+        s += `<ellipse transform="translate(${x} ${y}) rotate(${hash("pr" + i) % 360})" rx="6" ry="3.5" fill="${c}" opacity=".9"/>`;
+      }
+    } else if (S && skinOn("puddleground")) {
+      s += `<path d="${grass}" fill="#3e7d52" opacity=".14"/>`;
+      for (let i = 0; i < 26; i++) {
+        const x = 140 + (hash("wx" + i) % 1220), y = 340 + (hash("wy" + i) % 980), r = 18 + (hash("wr" + i) % 22);
+        s += `<ellipse cx="${x}" cy="${y}" rx="${r}" ry="${r * 0.45}" fill="#7fc8e8" opacity=".55"/><ellipse cx="${x - r * 0.25}" cy="${y - r * 0.1}" rx="${r * 0.35}" ry="${r * 0.12}" fill="#e8f8ff" opacity=".7"/>`;
+      }
     } else if (S && skinOn("snowground")) {
       s += `<path d="${grass}" fill="url(#fmSnowTex)" opacity=".85"/>`;
       s += `<path d="${grass}" fill="#ffffff" opacity=".25"/>`;
@@ -3962,7 +3983,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     {
       const [x, y, w] = POS.barn;
       const full = invSpace() <= 0;
-      const barnKey = skinOn("harvestbarn") ? "harvestbarn" : skinOn("candybarn") ? "candybarn" : "barn";
+      const barnKey = S.skins && S.skins.barn && skinOn(S.skins.barn) ? S.skins.barn : "barn";
       let s = `<g class="tap" data-act="storage" role="button" tabindex="0" aria-label="倉庫 ${invUsed()} / ${storageCap()}">${building(barnKey, x, y, barnKey === "barn" ? w : w * 0.95)}${nameplate(x, y + 16, `倉庫 ${invUsed()}/${storageCap() > 9999 ? "∞" : storageCap()}`)}`;
       if (full) s += mark(x, y - 150, "滿");
       items.push({ y, svg: s + "</g>" });
@@ -3974,8 +3995,8 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       const tier = kitchenTier();
       const done = kitchenStuck();
       const busy = S.kitchen.jobs.length > 0;
-      const kKey = skinOn("gingerhouse") ? "gingerhouse" : tier[1];
-      let s = `<g class="tap" data-act="kitchen" role="button" tabindex="0" aria-label="${tier[2]}${done ? "，倉庫滿了，料理放不進去" : ""}">${building(kKey, x, y, kKey === "restaurant" ? w * 0.9 : kKey === "gingerhouse" ? w * 0.85 : w)}`;
+      const kKey = S.skins && S.skins.kitchen && skinOn(S.skins.kitchen) ? S.skins.kitchen : tier[1];
+      let s = `<g class="tap" data-act="kitchen" role="button" tabindex="0" aria-label="${tier[2]}${done ? "，倉庫滿了，料理放不進去" : ""}">${building(kKey, x, y, kKey === "restaurant" ? w * 0.9 : kKey === "gingerhouse" || kKey === "mosscabin" ? w * 0.85 : w)}`;
       if (busy && !done) s += `<g fill="#fff" opacity=".8" pointer-events="none"><circle cx="${x + 40}" cy="${y - 200}" r="7"/><circle cx="${x + 46}" cy="${y - 214}" r="8"/><circle cx="${x + 38}" cy="${y - 228}" r="6"/></g>`;
       if (done) s += mark(x - 20, y - 205);
       else if (kitchenNext() && S.lv >= kitchenNext()[0]) s += mark(x - 20, y - 205, "⬆");
