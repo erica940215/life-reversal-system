@@ -150,6 +150,11 @@
       items.push({ icon: "🏙️", title: `專注時在街頭搜刮了 ${d.auto.length} 趟`, body: `一共撿到 ${n} 樣。下次專注前可以在專注頁選區域。`, gains: mergeGains(all) });
     }
     if (d.harvest && d.harvest.combo_bonus) items.push({ icon: "🔥", title: `連擊獎勵！最高 ×${d.harvest.combo || 3}`, body: "30 分鐘內連續完成事情，每連到 3 次多送 1 張搜刮券。", gains: [{ k: "scav", n: d.harvest.combo_bonus }] });
+    if (d.buddy_gifts && d.buddy_gifts.length) {
+      const by = {};
+      d.buddy_gifts.forEach(g => { (by[g.who] = by[g.who] || []).push(`${g.emoji || ""}${g.name}${g.n > 1 ? " ×" + g.n : ""}`); });
+      items.push({ icon: "🎁", title: "夥伴們送來了禮物", body: Object.entries(by).map(([w, l]) => { const c = find("companions", w); return `${c ? c.emoji + c.name : w}：${l.join("、")}`; }).join("；"), gains: [] });
+    }
     rewardNews(d.rewards, items);
     if (items.length) DM.news = (DM.news || []).concat(items);
   }
@@ -444,9 +449,10 @@
     if (act === "req") { const ok = el.dataset.ok === "1"; call("doom_req_answer", { p_i: Number(el.dataset.i), p_accept: ok }, async d => { if (ok) { sfx("coin"); toast(`💠 收到 ${d.cores} 顆精核，對方很開心！`); } else toast("婉拒了"); await loadPower(); await loadPantry(); }); return; }
     if (act === "ftab") { DM.ftab = el.dataset.v; if (el.dataset.v !== "pantry") loadFarm().then(render); render(); return; }
     if (act === "kf") { DM.kf = el.dataset.v; render(); return; }
-    if (act === "fmg") { DM.fmg = el.dataset.v; render(); return; }
+    if (act === "fmarea") { DM.fmArea = el.dataset.v; DM.fmShowLocked = false; render(); return; }
+    if (act === "fmrm") { if (!confirm("確定要移除這一格嗎？（不會退還）")) return; call("doom_farm_remove", { p_i: Number(el.dataset.v) }, async () => { toast("空出一格了"); await loadFarm(); }); return; }
     if (act === "fmlocked") { DM.fmShowLocked = !DM.fmShowLocked; render(); return; }
-    if (act === "plant") { call("doom_farm_plant", { p_crop: el.dataset.v, p_n: Number(el.dataset.n) }, async d => { sfx("click"); toast(`${d.feed ? "🐾 養了" : "🌱 種了"} ${d.n} 塊（用了 ${d.feed ? "🥫" : "💧"}${d.cost ?? d.water}）`); await loadFarm(); }); return; }
+    if (act === "plant") { call("doom_farm_plant", { p_crop: el.dataset.v, p_n: Number(el.dataset.n) }, async d => { sfx("click"); toast(`${d.feed ? "🐾 養了" : "🌱 種了"} ${d.n} 格（用了 ${d.feed ? "🥫" : "💧"}${d.cost ?? d.water}）`); await loadFarm(); }); return; }
     if (act === "harvest") { call("doom_farm_harvest", {}, async d => { sfx("coin"); toast(`🧺 收成：${Object.entries(d.got).map(([k, n]) => { const c = cropInfo(k); return (c ? c.emoji : "") + (((c && !c.fruit ? c : foodInfo(k)) || c || {}).name || k) + " ×" + n; }).join("、")}${d.bonus ? "（專注加成 +1）" : ""}`); await loadFarm(); }); return; }
     if (act === "fmup") { call("doom_farm_upgrade", {}, async d => { sfx("level"); toast(`🌾 農場升到 Lv${d.lv}！`); await loadFarm(); }); return; }
     if (act === "cook") { call("doom_farm_cook", { p_out: el.dataset.v, p_n: Number(el.dataset.n) }, async d => { sfx("click"); const x = foodInfo(d.out) || cropInfo(d.out); toast(`🍳 開始做 ${x ? x.name : d.out} ×${d.n}，${minText(d.min)}後好`); await loadFarm(); }); return; }
@@ -1168,6 +1174,7 @@
           <div class="dm-pet"><button type="button" class="btn dm-btn small ghost" data-dm="pet" data-v="${c.id}" ${done ? "disabled" : ""}>摸摸<br><small>+5</small></button>
           <button type="button" class="btn dm-btn small" data-dm="gift" data-v="${c.id}" ${done || st.food < 3 ? "disabled" : ""}>餵食<br><small>🥫3 +12</small></button></div></div>
           ${lv >= 3 && DM.ex ? `<p class="dm-story">📖 ${esc(DM.ex.stories[c.id] || "")}</p>` : `<p class="dm-note">好感 3 級解鎖牠的故事</p>`}
+          ${lv >= 5 && DM.ex && DM.ex.stories2 && DM.ex.stories2[c.id] ? `<p class="dm-story">📖 後來的故事：${esc(DM.ex.stories2[c.id])}</p>` : DM.ex && DM.ex.stories2 && DM.ex.stories2[c.id] ? `<p class="dm-note">好感 5 級解鎖後來的故事</p>` : ""}
           ${DM.ex ? `<p class="dm-note">${lv >= 5 ? "✨ 能力加倍：" : "好感 5 級："}${esc(DM.ex.bond_perk[c.id] || "")}</p>` : ""}</div>`;
       }).join("") : `<p class="dm-note">還沒有同伴。訪客、搜刮、事件都可能遇到願意留下來的人（和動物）。</p>`}
       <p class="dm-note">每個同伴每天可以陪一次。每 3 個同伴，每天多吃 🥫1 💧1。</p></div>`;
@@ -1381,37 +1388,42 @@
     const plots = f.farm.plots || [], now = fmNow();
     const ripe = plots.filter(p => p.t1 <= now).length;
     const bonus = f.focus_today >= 60;
+    const AREAS = cat.areas || [{ id: "field", name: "田", emoji: "🌱", cap: "plots", verb: "種", note: "" }];
+    const areaOf = id => { const c = cropInfo(id); return (c && c.a) || "field"; };
+    const capOf = (r, a) => (r && r[a.cap]) || 0;
+    const usedOf = a => plots.filter(p => areaOf(p.crop) === a.id).length;
     const head = `<div class="card"><h3>🌾 末世農場 Lv${lv}/10</h3>
-      <div class="dm-stats"><div><b>${plots.length}/${row.plots}</b><small>田在用</small></div><div><b>${row.stoves}</b><small>爐子</small></div>
+      <div class="dm-stats"><div><b>${row.stoves}</b><small>爐子</small></div>
         <div><b>💧${f.res.water}・🥫${f.res.food}</b><small>水・食物（飼料）</small></div><div><b>${bonus ? "✅" : `${f.focus_today}/60`}</b><small>${bonus ? "今天收成 +1" : "專注滿 60 分收成 +1"}</small></div></div>
-      ${nx ? `<div class="dm-row-flex"><span class="dm-note">升到 Lv${lv + 1}：田 ${nx.plots} 塊、爐子 ${nx.stoves} 個，解鎖新作物和食譜</span>
+      <div class="dm-chips">${AREAS.map(a => `<span class="dm-chip">${a.emoji} ${esc(a.name)} ${usedOf(a)}/${capOf(row, a)}</span>`).join("")}</div>
+      ${nx ? `<div class="dm-row-flex"><span class="dm-note">升到 Lv${lv + 1}：${AREAS.map(a => `${a.name} ${capOf(nx, a)} 格`).join("、")}、爐子 ${nx.stoves} 個，解鎖新作物和食譜</span>
         <div class="dm-chips">${Object.entries(nx.cost).map(([k, n]) => `<span class="dm-chip ${(f.res[k] || 0) >= n ? "" : "neg"}">${resInfo(k).emoji} ${n}</span>`).join("")}</div>
         <button type="button" class="btn dm-btn" data-dm="fmup" ${Object.entries(nx.cost).every(([k, n]) => (f.res[k] || 0) >= n) && !DM.busy ? "" : "disabled"}>升級農場</button></div>` : `<p class="dm-done">✨ 農場滿級了</p>`}</div>`;
-    const plotRows = plots.length ? plots.map(p => { const c = cropInfo(p.crop) || { name: p.crop, emoji: "🌱" }; const done = p.t1 <= now;
-      return `<div class="dm-plot ${done ? "ripe" : ""}">${ic("crop", c.id || p.crop, c.emoji, "sm")}<b>${esc(c.name)}</b><span>${done ? "✅ 可以收了" : `還要 <span data-fm-left="${p.t1}">${msLeft(p.t1)}</span>`}</span></div>`; }).join("") : `<p class="dm-note">田是空的，從下面挑作物種吧。</p>`;
+    const fa = AREAS.find(a => a.id === DM.fmArea) || AREAS[0];
+    const tabs = `<div class="dm-subtabs">${AREAS.map(a => { const r = plots.some(p => areaOf(p.crop) === a.id && p.t1 <= now);
+      return `<button type="button" style="white-space:nowrap;font-size:.82em;padding-left:2px;padding-right:2px" class="${fa.id === a.id ? "on" : ""}" data-dm="fmarea" data-v="${a.id}">${a.emoji} ${esc(a.name)}${r ? `<i class="dm-dot">!</i>` : ""}</button>`; }).join("")}</div>`;
+    const mine = plots.map((p, i) => ({ p, i })).filter(x => areaOf(x.p.crop) === fa.id);
+    const cap = capOf(row, fa), free = cap - mine.length;
+    const plotRows = mine.length ? mine.map(({ p, i }) => { const c = cropInfo(p.crop) || { name: p.crop, emoji: "🌱" }; const done = p.t1 <= now;
+      return `<div class="dm-plot ${done ? "ripe" : ""}">${ic("crop", c.id || p.crop, c.emoji, "sm")}<b>${esc(c.name)}${p.keep ? ` <small>🔁</small>` : ""}</b><span>${done ? "✅ 可以收了" : `還要 <span data-fm-left="${p.t1}">${msLeft(p.t1)}</span>`}</span>
+        ${p.keep ? `<button type="button" class="btn dm-btn small ghost" data-dm="fmrm" data-v="${i}" title="${fa.id === "ranch" ? "放生" : "砍掉"}，空出位置" ${DM.busy ? "disabled" : ""}>✕</button>` : ""}</div>`; }).join("")
+      : `<p class="dm-note">${esc(fa.name)}是空的，從下面挑來${fa.verb}吧。</p>`;
     const usedIn = id => cat.recipes.filter(r => r.need[id]).map(r => { const x = outInfo(r); return x ? x.emoji + x.name : r.out; });
-    const free = row.plots - plots.length;
     const showLocked = !!DM.fmShowLocked;
-    const fmg = DM.fmg || "plant";
-    const G = { plant: ["🌱", "作物", "種", "種作物要用水。蔬菜穀物收進作物倉庫，拿去廚房做菜；水果直接進食物櫃。"],
-      ranch: ["🐔", "牧場", "養", "養動物用食物當飼料，收到的蛋、奶、蜂蜜、肉都進作物倉庫，拿去廚房做菜。"],
-      fish: ["🐟", "魚塭", "養", "星露島的魚都搬來了。用食物當飼料，養大收進作物倉庫，拿去做魚料理。"] };
-    const inG = c => (c.g || "plant") === fmg;
-    const lockedN = cat.crops.filter(c => inG(c) && lv < c.lv).length;
-    const gTabs = `<div class="dm-fchips">${Object.entries(G).map(([k, g]) => `<button type="button" class="${fmg === k ? "on" : ""}" data-dm="fmg" data-v="${k}">${g[0]} ${g[1]} ${cat.crops.filter(c => (c.g || "plant") === k && lv >= c.lv).length}/${cat.crops.filter(c => (c.g || "plant") === k).length}</button>`).join("")}</div>`;
-    const cropRows = cat.crops.filter(c => inG(c) && (showLocked || lv >= c.lv)).map(c => {
+    const inA = c => c.g !== "goods" && (c.a || "field") === fa.id;
+    const lockedN = cat.crops.filter(c => inA(c) && lv < c.lv).length;
+    const cropRows = cat.crops.filter(c => inA(c) && (showLocked || lv >= c.lv)).map(c => {
       const locked = lv < c.lv, uses = usedIn(c.id);
-      const feed = !!c.feed, cost = c.feed || c.water;
+      const feed = !!c.feed, cost = (c.feed || c.water) * (c.keep ? 3 : 1);
       const maxn = Math.min(free, Math.floor((feed ? f.res.food : f.res.water) / cost));
-      const yieldTxt = c.fruit ? `收 ${c.yield} 份${(foodInfo(c.fruit) || {}).name || ""}（直接進食物櫃）` : `收 ${c.yield} 個`;
-      const verb = G[fmg][2];
+      const yieldTxt = (c.fruit ? `收 ${c.yield} 份${(foodInfo(c.fruit) || {}).name || ""}（直接進食物櫃）` : `收 ${c.yield} 個`) + (c.keep ? "・🔁 會一直產" : "");
       return `<div class="dm-crop ${locked ? "off" : ""} ${c.t ? `tier-${c.t}` : ""}">${ic("crop", c.id, c.emoji, "big")}<div class="dm-proj-b"><b>${esc(c.name)}${c.t && c.g === "fish" ? ` <small>${tierName(c.t)}</small>` : ""}${haveIng(c.id) ? ` <small>倉庫 ${haveIng(c.id)}</small>` : ""}</b>
-          ${c.src ? `<small>${esc(c.src)}</small>` : ""}<small>⏱ ${minText(c.min)}・${feed ? "🥫" : "💧"}${cost}/塊・${yieldTxt}</small>${uses.length ? `<small>可以做：${uses.slice(0, 6).join("、")}${uses.length > 6 ? "…" : ""}</small>` : ""}</div>
-        <div class="dm-craft-btns">${locked ? `<span class="dm-note">🔒 Lv${c.lv}</span>` : `<button type="button" class="btn dm-btn" data-dm="plant" data-v="${c.id}" data-n="1" ${maxn >= 1 && !DM.busy ? "" : "disabled"}>${verb}</button>${maxn >= 2 ? `<button type="button" class="btn dm-btn ghost" data-dm="plant" data-v="${c.id}" data-n="${maxn}" ${DM.busy ? "disabled" : ""}>${verb} ${maxn} 塊</button>` : ""}`}</div></div>`;
+          ${c.src ? `<small>${esc(c.src)}</small>` : ""}<small>⏱ ${minText(c.min)}・${feed ? "🥫" : "💧"}${cost}/格・${yieldTxt}</small>${uses.length ? `<small>可以做：${uses.slice(0, 6).join("、")}${uses.length > 6 ? "…" : ""}</small>` : ""}</div>
+        <div class="dm-craft-btns">${locked ? `<span class="dm-note">🔒 Lv${c.lv}</span>` : `<button type="button" class="btn dm-btn" data-dm="plant" data-v="${c.id}" data-n="1" ${maxn >= 1 && !DM.busy ? "" : "disabled"}>${fa.verb}</button>${maxn >= 2 ? `<button type="button" class="btn dm-btn ghost" data-dm="plant" data-v="${c.id}" data-n="${maxn}" ${DM.busy ? "disabled" : ""}>${fa.verb} ${maxn} 格</button>` : ""}`}</div></div>`;
     }).join("");
-    return head + `<div class="card"><h3>🌱 田（${plots.length}/${row.plots}）</h3>${plotRows}
-        ${ripe ? `<button type="button" class="btn dm-btn dm-wide" data-dm="harvest" ${DM.busy ? "disabled" : ""}>🧺 全部收成（${ripe} 塊）</button>` : ""}</div>
-      <div class="card"><h3>🌾 可以種／養什麼</h3>${gTabs}<p class="dm-note">${G[fmg][3]}</p>${cropRows || `<p class="dm-note">農場升級後會解鎖。</p>`}
+    return head + tabs + `<div class="card"><h3>${fa.emoji} ${esc(fa.name)}（${mine.length}/${cap}）</h3>${plotRows}
+        ${ripe ? `<button type="button" class="btn dm-btn dm-wide" data-dm="harvest" ${DM.busy ? "disabled" : ""}>🧺 全部收成（全農場 ${ripe} 格）</button>` : ""}</div>
+      <div class="card"><h3>${fa.emoji} ${esc(fa.name)}可以${fa.verb}什麼</h3><p class="dm-note">${esc(fa.note || "")}</p>${cropRows || `<p class="dm-note">農場升級後會解鎖。</p>`}
         ${lockedN ? `<button type="button" class="btn dm-btn ghost dm-wide" data-dm="fmlocked">${showLocked ? "收起還沒解鎖的" : `看還沒解鎖的 ${lockedN} 種`}</button>` : ""}</div>`;
   }
 
