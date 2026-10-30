@@ -3289,6 +3289,204 @@ const FARM_JS_VERSION = "2026-10-28 v2";
 
   /* ---------- 下方選單 ---------- */
 
+
+  /* =========================================================
+     ⚡ 自動處理：收成、照顧動物、種滿空格、做菜、加工、交訂單
+     打開「背景自動」之後，只要網站開著（任何分頁）每 10 分鐘跑一次，不用進農場
+  ========================================================= */
+
+  const AUTO_KEEP = 20;                        // 自動賣的時候，每樣至少留這麼多
+  const AUTO_DEW_KEEP = 100;                   // 星露至少留這麼多
+  const SELL_KINDS = ["crop", "animal", "meat", "goods"];
+
+  function autoOpts() { return Object.assign({ sell: true, cook: true, plant: true, process: true }, S.auto || {}); }
+
+  function autoSellExtra(target) {
+    let got = 0, n = 0;
+    const list = Object.entries(S.inv)
+      .filter(([k, q]) => q > AUTO_KEEP && D.items[k] && SELL_KINDS.includes(D.items[k].kind) && k !== "feed" && sellPrice(k) > 0)
+      .sort((a, b) => b[1] - a[1]);
+    for (const [k, q] of list) {
+      if (invSpace() >= target) break;
+      const sell = Math.min(q - AUTO_KEEP, target - invSpace());
+      if (sell <= 0) continue;
+      got += sellItem(k, sell); n += sell;
+    }
+    return { got, n };
+  }
+
+  /* 一格作物值多少：每小時賺多少星露（扣掉種子錢），自己用得到的稍微加分 */
+  function cropScore(k, plantedNow) {
+    const c = D.crops[k];
+    const cost = seedCost(k);
+    if (!isFinite(cost)) return -Infinity;
+    let v = (sellPrice(k) * (c.qty || 1) - cost) / Math.max(0.25, c.hours);
+    if (have(k) < 10) v *= 1.3;
+    if (have(k) > 60) v *= 0.4;
+    return v / (1 + (plantedNow[k] || 0) * 0.6);
+  }
+
+  function autoFarm() {
+    const o = autoOpts(), log = [];
+    processTimers();
+
+    /* 1. 收料理、收加工品 */
+    const cooked = autoCollectDishes();
+    if (cooked.length) log.push(`🍳 收了 ${cooked.length} 份料理`);
+    let made = 0;
+    for (const m of Object.keys(D.machines)) { if (!machineOpen(m)) continue; const out = collectMachine(m); if (out) made += out.length; }
+    if (made) log.push(`⚙️ 收了 ${made} 個加工品`);
+
+    /* 2. 倉庫快滿：賣掉多的（每樣留 20 個） */
+    const roomGoal = Math.ceil(storageCap() * 0.2);
+    if (o.sell && invSpace() < roomGoal) { const r = autoSellExtra(roomGoal); if (r.n) log.push(`💰 倉庫快滿，賣掉 ${r.n} 個多的東西，+${num(r.got)} 星露`); }
+
+    /* 3. 收成（菜田、香草、溫室、蓮池、麥田、每棵果樹、菇木、茶、竹子） */
+    let h = 0, full = false;
+    const tryH = res => { if (res) h++; else full = true; };
+    for (const zone of ["field", "herb", "green", "pond", "wheatfield"]) {
+      const z = plotZone(zone);
+      for (const key of z.keys) if (plotState(z.store[key]) === "ripe") tryH(harvestOne(zone, key));
+    }
+    for (const i of Object.keys(S.orchard.trees)) if (treeState(S.orchard.trees[i]) === "ripe") tryH(harvestTree(i));
+    for (const i of Object.keys(S.logs.slots)) if (logState(S.logs.slots[i]) === "ripe") tryH(harvestLog(i));
+    for (const i of Object.keys(S.tea.bushes)) if (teaState(S.tea.bushes[i]) === "ripe") tryH(harvestTea(i));
+    if (bambooReady() > 0) tryH(harvestBamboo());
+    if (full && o.sell) { autoSellExtra(roomGoal); }
+    if (h) log.push(`🌾 收成 ${h} 次${full ? "（倉庫滿了，有些沒收）" : ""}`);
+
+    /* 4. 動物：收產物、做飼料、餵 */
+    let got = 0, fed = 0;
+    for (const a of S.ranch.animals) if (animalState(a) === "ready" && collectAnimal(a)) got++;
+    const needFeed = S.ranch.animals.reduce((t, a) => t + (D.animals[a.sp].feed || 0), 0) * 2;
+    if (have("feed") < needFeed) {
+      for (const rk of Object.keys(D.recipes).filter(k => D.recipes[k].machine === "feedmill")) {
+        for (let i = 0; i < 5 && have("feed") < needFeed * 3; i++) if (startRecipe(rk) !== "ok") break;
+      }
+    }
+    for (const a of S.ranch.animals) if (animalState(a) === "hungry" && feedAnimal(a)) fed++;
+    if (got || fed) log.push(`🐔 收了 ${got} 個動物產物、餵了 ${fed} 隻`);
+
+    /* 5. 澆口渴的格子 */
+    let w = 0;
+    for (const zone of ["field", "herb", "wheatfield"]) {
+      const z = plotZone(zone);
+      for (const key of z.keys) { const p = z.store[key]; if (p && !p.s && !p.t1 && hasWater() && waterOne(zone, key)) w++; }
+    }
+    if (w) log.push(`💧 澆了 ${w} 格`);
+
+    /* 6. 種滿空格：挑每小時最賺、自己又缺的作物，平均分散著種 */
+    if (o.plant) {
+      const planted = {};
+      for (const zone of ["field", "herb", "green", "pond", "wheatfield"]) {
+        const z = plotZone(zone);
+        const cands = (z.crops || cropsForZone(z.cropZone)).filter(k => D.crops[k] && cropAvailable(k));
+        for (const key of z.keys) {
+          if (z.store[key]) continue;
+          if (needsWater(zone, key) && !hasWater()) continue;
+          const pick = cands.filter(k => S.dew - (seedCost(k) || 0) >= AUTO_DEW_KEEP || seedCost(k) === 0)
+            .sort((a, b) => cropScore(b, planted) - cropScore(a, planted))[0];
+          if (!pick) break;
+          const res = plantOne(zone, key, pick);
+          if (res === "ok" || res === "thirsty") planted[pick] = (planted[pick] || 0) + 1;
+        }
+      }
+      /* 菇木 */
+      for (let i = 0; i < logSlots(); i++) {
+        if (S.logs.slots[i]) continue;
+        const pick = cropsForZone("菇棚").filter(k => cropAvailable(k) && S.dew - (D.crops[k].seed || 0) >= AUTO_DEW_KEEP)
+          .sort((a, b) => cropScore(b, planted) - cropScore(a, planted))[0];
+        if (!pick || plantLog(String(i), pick) !== "ok") break;
+        planted[pick] = (planted[pick] || 0) + 1;
+      }
+      const names = Object.entries(planted).map(([k, n]) => `${D.crops[k].name}×${n}`);
+      if (names.length) log.push(`🌱 種了：${names.join("、")}`);
+    }
+
+    /* 7. 加工坊：空下來的機器排最賺的配方 */
+    if (o.process) {
+      const started = [];
+      for (const m of Object.keys(D.machines)) {
+        if (m === "feedmill" || !machineOpen(m)) continue;
+        for (let i = machineQueue(m).length; i < 2; i++) {
+          const best = Object.entries(D.recipes).filter(([k, r]) => r.machine === m && S.lv >= r.lv && hasAll(r.need))
+            .map(([k, r]) => [k, sellPrice(r.out) * r.qty - Object.entries(r.need).reduce((t, [x, q]) => t + sellPrice(x) * q, 0)])
+            .sort((a, b) => b[1] - a[1])[0];
+          if (!best || startRecipe(best[0]) !== "ok") break;
+          started.push(itemName(D.recipes[best[0]].out));
+        }
+      }
+      if (started.length) log.push(`⚙️ 開始加工：${started.join("、")}`);
+    }
+
+    /* 8. 做菜：先做訂單要的，再做最賺的 */
+    if (o.cook) {
+      const want = [];
+      const ord = fillOrders();
+      ord.slots.forEach(sl => { if (sl.d && !sl.done && !have(sl.d)) want.push(sl.d); });
+      if (S.orders) S.orders.list.forEach(x => { if (!x.done && !have(x.d)) want.push(x.d); });
+      const cookedNow = [];
+      while (freeStoves() > 0) {
+        let pick = want.find(k => dishKnown(k) && cookableCount(k) > 0 && !cookedNow.includes(k));
+        if (!pick) {
+          pick = Object.keys(D.dishes).filter(k => dishKnown(k) && cookableCount(k) > 0 && !cookedNow.includes(k) && have(k) < 10)
+            .sort((a, b) => D.dishes[b].sell / dishMinutes(D.dishes[b]) - D.dishes[a].sell / dishMinutes(D.dishes[a]))[0];
+        }
+        if (!pick) break;
+        const n = want.includes(pick) ? Math.min(cookableCount(pick), 2) : Math.min(cookableCount(pick), 5);
+        if (cookDish(pick, n) !== "ok") break;
+        cookedNow.push(pick);
+      }
+      if (cookedNow.length) log.push(`🔥 開始做：${cookedNow.map(k => D.dishes[k].name).join("、")}`);
+    }
+
+    /* 9. 客人點餐 */
+    let served = 0;
+    if (S.orders) S.orders.list.forEach((x, i) => { if (!x.done && have(x.d) && serveOrder(i)) served++; });
+    if (served) log.push(`🧑‍🍳 招待了 ${served} 位客人`);
+
+    return log;
+  }
+
+  async function runAuto(manual) {
+    if (!S || UI.autoBusy) return;
+    UI.autoBusy = true;
+    let log = [];
+    try {
+      log = autoFarm();
+      /* 餐廳訂單：有菜就交（獎勵在資料庫發） */
+      if (net.mode === "server") {
+        const ord = ordState();
+        for (let i = 0; i < ord.slots.length; i++) {
+          const sl = ord.slots[i];
+          if (!sl.d || sl.done || !have(sl.d)) continue;
+          const { data, error } = await db.rpc("farm_order_claim", { p_key: ord.day + ":" + i });
+          if (error) break;
+          takeItem(sl.d, 1); sl.done = true; addExp(10);
+          if (data && !data.already) log.push(`📋 交了訂單：${D.dishes[sl.d].name}`);
+        }
+      }
+    } catch (e) { console.warn("自動處理失敗：", e); }
+    if (!log.length) log.push("現在沒有要處理的事");
+    S.autoLast = { at: now(), log, bg: !manual };
+    if (UI.root && !net.gated) after(true); else saveSoon(true);
+    UI.autoBusy = false;
+    if (manual) { toast(`⚡ 處理好了：${log.length} 件事`); if (UI.sheet && UI.sheet.name === "auto") renderSheet(); }
+    return log;
+  }
+
+  function autoBgOn() { try { return localStorage.getItem("farmAutoBg") === "1"; } catch (e) { return false; } }
+
+  async function bgAuto() {
+    if (!autoBgOn() || !uid() || net.loading || UI.autoBusy) return;
+    if (typeof gameOn === "function" && !gameOn()) return;
+    try {
+      if (!net.loaded || net.userId !== uid()) await loadSave();
+      if (S) await runAuto(false);
+    } catch (e) { console.warn("背景自動處理失敗：", e); }
+  }
+  setInterval(bgAuto, 10 * 60 * 1000);
+
   function renderDock() {
 
     const cookable = Object.keys(D.dishes).some(k => dishKnown(k) && hasAll(D.dishes[k].need));
@@ -3299,7 +3497,8 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       <button type="button" data-act="storage"><span class="fm-dk-ic">${uiIcon("warehouse")}</span><span>倉庫</span></button>
       <button type="button" data-act="kitchen"><span class="fm-dk-ic">${uiIcon("cook")}</span><span>料理</span>${kitchenDone ? `<i class="fm-dot">!</i>` : (cookable && freeStoves() > 0 ? `<i class="fm-dot"></i>` : "")}</button>
       <button type="button" data-act="harvestall"><span class="fm-dk-ic">${uiIcon("harvest")}</span><span>一鍵收成</span>${ripe ? `<i class="fm-dot">${ripe}</i>` : ""}</button>
-      <button type="button" data-act="book"><span class="fm-dk-ic">${uiIcon("codex")}</span><span>圖鑑</span>${achClaimable() ? `<i class="fm-dot">${achClaimable()}</i>` : ""}</button>`;
+      <button type="button" data-act="book"><span class="fm-dk-ic">${uiIcon("codex")}</span><span>圖鑑</span>${achClaimable() ? `<i class="fm-dot">${achClaimable()}</i>` : ""}</button>
+      <button type="button" data-act="auto"><span class="fm-dk-ic">⚡</span><span>自動</span>${autoBgOn() ? `<i class="fm-dot">ON</i>` : ""}</button>`;
 
   }
 
@@ -4367,6 +4566,10 @@ const FARM_JS_VERSION = "2026-10-28 v2";
 
     water: () => openModal("water"),
     goals: () => openSheet("goals"),
+    auto: () => openSheet("auto"),
+    autorun: () => runAuto(true),
+    autobg: () => { const on = !autoBgOn(); try { localStorage.setItem("farmAutoBg", on ? "1" : "0"); } catch (e) {} toast(on ? "⚡ 背景自動處理打開了" : "背景自動處理關掉了"); renderSheet(); renderDock(); },
+    autoopt: el => { S.auto = Object.assign(autoOpts(), { [el.dataset.k]: !autoOpts()[el.dataset.k] }); saveSoon(); renderSheet(); },
     storage: () => openSheet("storage"),
     kitchen: () => openSheet("kitchen"),
     book: () => openSheet("book", achClaimable() ? { tab: "ach" } : {}),
@@ -5661,6 +5864,22 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     },
 
     /* ---------- 小目標 ---------- */
+    auto() {
+      const o = autoOpts(), last = S.autoLast;
+      const tg = (k, label) => `<button type="button" class="fm-btn small ${o[k] ? "green" : ""}" data-act="autoopt" data-k="${k}">${o[k] ? "✅" : "⬜"} ${label}</button>`;
+      const when = last ? new Date(last.at).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+      return sheetTop("⚡ 自動處理") + `<div class="fm-panel">
+          <p class="fm-note" style="margin:0 2px 10px">一鍵幫你：收料理和加工品、收成（每棵果樹也會收）、收動物產物、做飼料餵動物、澆水、把空格種滿最賺的作物、加工坊排配方、爐子做訂單要的菜、招待客人、交餐廳訂單。星露至少留 ${AUTO_DEW_KEEP}。</p>
+          <button type="button" class="fm-btn green big" style="width:100%" data-act="autorun" ${UI.autoBusy ? "disabled" : ""}>⚡ 現在一鍵處理</button></div>
+        <div class="fm-panel"><div class="fm-sec ol">設定</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            <button type="button" class="fm-btn small ${autoBgOn() ? "green" : ""}" data-act="autobg">${autoBgOn() ? "✅" : "⬜"} 背景自動（網站開著就每 10 分鐘跑，不用進農場）</button>
+            ${tg("plant", "自動種空格")}${tg("cook", "自動做菜")}${tg("process", "自動加工")}${tg("sell", "倉庫快滿時賣多的（每樣留 20 個）")}
+          </div>
+          <p class="fm-note" style="margin:8px 2px 0">背景自動是記在這台裝置上的；手機和電腦要各自打開。果樹、茶樹、動物要種要買還是你自己決定，大訂單也留給你交。</p></div>
+        ${last ? `<div class="fm-panel"><div class="fm-sec ol">上次處理（${when}${last.bg ? "・背景" : ""}）</div><ul style="margin:0;padding-left:18px">${last.log.map(l => `<li class="fm-note" style="margin:2px 0">${esc(l)}</li>`).join("")}</ul></div>` : ""}`;
+    },
+
     goals() {
       const rows = (S.goals ? S.goals.list : []).map((g, i) => {
         const t = GOAL_TYPES.find(x => x.k === g.k);
@@ -6388,7 +6607,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     if (!gateActive()) { showGate(); return; }
     net.gated = false;
 
-    if (net.loaded && net.userId === uid()) {
+    if (net.loaded && net.userId === uid() && UI.root) {
       onShow();
       return;
     }
@@ -6396,7 +6615,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     if (net.loading) return;
 
     try {
-      await loadSave();
+      if (!(net.loaded && net.userId === uid())) await loadSave();
       await loadWishStatus();
       await loadAchStatus();
       replayPending();
@@ -6443,7 +6662,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     if (btn) btn.hidden = !on;
     if (page) page.classList.toggle("fm-on", on);
 
-    if (on) startFarm();
+    if (on) { startFarm(); setTimeout(bgAuto, 4000); }
 
   }
 
@@ -6550,6 +6769,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     get net() { return net; },
     get wish() { return net.ws; },
     draw: (pool, n) => doDraw(pool, n),
+    auto: () => runAuto(true),
     credit: show => creditWater(show !== false),
     creditText: got => creditText(got),
     start: startFarm,

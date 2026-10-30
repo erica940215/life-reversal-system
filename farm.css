@@ -267,13 +267,13 @@ body:not(.game-mode-on) .farm-tab { display: none !important; }
 /* ---------- 下方選單 ---------- */
 .fm-dock {
   position: absolute; z-index: 4; left: 0; right: 0; bottom: calc(var(--u) * 6);
-  display: flex; justify-content: center; gap: calc(var(--u) * 10);
+  display: flex; justify-content: center; gap: calc(var(--u) * 4);
   pointer-events: none;
 }
 .fm-dock button {
   position: relative; pointer-events: auto;
   display: grid; justify-items: center;
-  width: calc(var(--u) * 84);
+  width: calc(var(--u) * 74);
   background: none; border: 0; padding: 0; cursor: pointer;
 }
 .fm-dock .fm-dk-ic {
