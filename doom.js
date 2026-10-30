@@ -1449,7 +1449,7 @@
   function foodDropHtml(list, delay = 0) {
     if (!list || !list.length) return "";
     return `<div class="dm-trk"><div class="dm-trk-h">🍱 撿到的美食</div><div class="dm-cards">${list.map((t, i) => `<div class="dm-card tier-${t.tier}" style="animation-delay:${delay + i * 120}ms"><span class="dm-tier">${tierName(t.tier)}</span>${t.new ? `<span class="dm-label">NEW</span>` : ""}
-      ${ic("pantry", t.id, t.emoji, "big")}<b>${esc(t.name)}</b></div>`).join("")}</div></div>`;
+      ${ic(t.crop ? "crop" : "pantry", t.id, t.emoji, "big")}<b>${esc(t.name)}${t.n > 1 ? ` ×${t.n}` : ""}</b>${t.crop ? `<small>農場作物</small>` : ""}</div>`).join("")}</div></div>`;
   }
 
   function foodHtml() {
@@ -1489,7 +1489,7 @@
     const grid = cats.filter(x => sec === "all" || x.c.id === sec).map(x => `<div class="dm-fsec">${x.c.emoji} ${esc(x.c.name)}</div><div class="dm-grid">${x.items.map(it => {
       const n = pan[it.id] || 0, e = eaten[it.id] || 0, known = n || e;
       return known ? `<div class="dm-book tier-${it.t} ${n ? "" : "empty"}" title="${esc(it.text)}">${ic("pantry", it.id, it.emoji, "big")}<b>${esc(it.name)}</b><small>${n ? `有 ${n} 份` : "吃完了"}${e ? `・吃過 ${e} 次` : ""}</small></div>`
-        : `<div class="dm-book off tier-${it.t}"><span class="dm-emo big">❔</span><b>？？？</b><small>${tierName(it.t)}</small></div>`;
+        : `<div class="dm-book off tier-${it.t}"><span class="dm-emo big">❔</span><b>？？？</b><small>${tierName(it.t)}${it.scav ? "・🔎 搜刮" : ""}</small></div>`;
     }).join("")}</div>`).join("");
     const stock = Object.values(pan).reduce((a, n) => a + n, 0);
     const ftab = DM.ftab || "pantry";
