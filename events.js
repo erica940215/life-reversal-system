@@ -271,6 +271,120 @@
   }
 
 
+
+  /* =========================================================
+     🗓️ 季節活動（秋收祭、雙 11、感謝週、聖誕、跨年、春節）
+  ========================================================= */
+  async function loadSeason() {
+    if (!hasDb()) return;
+    const { data, error } = await db.rpc("ev_status");
+    if (error) { EV.seErr = /ev_status|function|schema cache|PGRST/i.test(error.message || "") ? "setup" : error.message; EV.se = null; }
+    else {
+      EV.se = data; EV.seErr = null;
+      (data.settled || []).forEach(x => toast(`🎁 ${x.event}剩下的 ${x.n} 個活動貨幣換成 ${x.stardust} 星屑`));
+    }
+    renderTodaySeason();
+    rerenderRpg(["fun"]);
+  }
+  const md = d => `${Number(d.slice(5, 7))}/${Number(d.slice(8))}`;
+
+  function saleHtml(sl) {
+    if (!sl || !sl.event) return "";
+    const e = sl.event, bought = sl.bought || {};
+    const shop = (e.shop || []).map(o => {
+      const n = bought[o.item] || 0, full = n >= o.limit;
+      return `<div class="ev-shop-item">${art("shop_" + o.item, o.emoji || "🎁", "ev-shop-ic")}
+        <b>${esc(o.name)}</b><span class="ev-sub">🪙 ${o.price}・${n} / ${o.limit}</span>
+        <button type="button" class="btn btn-small ${full ? "" : "btn-primary"}" data-ev="sebuy" data-v="${o.item}" data-e="${e.id}" ${full || sl.cur < o.price || EV.busy ? "disabled" : ""}>${full ? "賣完" : "買"}</button></div>`;
+    }).join("");
+    return `<div class="card rp-card ev-hw"><div class="ev-hw-top">${art("ev_" + e.id + "_banner", e.emoji, "ev-hw-ic")}<div class="ev-grow"><h3>${esc(e.name)}</h3>
+        <span class="ev-sub">今天限定！${esc(e.desc)}</span></div>
+        <div class="rp-power"><span class="rp-sub">金幣</span><b class="ev-candy">🪙 ${(sl.cur || 0).toLocaleString()}</b></div></div>
+      <div class="ev-shop">${shop}</div></div>`;
+  }
+
+  function seasonHtml() {
+    if (EV.seErr === "setup") return "";
+    const h = EV.se;
+    if (!h) { if (!EV.triedSe && hasDb()) { EV.triedSe = true; loadSeason(); } return ""; }
+    return saleHtml(h.sale) + seasonMainHtml(h);
+  }
+
+  function seasonMainHtml(h) {
+    const e = h.event;
+    if (!e) {
+      const n = h.next;
+      return n ? `<div class="card rp-card ev-hw"><div class="ev-hw-top">${art("ev_" + n.id + "_banner", n.emoji, "ev-hw-ic")}<div class="ev-grow"><h3>下一個活動：${esc(n.name)}</h3>
+        <span class="ev-sub">${md(n.start)}${n.end !== n.start ? `～${md(n.end)}` : " 當天"}・${esc(n.desc)}</span></div></div></div>` : "";
+    }
+    const end = new Date(e.end + "T23:59:00+08:00");
+    const days = Math.max(0, Math.ceil((end.getTime() - Date.now()) / 86400000));
+    const waiting = h.waiting || [];
+    const mob = k => (e.mobs || {})[k] || { name: k, emoji: "❔", cur: 1 };
+    const mobs = waiting.slice(0, 12).map((g, i) => `<button type="button" class="ev-ghost k-${g.kind}" style="animation-delay:${(i % 5) * 0.3}s" data-ev="secatch" data-v="${g.id}" title="${esc(mob(g.kind).name)}">
+        ${art("ev_" + e.id + "_" + g.kind, mob(g.kind).emoji, "ev-ghost-ic")}<span>${esc(mob(g.kind).name)}</span></button>`).join("");
+    const bought = h.bought || {};
+    const shop = (e.shop || []).map(o => {
+      const n = bought[o.item] || 0, full = n >= o.limit;
+      return `<div class="ev-shop-item">${art("shop_" + o.item, o.emoji || "🎁", "ev-shop-ic")}
+        <b>${esc(o.name)}</b><span class="ev-sub">${e.cur_emoji} ${o.price}・${o.limit > 1 ? `${n} / ${o.limit}` : (full ? "已兌換" : "限 1 個")}</span>
+        <button type="button" class="btn btn-small ${full ? "" : "btn-primary"}" data-ev="sebuy" data-v="${o.item}" ${full || h.cur < o.price || EV.busy ? "disabled" : ""}>${full ? "已換" : e.sale ? "買" : "換"}</button></div>`;
+    }).join("");
+    const caught = h.caught || {};
+    const dex = Object.entries(e.mobs || {}).map(([k, g]) => `<span class="ev-chip">${g.emoji} ${esc(g.name)} ×${caught[k] || 0}</span>`).join("");
+    const how = e.sale ? "" : `<p class="rp-note">完成任務 40%、專注 25 分鐘以上一定、每週王每次出擊 30% 會遇到${e.cheer ? "；幫好友加油每次一定遇到" : ""}${e.king_day ? `；${esc(e.king_note)}會出現${esc(mob("king").name)}` : ""}。商店關了之後，剩下的${esc(e.cur_name)}會自動換成星屑。</p>`;
+    return `<div class="card rp-card ev-hw">
+      <div class="ev-hw-top">${art("ev_" + e.id + "_banner", e.emoji, "ev-hw-ic")}<div class="ev-grow"><h3>${esc(e.name)}</h3>
+        <span class="ev-sub">${h.active ? (e.sale ? "今天限定！" : `還剩 ${days} 天（${md(e.end)} 結束，商店開到 ${md(e.shop_end)}）`) : `活動結束了，商店開到 ${md(e.shop_end)}`}</span></div>
+        <div class="rp-power"><span class="rp-sub">${esc(e.cur_name)}</span><b class="ev-candy">${art("cur_" + e.currency, e.cur_emoji, "ev-candy-ic")}${(h.cur || 0).toLocaleString()}</b></div></div>
+      <p class="rp-note">${esc(e.desc)}</p>${how}
+      ${e.sale ? "" : waiting.length ? `<div class="ev-ghosts">${mobs}</div>
+        <button type="button" class="btn btn-primary tm-wide ev-wide" data-ev="secatchall" ${EV.busy ? "disabled" : ""}>✨ 全部抓起來（${waiting.length} 隻）</button>`
+        : h.active ? `<p class="ev-empty">${e.emoji} 現在沒有活動怪。去完成任務或專注一下，牠們就會冒出來。</p>` : ""}
+      ${e.sale ? "" : `<div class="ev-dex">${dex}</div>`}
+      <div class="ev-sec">${e.cur_emoji} ${e.sale ? "流浪商人" : "活動商店"}</div><div class="ev-shop">${shop}</div></div>`;
+  }
+
+  function renderTodaySeason() {
+    const prev = document.getElementById("ev-today") || document.getElementById("fn-today") || document.querySelector('.page[data-page="today"] .game-mode-bar');
+    if (!prev) return;
+    let box = document.getElementById("ev-today2");
+    if (!box) { box = document.createElement("div"); box.id = "ev-today2"; box.className = "card ev-today"; prev.after(box); }
+    const h = EV.se, e = h && (h.event && h.active ? h.event : h.sale && h.sale.event);
+    const show = gameOn() && hasDb() && !!e;
+    box.hidden = !show;
+    if (!show) return;
+    const n = (h.waiting || []).length;
+    box.innerHTML = `<button type="button" class="ev-today-btn" data-ev="gofun">
+      <span class="ev-emo ev-today-ic ${n ? "wiggle" : ""}">${e.emoji}</span>
+      <span class="ev-grow"><b>${e.sale ? `${esc(e.name)}今天限定！` : n ? `有 ${n} 隻活動怪在等你抓！` : `${esc(e.name)}進行中`}</b>
+      <span class="ev-sub">${esc(e.cur_name)} ${e.cur_emoji} ${((e.sale ? h.sale.cur : h.cur) || 0).toLocaleString()}${e.sale ? "・全場 5 折" : "・完成任務、專注都會遇到"}</span></span><span>›</span></button>`;
+  }
+
+  async function seCatch(id) {
+    if (EV.busy) return;
+    EV.busy = true;
+    const { data, error } = await db.rpc("ev_catch", { p_id: id ? Number(id) : null });
+    EV.busy = false;
+    if (error) { toast("❌ " + error.message); return; }
+    const e = EV.se.event, bonus = rewardText(data.bonus);
+    toast(`${e.emoji} 抓到 ${data.caught.length} 隻，${e.cur_name} +${data.cur}${bonus ? `・${bonus}` : ""}`);
+    await loadSeason();
+    if (bonus && window.FunGame) window.FunGame.reload();
+  }
+
+  async function seBuy(item, ev) {
+    if (EV.busy) return;
+    EV.busy = true;
+    const { error } = await db.rpc("ev_buy", { p_item: item, p_event: ev || null });
+    EV.busy = false;
+    if (error) { toast("❌ " + error.message); return; }
+    toast("🎁 換到了！");
+    await loadSeason();
+    if (window.FunGame) window.FunGame.reload();
+    if (window.RpgGame) window.RpgGame.reload();
+  }
+
   /* =========================================================
      📖 每週冒險日誌
   ========================================================= */
@@ -442,6 +556,9 @@
     if (act === "catch") catchGhost(el.dataset.v);
     else if (act === "catchall") catchGhost(null);
     else if (act === "buy") buyHw(el.dataset.v);
+    else if (act === "secatch") seCatch(el.dataset.v);
+    else if (act === "secatchall") seCatch(null);
+    else if (act === "sebuy") seBuy(el.dataset.v, el.dataset.e);
     else if (act === "jweek") loadJournal(el.dataset.v);
     else if (act === "jsave") saveJournal();
     else if (act === "gofun") {
@@ -546,7 +663,7 @@
     window.applyPage = function (name) {
       const r = base.apply(this, arguments);
       if (name === "focus" && hasDb()) { loadExp(); claimExp(); }
-      if (name === "today" && hasDb()) loadHw();
+      if (name === "today" && hasDb()) { loadHw(); loadSeason(); }
       return r;
     };
   }
@@ -566,13 +683,13 @@
     setInterval(() => { if (runningMinutes() !== null || document.querySelector("#ev-exp .ev-path")) renderExpCard(); }, 1000);
     let waited = 0;
     const wait = setInterval(() => {
-      if (hasDb()) { clearInterval(wait); loadExp(); loadHw(); claimExp(); }
+      if (hasDb()) { clearInterval(wait); loadExp(); loadHw(); loadSeason(); claimExp(); }
       if (++waited > 60) clearInterval(wait);
     }, 1000);
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();
 
-  window.EventGame = { version: EVENT_JS_VERSION, halloweenHtml, journalHtml, reloadHw: loadHw, reloadExp: loadExp, claimExp, state: EV };
+  window.EventGame = { version: EVENT_JS_VERSION, halloweenHtml, seasonHtml, reloadSeason: loadSeason, journalHtml, reloadHw: loadHw, reloadExp: loadExp, claimExp, state: EV };
 
 })();

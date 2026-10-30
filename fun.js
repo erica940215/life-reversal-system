@@ -24,7 +24,12 @@
     ["frame_monster", "小怪獸框", "序光小怪獸 13 隻集滿"],
     ["frame_lucky", "大吉框", "累計抽到 10 次大吉"],
     ["frame_zodiac", "星座框", "星座寶寶 13 隻集滿"],
-    ["frame_pumpkin", "南瓜框", "萬聖節糖果商店兌換"]
+    ["frame_pumpkin", "南瓜框", "萬聖節糖果商店兌換"],
+    ["frame_maple", "楓葉框", "秋收祭商店兌換"],
+    ["frame_friends", "好友合照框", "感謝週商店兌換"],
+    ["frame_snowflake", "雪花框", "星夜聖誕商店兌換"],
+    ["frame_firework", "煙火框", "跨年倒數商店兌換"],
+    ["frame_couplet", "春聯框", "春節廟會商店兌換"]
   ];
   const CLASS_EMOJI = { scholar: "📚", warrior: "⚔️", guardian: "🛡️", ranger: "🏹" };
 
@@ -80,8 +85,9 @@
   ];
 
   /* 還沒給圖的頭像框 */
-  const FRAME_NOIMG = new Set([]);
-  const frameImg = (k, cls) => FRAME_NOIMG.has(k) ? `<span class="fn-frame-emo ${cls}">${k === "frame_pumpkin" ? "🎃" : "🌌"}</span>` : img(k, cls);
+  const FRAME_NOIMG = new Set(["frame_maple", "frame_friends", "frame_snowflake", "frame_firework", "frame_couplet"]);
+  const FRAME_EMO = { frame_pumpkin: "🎃", frame_maple: "🍁", frame_friends: "📸", frame_snowflake: "❄️", frame_firework: "🎆", frame_couplet: "🧧" };
+  const frameImg = (k, cls) => FRAME_NOIMG.has(k) ? `<span class="fn-frame-emo ${cls}">${FRAME_EMO[k] || "🌌"}</span>` : img(k, cls);
 
   /* 扭蛋系列二：星座寶寶（還沒給圖，先用星座符號） */
   const ZODIAC = [

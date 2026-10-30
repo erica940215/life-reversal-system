@@ -484,7 +484,7 @@
     const tabs = [["hero", "角色"], ["boss", "每週王"], ["team", "小隊"], ["journey", "旅程"], ["fun", "驚喜"], ["summon", "召喚"], ["book", "圖鑑"]];
     const body = RP.tab === "summon" ? summonHtml() : RP.tab === "book" ? bookHtml()
       : RP.tab === "boss" ? (window.StudyGame ? window.StudyGame.worldHtml() : "") + bossHtml()
-      : RP.tab === "fun" ? (window.EventGame ? window.EventGame.halloweenHtml() : "") + (window.FunGame ? window.FunGame.html() : "")
+      : RP.tab === "fun" ? (window.EventGame ? window.EventGame.seasonHtml() + window.EventGame.halloweenHtml() : "") + (window.FunGame ? window.FunGame.html() : "")
       : RP.tab === "team" ? (window.TeamGame ? window.TeamGame.html() : "") + (window.GrowthGame ? window.GrowthGame.betsHtml() : "")
       : RP.tab === "journey" ? (window.GrowthGame ? window.GrowthGame.html() : "")
       : heroHtml() + (window.StudyGame && RP.status && RP.status.class ? window.StudyGame.skillHtml() : "")
