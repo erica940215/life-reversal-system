@@ -325,6 +325,31 @@ const FARM_JS_VERSION = "2026-10-28 v2";
   }
 
   /* 下雨：大約每週一次；用了雨雲的那天；有小白龍每 3 天一次 */
+  /* ☀️ 天氣：雨天（不用澆水）、彩虹日（收成 30% 加倍）、流星夜（晚上收成 +1）、大豐收日（賣價 +20%） */
+  const WEATHER = {
+    sunny: { emoji: "☀️", name: "晴天", desc: "" },
+    rain: { emoji: "🌧️", name: "雨天", desc: "種下去的作物不用澆水" },
+    rainbow: { emoji: "🌈", name: "彩虹日", desc: "收成時 30% 機率加倍" },
+    meteor: { emoji: "🌠", name: "流星夜", desc: "晚上 18:30 以後收成每次多 1 個" },
+    bumper: { emoji: "🌾", name: "大豐收日", desc: "市集賣價 +20%" }
+  };
+  function weatherOf(dateText = todayKey()) {
+    if (isRainDay(dateText)) return "rain";
+    const h = hash(dateText + ":wx") % 20;
+    return h < 2 ? "rainbow" : h < 4 ? "meteor" : h < 5 ? "bumper" : "sunny";
+  }
+  /* 🎉 節日：當天有一張限時訂單（交了拿星屑 40） */
+  const FESTIVALS = {
+    "01-01": ["🎆", "元旦", "pancake"], "02-14": ["💝", "情人節", "strawberrycake"], "02-17": ["🧧", "春節", "fagao"],
+    "03-03": ["🏮", "元宵", "taroball"], "04-04": ["🌿", "清明", "cucumbersalad"], "05-31": ["🐉", "端午", "threecup"],
+    "08-19": ["🎋", "七夕", "peachjelly"], "09-25": ["🥮", "中秋", "moontangyuan"], "10-31": ["🎃", "萬聖節", "pumpkinsoup"],
+    "11-11": ["🛍️", "雙十一", "friedrice"], "12-21": ["🍡", "冬至", "peanutsoup"], "12-25": ["🎄", "聖誕節", "gingerbreadman"], "12-31": ["🎇", "跨年", "hotpot"]
+  };
+  function festivalOf(dateText = todayKey()) {
+    const f = FESTIVALS[dateText.slice(5)];
+    return f && D.dishes[f[2]] ? { emoji: f[0], name: f[1], dish: f[2] } : null;
+  }
+
   function isRainDay(dateText = todayKey()) {
     if (S && S.rainDay === dateText) return true;
     if (own("p_dragon") && dayNum(dateText) % 3 === 0) return true;
@@ -951,6 +976,9 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     let qty = base, fox = false, x2 = false;
     if (own("p_fox") && Math.random() < 0.1) { qty += 1; fox = true; }
     if (own("p_lanternbunny") && isNightNow()) qty += 1;                 // 燈籠兔：晚上收成多 1 個
+    const wx = weatherOf();
+    if (wx === "rainbow" && Math.random() < 0.3) { qty *= 2; x2 = true; }   // 彩虹日：30% 加倍
+    if (wx === "meteor" && dayPhase().k === "night") qty += 1;           // 流星夜：晚上 +1
     if (S.boost.x2 > 0) { S.boost.x2 -= 1; qty *= 2; x2 = true; }
     return { qty, fox, x2 };
   }
@@ -2049,8 +2077,9 @@ const FARM_JS_VERSION = "2026-10-28 v2";
   function sellPrice(key) {
     const it = D.items[key];
     if (!it || !it.sell) return 0;
-    if (it.kind === "dish" || it.kind === "fish") return it.sell;
-    return Math.max(1, Math.round(it.sell * D.market.sellRate));
+    const bump = weatherOf() === "bumper" ? 1.2 : 1;
+    if (it.kind === "dish" || it.kind === "fish") return Math.round(it.sell * bump);
+    return Math.max(1, Math.round(it.sell * D.market.sellRate * bump));
   }
 
   function sellItem(key, qty) {
@@ -2463,7 +2492,9 @@ const FARM_JS_VERSION = "2026-10-28 v2";
 
   const DECO_SLOTS = [
     [400, 610], [545, 615], [880, 605], [130, 680], [210, 1030], [560, 1080],
-    [680, 1065], [130, 1140], [520, 1300], [880, 1310], [1350, 1150], [1400, 880]
+    [680, 1065], [130, 1140], [520, 1300], [880, 1310], [1350, 1150], [1400, 880],
+    [300, 770], [470, 960], [640, 880], [830, 1030], [960, 770], [1110, 720],
+    [1300, 770], [1330, 1070], [420, 1370], [700, 1240], [180, 880], [1080, 1290]
   ];
 
   function decoOwned(k) {
@@ -3261,7 +3292,9 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       </div>`;
 
     const banners = [];
-    if (isRainDay()) banners.push(`<div>🌧️ 今天下雨，種下去的作物不用澆水</div>`);
+    { const w = WEATHER[weatherOf()]; banners.push(`<div>${w.emoji} 今天${w.name}${w.desc ? "：" + w.desc : ""}</div>`); }
+    { const fe = festivalOf(); if (fe) banners.push(`<div data-act="kitchen">${fe.emoji} 今天是${fe.name}！限時節日訂單：${esc(D.dishes[fe.dish].name)}（點我去廚房）</div>`); }
+    if (UI.decoMove != null || UI.decoMoveMode) banners.push(`<div class="warn" data-act="decodone">🪑 擺放模式：${UI.decoMove != null ? "再點要放的位置（有家具就互換）" : "先點要移動的家具"}・點這裡結束</div>`);
     if (net.mode === "local") banners.push(`<div class="warn" data-act="setup">⚠️ 存檔目前只在這台裝置（點我看怎麼設定）</div>`);
     else if (net.error) banners.push(`<div class="warn" data-act="retry">⚠️ 存檔失敗，點我重試</div>`);
     UI.root.querySelector("#fm-banner").innerHTML = banners.join("");
@@ -3477,7 +3510,12 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     let log = [];
     try {
       log = autoFarm();
-      /* 餐廳訂單：有菜就交（獎勵在資料庫發） */
+      /* 節日訂單、餐廳訂單：有菜就交（獎勵在資料庫發） */
+      const fe = festivalOf();
+      if (fe && net.mode === "server" && S.festDone !== todayKey() && have(fe.dish)) {
+        const { error } = await db.rpc("farm_festival_claim", { p_day: todayKey() });
+        if (!error) { takeItem(fe.dish, 1); S.festDone = todayKey(); addDew(D.dishes[fe.dish].sell * 2); log.push(`${fe.emoji} 交了${fe.name}限時訂單`); }
+      }
       if (net.mode === "server") {
         const ord = ordState();
         for (let i = 0; i < ord.slots.length; i++) {
@@ -4192,7 +4230,30 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     };
   }
 
+  function decoSlotPick(i) {
+    if (UI.decoMove == null) {
+      if (!S.deco.slots[i]) return toast("先點要移動的家具");
+      UI.decoMove = i; toast(`選了${D.deco[S.deco.slots[i]].name}，再點要放的位置`);
+      return renderAll();
+    }
+    const a = UI.decoMove;
+    UI.decoMove = null;
+    if (a !== i) {
+      const t = S.deco.slots[i] || null;
+      S.deco.slots[i] = S.deco.slots[a];
+      S.deco.slots[a] = t;
+      toast(t ? "🔁 兩件家具換好位置了" : "🪑 搬好了");
+    }
+    after();
+  }
+
   function decoSvg(items) {
+    if (UI.decoMoveMode || UI.decoMove != null) {
+      DECO_SLOTS.forEach(([x, y], i) => {
+        const sel = UI.decoMove === i;
+        if (!S.deco.slots[i] || sel) HITS.push({ y, svg: `<g class="tap" data-act="decoslot" data-slot="${i}" role="button" tabindex="0" aria-label="擺放位置 ${i + 1}"><ellipse cx="${x}" cy="${y - 4}" rx="30" ry="12" fill="#fff" fill-opacity=".25" stroke="${sel ? "#ffd34d" : "#fff"}" stroke-width="${sel ? 4 : 2.5}" stroke-dasharray="${sel ? "0" : "6 5"}"/></g>` });
+      });
+    }
     S.deco.slots.forEach((k, i) => {
       if (!k || !D.deco[k] || i >= DECO_SLOTS.length) return;
       const [x, y] = DECO_SLOTS[i];
@@ -5091,7 +5152,24 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     picktier: el => { UI.pickTier = el.dataset.tier; renderSheet(); },
     useitem: el => useItem(el.dataset.item),
     pet: el => petGift(el.dataset.pet),
-    deco: el => { const k = S.deco.slots[Number(el.dataset.slot)]; if (k) decoTap(k); },
+    deco: el => {
+      const i = Number(el.dataset.slot);
+      if (UI.decoMoveMode || UI.decoMove != null) return decoSlotPick(i);
+      const k = S.deco.slots[i]; if (k) decoTap(k);
+    },
+    decoslot: el => decoSlotPick(Number(el.dataset.slot)),
+    decomove: () => { UI.decoMoveMode = true; UI.decoMove = null; closeSheet(); toast("🪑 點要移動的家具"); renderAll(); },
+    festival: async () => {
+      const fe = festivalOf();
+      if (!fe || S.festDone === todayKey() || !have(fe.dish)) return;
+      if (net.mode !== "server") return toast("資料庫設定好之後才能交");
+      const { data, error } = await db.rpc("farm_festival_claim", { p_day: todayKey() });
+      if (error) return toast("交單失敗：" + error.message);
+      takeItem(fe.dish, 1); S.festDone = todayKey(); addDew(D.dishes[fe.dish].sell * 2); addExp(30);
+      toast(data && data.already ? "今天的節日訂單已經交過了" : `${fe.emoji} 節日訂單完成！⭐ 星屑 40`);
+      after(); renderSheet();
+    },
+    decodone: () => { UI.decoMoveMode = false; UI.decoMove = null; toast("擺好了"); after(); },
     koi: el => {
       if (!skinOn("luckykoi") || !dailyReady("koi")) return;
       dailyDone("koi");
@@ -5633,6 +5711,13 @@ const FARM_JS_VERSION = "2026-10-28 v2";
         .map(([k, d]) => `<span class="fm-tag gray">${esc(d.name)} Lv${d.lv}</span>`).join(" ");
 
       let orders = "";
+      const fe = festivalOf();
+      if (fe) {
+        const dd = D.dishes[fe.dish], done = S.festDone === todayKey();
+        orders += `<div class="fm-panel"><div class="fm-sec ol">${fe.emoji} ${esc(fe.name)}限時訂單</div><div class="fm-list"><div class="fm-row r-l"><div class="fm-row-art">${itemIcon(fe.dish)}</div>
+          <div><div class="fm-row-name">${esc(dd.name)} ×1</div><div class="fm-row-sub">今天限定・交了拿 ⭐ 星屑 40 和 ${num(dd.sell * 2)} 星露（倉庫有 ${have(fe.dish)}）</div></div>
+          <div class="fm-row-btns">${done ? "✅" : have(fe.dish) ? `<button type="button" class="fm-btn small green" data-act="festival">交</button>` : dishKnown(fe.dish) ? cookBtn(fe.dish, 1) : `<span class="fm-note">還不會做</span>`}</div></div></div></div>`;
+      }
       if (S.orders && S.orders.list.length) {
         orders = `<div class="fm-panel"><div class="fm-sec ol">今日客人點餐</div><div class="fm-list">${S.orders.list.map((o, i) => {
           const d = D.dishes[o.d];
@@ -6133,7 +6218,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       /* 家具 */
       const decos = Object.keys(D.deco).filter(k => decoOwned(k) > 0);
       const free = DECO_SLOTS.length - S.deco.slots.filter(Boolean).length;
-      html += `<div class="fm-panel"><div class="fm-sec ol">家具</div><p class="fm-note" style="margin:0 2px 8px">島上還有 <b>${free}</b> 個擺放位置。</p>
+      html += `<div class="fm-panel"><div class="fm-sec ol">家具</div><p class="fm-note" style="margin:0 2px 8px">島上還有 <b>${free}</b> 個擺放位置。<button type="button" class="fm-btn small green" style="margin-left:6px" data-act="decomove">🪑 調整位置</button></p>
         <div class="fm-list">${decos.map(k => {
           const d = D.deco[k];
           const n = decoOwned(k), placed = decoPlaced(k);
