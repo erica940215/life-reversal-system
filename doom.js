@@ -276,7 +276,6 @@
     const logs = (DM.s.logs || []).slice(0, 6).map(l =>
       `<li class="${l.tier ? "tier-" + l.tier : ""}">${esc(l.body)}</li>`).join("");
     return `
-      ${autoHtml()}
       ${progressHtml()}
       ${talkHtml()}
       ${spinHtml()}
@@ -292,7 +291,8 @@
         <p>⏱️ 專注：開始前選一個區域，每 5～10 分鐘撿到一樣東西，結束時開箱</p>
         <p>🔥 30 分鐘內連續完成，每連到 3 次再 +1 🎟️</p>
         <p class="dm-note">做完回來這頁就會自動收。今天做越多事，搜刮越幸運。每天會吃掉 🥫1 💧1。</p></div>
-      ${logs ? `<div class="card"><b>📓 最近的紀錄</b><ul class="dm-log">${logs}</ul></div>` : ""}`;
+      ${logs ? `<div class="card"><b>📓 最近的紀錄</b><ul class="dm-log">${logs}</ul></div>` : ""}
+      ${autoHtml()}`;
   }
 
   function drawHtml() {
