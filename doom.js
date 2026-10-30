@@ -255,6 +255,17 @@
     return `<div class="card dm-ev ${slot === "event" ? e.kind : "visit"}">${head}<div class="dm-opts">${opts}</div></div>`;
   }
 
+  function autoHtml() {
+    const o = DM.s.auto || {}, last = DM.s.auto_last;
+    const lines = DM.autoRes || (last && last.lines) || [];
+    const when = last && last.at ? new Date(last.at).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+    const tg = (k, on, label) => `<button type="button" class="${on ? "on" : ""}" data-dm="autoopt" data-v="${k}">${on ? "✅" : "⬜"} ${label}</button>`;
+    return `<div class="card dm-auto"><div class="dm-row-flex"><div><b>⚡ 忙碌模式</b><p class="dm-note">一鍵幫你撿物資、開寶箱、摸夥伴、派遠征、農場收成種滿、爐子做菜、升級建設（會留安全庫存）。居民請求和事件選擇留給你決定。</p></div>
+      <button type="button" class="btn dm-btn" data-dm="auto" ${DM.busy ? "disabled" : ""}>⚡ 一鍵自動處理</button></div>
+      <div class="dm-fchips">${tg("daily", !!o.daily, "每天自動處理（沒上線也會跑）")}${tg("build", o.build !== false, "自動升級建設")}${tg("draw", !!o.draw, "順便用掉搜刮券抽獎")}</div>
+      ${lines.length ? `<details ${DM.autoRes ? "open" : ""}><summary class="dm-note">${DM.autoRes ? "剛剛處理了" : `上次自動處理${when ? `（${when}）` : ""}`}：${lines.length} 件事</summary><ul class="dm-auto-l">${lines.map(l => `<li>${esc(l)}</li>`).join("")}</ul></details>` : ""}</div>`;
+  }
+
   function todayHtml() {
     const t = DM.s.today || {};
     const bc = find("broadcasts", t.broadcast);
@@ -265,6 +276,7 @@
     const logs = (DM.s.logs || []).slice(0, 6).map(l =>
       `<li class="${l.tier ? "tier-" + l.tier : ""}">${esc(l.body)}</li>`).join("");
     return `
+      ${autoHtml()}
       ${progressHtml()}
       ${talkHtml()}
       ${spinHtml()}
@@ -457,6 +469,10 @@
     if (act === "fmup") { call("doom_farm_upgrade", {}, async d => { sfx("level"); toast(`🌾 農場升到 Lv${d.lv}！`); await loadFarm(); }); return; }
     if (act === "cook") { call("doom_farm_cook", { p_out: el.dataset.v, p_n: Number(el.dataset.n) }, async d => { sfx("click"); const x = foodInfo(d.out) || cropInfo(d.out); toast(`🍳 開始做 ${x ? x.name : d.out} ×${d.n}，${minText(d.min)}後好`); await loadFarm(); }); return; }
     if (act === "fcat") { DM.fsec = el.dataset.v; render(); return; }
+    if (act === "fonly") { DM.fonly = !DM.fonly; render(); return; }
+    if (act === "autoopt") { const o = Object.assign({}, DM.s.auto || {}); const k = el.dataset.v; o[k] = !(k === "build" ? o[k] !== false : !!o[k]);
+      call("doom_auto_save", { p: { [k]: o[k] } }, async d => { DM.s.auto = d; toast(o[k] ? "已打開" : "已關閉"); }); return; }
+    if (act === "auto") { call("doom_auto", {}, async d => { sfx("level"); DM.autoRes = d.lines || []; await load(); toast("⚡ 末世處理好了"); }); return; }
     if (act === "eat") {
       const f = (document.getElementById("dm-meal-food") || {}).value || "", dr = (document.getElementById("dm-meal-drink") || {}).value || "";
       if (!f && !dr) { toast("至少選一樣"); return; }
@@ -1501,18 +1517,25 @@
     }
 
     const sec = DM.fsec || "all";
-    const cats = cat.cats.map(c => {
-      const items = cat.items.filter(x => x.c === c.id);
+    // 有的放前面：有存貨的分類 → 吃過的分類 → 還沒拿到的；分類裡面也是有的先排
+    const rank = it => pan[it.id] > 0 ? 0 : eaten[it.id] ? 1 : 2;
+    const only = !!DM.fonly;
+    const cats = cat.cats.map((c, ci) => {
+      const items = cat.items.filter(x => x.c === c.id).map((x, i) => ({ x, i })).sort((a, b) => rank(a.x) - rank(b.x) || a.i - b.i).map(o => o.x);
       const got = items.filter(x => pan[x.id] > 0 || eaten[x.id]).length;
-      return { c, items, got };
-    });
-    const totalGot = cats.reduce((a, x) => a + x.got, 0);
-    const chips = `<div class="dm-fchips"><button type="button" class="${sec === "all" ? "on" : ""}" data-dm="fcat" data-v="all">全部 ${totalGot}/${cat.items.length}</button>${cats.map(x => `<button type="button" class="${sec === x.c.id ? "on" : ""}" data-dm="fcat" data-v="${x.c.id}">${x.c.emoji} ${esc(x.c.name)} ${x.got}/${x.items.length}</button>`).join("")}</div>`;
-    const grid = cats.filter(x => sec === "all" || x.c.id === sec).map(x => `<div class="dm-fsec">${x.c.emoji} ${esc(x.c.name)}</div><div class="dm-grid">${x.items.map(it => {
+      const have = items.filter(x => pan[x.id] > 0).length;
+      return { c, ci, items: only ? items.filter(x => pan[x.id] > 0) : items, got, have };
+    }).filter(x => !only || x.have).sort((a, b) => (b.have > 0) - (a.have > 0) || (b.got > 0) - (a.got > 0) || a.ci - b.ci);
+    const totalGot = cat.items.filter(x => pan[x.id] > 0 || eaten[x.id]).length;
+    const chips = `<div class="dm-fchips"><button type="button" class="${sec === "all" ? "on" : ""}" data-dm="fcat" data-v="all">全部 ${totalGot}/${cat.items.length}</button><button type="button" class="${only ? "on" : ""}" data-dm="fonly">${only ? "✅ " : ""}只看有的</button>${cats.map(x => `<button type="button" class="${sec === x.c.id ? "on" : ""}" data-dm="fcat" data-v="${x.c.id}">${x.c.emoji} ${esc(x.c.name)} ${x.have ? `<b>${x.have}</b>／` : ""}${x.got}/${cat.items.filter(i => i.c === x.c.id).length}</button>`).join("")}</div>`;
+    // 「全部」只列拿過的，沒拿到的收成一行；點分類才看完整圖鑑
+    const grid = cats.filter(x => sec === "all" || x.c.id === sec).map(x => { const list = sec === "all" ? x.items.filter(it => pan[it.id] > 0 || eaten[it.id]) : x.items;
+      const miss = sec === "all" && !only ? x.items.length - list.length : 0;
+      return `<div class="dm-fsec">${x.c.emoji} ${esc(x.c.name)}</div>${list.length ? `<div class="dm-grid">${list.map(it => {
       const n = pan[it.id] || 0, e = eaten[it.id] || 0, known = n || e;
       return known ? `<div class="dm-book tier-${it.t} ${n ? "" : "empty"}" title="${esc(it.text)}">${ic("pantry", it.id, it.emoji, "big")}<b>${esc(it.name)}</b><small>${n ? `有 ${n} 份` : "吃完了"}${e ? `・吃過 ${e} 次` : ""}</small></div>`
         : `<div class="dm-book off tier-${it.t}"><span class="dm-emo big">❔</span><b>？？？</b><small>${tierName(it.t)}${it.scav ? "・🔎 搜刮" : ""}</small></div>`;
-    }).join("")}</div>`).join("");
+    }).join("")}</div>` : ""}${miss ? `<button type="button" style="background:none;border:0;padding:2px 0 8px;cursor:pointer;text-align:left" class="dm-note dm-miss" data-dm="fcat" data-v="${x.c.id}">❔ 還有 ${miss} 種沒拿到，點這裡看這一類的圖鑑</button>` : ""}`; }).join("");
     const stock = Object.values(pan).reduce((a, n) => a + n, 0);
     const ftab = DM.ftab || "pantry";
     const tabs = `<div class="dm-subtabs">${[["pantry", "🍱 食物櫃"], ["farm", `🌾 農場${farmDot()}`], ["kitchen", "🍳 廚房"]].map(([k, n]) => `<button type="button" class="${ftab === k ? "on" : ""}" data-dm="ftab" data-v="${k}">${n}</button>`).join("")}</div>`;
