@@ -2059,7 +2059,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
   const W = D.wish;
   const WISH_NAMES = { wish_normal: "普通星願瓶", wish_rare: "稀有星願瓶", wish_limited: "限定星願瓶" };
   const WISH_IMG = { wish_normal: "item/wish_normal.webp", wish_rare: "item/wish_rare.webp", wish_limited: "item/wish_limited.webp" };
-  const POOL_NAME = { free: "每日免費抽", wish_normal: "普通池", wish_rare: "稀有池", wish_limited: "每月限定池", shop: "星願商店" };
+  const POOL_NAME = { free: "每日免費抽", wish_normal: "普通池", wish_rare: "稀有池", wish_limited: "每月限定池", wish_retro: "🔁 復刻池", shop: "星願商店" };
 
   function rewardInfo(key) {
     return W.rewards[key] || { tier: "c", kind: "none", name: key, emoji: "🎁" };
@@ -2289,7 +2289,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     if (pool === "free") {
       if (!net.ws.checked) return toast("先簽到才能免費抽");
       if (freeLeft() < count) return toast("今天的免費抽用完了，明天再來");
-    } else if ((net.wish[pool] || 0) < count) {
+    } else if ((net.wish[pool === "wish_retro" ? "wish_limited" : pool] || 0) < count) {
       return toast("星願瓶不夠");
     }
 
@@ -2300,7 +2300,9 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     if (net.dirty) await saveNow();
 
     try {
-      const { data, error } = await db.rpc("farm_wish_draw", { p_pool: pool, p_count: count });
+      const { data, error } = pool === "wish_retro"
+        ? await db.rpc("farm_wish_retro", { p_count: count })
+        : await db.rpc("farm_wish_draw", { p_pool: pool, p_count: count });
       if (error) throw error;
       const results = data.results || [];
       stashPending(results);
@@ -5712,7 +5714,23 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       const bottles = `<div class="fm-panel"><div class="fm-wishes">${bottle("wish_normal", "用現在的幸運值")}${bottle("wish_rare", `第 ${st.rare_n} 瓶・大獎 ${pct(ro.x + ro.s)}`)}${bottle("wish_limited", "本月主題")}</div>
         <p class="fm-note" style="margin:8px 2px 0">網站連續簽到每 3 天送普通瓶、每 7 天送稀有瓶；每月累計簽到 7 天送限定瓶，全勤再 2 瓶。</p></div>`;
 
-      return free + luck + themeHtml + bottles;
+      /* 🔁 復刻池：過去月份的限定，還沒有的才會出 */
+      const W0 = W, retroList = [];
+      const row = (art, name, sub, button, tier = "c") => `<div class="fm-row r-${tier}"><div class="fm-row-art">${art}</div><div style="flex:1;min-width:0"><div class="fm-row-name">${name}</div><div class="fm-row-sub">${sub}</div></div>${button}</div>`;
+      for (const [m, th] of Object.entries(W0.months || {})) {
+        if (m >= st.month) continue;
+        for (const x of ["s", "x", "l"]) for (const k of th[x] || []) if (!retroList.some(e => e[0] === k)) retroList.push([k, x, m]);
+      }
+      const retroLeft = retroList.filter(([k]) => !own(k) && !(st.owned || {})[k]);
+      const nl = net.wish.wish_limited || 0, rto = limitedOdds(st.retro_n || 1);
+      const retro = `<div class="fm-panel"><div class="fm-sec ol">🔁 復刻池</div>
+        ${retroList.length ? `<p class="fm-note" style="margin:0 2px 8px">過去月份的限定都在這裡，<b>只會開出你還沒有的</b>。用限定星願瓶開，仙品 ${pct(rto.s)}（第 ${st.retro_n || 1} 瓶，第 6 瓶一定中，保底跟本月限定分開算）。還差 <b>${retroLeft.length}</b>/${retroList.length} 樣。</p>
+          <div class="fm-list">${retroList.map(([k, x, m]) => { const have = !retroLeft.some(e => e[0] === k);
+            return `<div style="${have ? "opacity:.45" : ""}">${row(rewardArt(k), esc(rewardInfo(k).name), `${Number(m.slice(5))} 月・${esc(W0.months[m].name)}${have ? "・已擁有" : ""}`, "", x)}</div>`; }).join("")}</div>
+          ${retroLeft.length ? `<div class="fm-wish-btns" style="margin-top:8px"><button type="button" class="fm-btn small red" data-act="draw" data-pool="wish_retro" data-n="1" ${nl >= 1 && !wishBusy ? "" : "disabled"}>開 1（限定瓶 ${nl}）</button>${nl >= 10 ? `<button type="button" class="fm-btn small red" data-act="draw" data-pool="wish_retro" data-n="10" ${wishBusy ? "disabled" : ""}>開 10</button>` : ""}</div>` : `<p class="fm-note">過去的限定你都收集齊了 🎉</p>`}`
+          : `<p class="fm-note" style="margin:0 2px">還沒有過期的月份。每過一個月，上個月的限定就會自動加進復刻池，過期了也收集得到。</p>`}</div>`;
+
+      return free + luck + themeHtml + bottles + retro;
     },
 
     /* 商店 */

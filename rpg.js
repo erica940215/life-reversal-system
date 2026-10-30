@@ -338,6 +338,24 @@
           <button type="button" class="btn btn-primary btn-small" data-rp="summon" data-pool="${pool}" data-n="10" ${n >= 10 ? "" : "disabled"}>召喚 10 次</button></div></div>`;
     }).join("");
 
+    /* 🔁 復刻召喚：過去月份／季節的限定裝備 */
+    if (RP.retro === undefined) { RP.retro = null; db.rpc("rpg_retro_list").then(({ data, error }) => { RP.retro = error ? { err: error.message } : data; render(); }); }
+    const rt = RP.retro, nl = t.limited || 0;
+    const SEASON = { frost_descent: "霜降", winter_solstice: "冬至", spring_equinox: "春分", moon_view: "月見" };
+    const serNm = k => ((st0.catalog || {}).series_name || {})[k] || SEASON[k] || k;
+    const retroGear = rt && rt.gear || [];
+    const retro = `<div class="card rp-card rp-pool p-limited">
+        <div class="rp-pool-top"><span class="rp-emo big">🔁</span>
+          <div><h3>復刻召喚</h3><span class="rp-sub">過去月份、季節的限定裝備都在這裡，過期了也收集得到</span></div>
+          <div class="rp-power"><span class="rp-sub">限定券</span><b>${nl}</b></div></div>
+        ${rt && rt.err ? `<p class="rp-note">⚠️ 要先在 Supabase 執行 sql/2026-10-30_復刻池.sql</p>`
+          : !rt ? `<p class="rp-note">載入中…</p>`
+          : retroGear.length ? `<p class="rp-note">稀有 50%・史詩 35%・傳說 15%，還沒有的限定優先，十連保底一件史詩以上。<br>目前收錄：${(rt.series || []).map(serNm).join("、")}（${retroGear.filter(g => g.owned).length}/${retroGear.length} 件已擁有）</p>
+            <div class="rp-grid">${retroGear.map(g => `<div class="rp-gear t-${g.tier}" style="${g.owned ? "opacity:.5" : ""}">${gearIcon(g.key, true)}<b>${esc((gearInfo(g.key) || {}).name || g.key)}</b><span class="rp-tag">${g.owned ? "已擁有" : serNm(g.series)}</span></div>`).join("")}</div>
+            <div class="rp-row"><button type="button" class="btn btn-primary btn-small" data-rp="retro" data-n="1" ${nl >= 1 ? "" : "disabled"}>召喚 1 次</button>
+              <button type="button" class="btn btn-primary btn-small" data-rp="retro" data-n="10" ${nl >= 10 ? "" : "disabled"}>召喚 10 次</button></div>`
+          : `<p class="rp-note">還沒有過去的限定系列。每過一個月，上個月的限定裝備就會自動加進來。</p>`}</div>`;
+
     let result = "";
     if (RP.result) {
       const list = RP.result.results || [];
@@ -348,7 +366,7 @@
       }).join("")}</div>${RP.result.gold ? `<p class="rp-note">滿級的重複裝備換成 ${RP.result.gold} 金幣</p>` : ""}</div>`;
     }
 
-    return result + pools + `<p class="rp-note rp-pad">召喚券從每日簽到拿：連續簽到每 3 天 1 張普通、每 7 天 1 張特殊；每月累計簽到 7 天、全勤會給限定券。重複抽到的裝備會升級（最高 Lv5），滿級後換成金幣。</p>`;
+    return result + pools + retro + `<p class="rp-note rp-pad">召喚券從每日簽到拿：連續簽到每 3 天 1 張普通、每 7 天 1 張特殊；每月累計簽到 7 天、全勤會給限定券。重複抽到的裝備會升級（最高 Lv5），滿級後換成金幣。</p>`;
   }
 
   function bossHtml() {
@@ -489,6 +507,15 @@
         if (window.FunGame) window.FunGame.reload();
         if (window.TeamGame) window.TeamGame.reload();
         if (window.StudyGame) window.StudyGame.reloadWorld();
+      });
+      return;
+    }
+    if (act === "retro") {
+      const n = Number(el.dataset.n);
+      call("rpg_summon_retro", { p_count: n }, data => {
+        RP.result = data; RP.retro = undefined;
+        const best = (data.results || []).reduce((b, x) => TIER_ORDER.indexOf(x.tier) < TIER_ORDER.indexOf(b) ? x.tier : b, "c");
+        toast(`🔁 復刻召喚 ${n} 次，最好的是${TIER_NAME[best]}`);
       });
       return;
     }
