@@ -168,7 +168,9 @@
       if (!vid) {
         cvs = document.createElement("canvas"); cvs.width = 480; cvs.height = 220; drawCanvas();
         vid = document.createElement("video"); vid.muted = true; vid.playsInline = true; vid.setAttribute("playsinline", ""); vid.autoplay = true;
-        vid.style.cssText = "position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:.01;pointer-events:none";
+        vid.style.cssText = "position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:240px;height:110px;border-radius:12px;z-index:99995;box-shadow:0 10px 30px rgba(0,0,0,.5)";
+        vid.addEventListener("click", () => { try { vid.webkitSetPresentationMode ? vid.webkitSetPresentationMode("picture-in-picture") : vid.requestPictureInPicture(); } catch (e) {} });
+        vid.addEventListener("webkitpresentationmodechanged", () => { vid.style.display = vid.webkitPresentationMode === "picture-in-picture" ? "none" : ""; });
         vid.srcObject = cvs.captureStream(2);
         document.body.appendChild(vid);
       }
