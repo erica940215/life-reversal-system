@@ -279,7 +279,7 @@
     if (error) { EV.seErr = /ev_status|function|schema cache|PGRST/i.test(error.message || "") ? "setup" : error.message; EV.se = null; }
     else {
       EV.se = data; EV.seErr = null;
-      (data.settled || []).forEach(x => toast(`🎁 ${x.event}剩下的 ${x.n} 個活動貨幣換成 ${x.stardust} 星屑`));
+      (data && data.settled || []).forEach(x => toast(`🎁 ${x.event}剩下的 ${x.n} 個活動貨幣換成 ${x.stardust} 星屑`));
     }
     renderTodaySeason();
     rerenderRpg(["fun"]);

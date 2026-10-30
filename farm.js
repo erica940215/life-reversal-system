@@ -3202,6 +3202,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       <div class="fm-zoom">
         <button type="button" data-act="zoom" data-z="1" aria-label="放大">＋</button>
         <button type="button" data-act="zoom" data-z="-1" aria-label="縮小">－</button>
+        <button type="button" data-act="nightmode" id="fm-nightbtn" aria-label="白天／晚上">${nightBtnIcon()}</button>
         <button type="button" data-act="home" aria-label="回到菜田">${uiIcon("home")}</button>
       </div>
       <button type="button" class="fm-goal" id="fm-goal" data-act="goals"></button>
@@ -4473,8 +4474,15 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     return ROAD_LAMPS.map(([x, y]) => `<g pointer-events="none"><ellipse cx="${x}" cy="${y}" rx="9" ry="3" fill="#000" opacity=".15"/><rect x="${x - 2.5}" y="${y - 46}" width="5" height="46" rx="2" fill="#4a4f5c"/><path d="M${x - 9} ${y - 44} h18 l-4 -12 h-10z" fill="#3b404c"/><circle cx="${x}" cy="${y - 50}" r="5.5" fill="#ffe9a8" opacity=".9"/></g>`).join("");
   }
 
+  /* 夜晚開關：auto 照現實時間、day 一直白天、night 一直晚上（記在這台裝置） */
+  function nightPref() { try { return localStorage.getItem("farmNight") || "auto"; } catch (e) { return "auto"; } }
+  function nightBtnIcon() { return { auto: "🌗", day: "☀️", night: "🌙" }[nightPref()] || "🌗"; }
+
   function dayPhase() {
     if (skinOn("nightmode")) return { k: "night", a: 0 };            // 星夜模式已經有自己的夜空
+    const pref = nightPref();
+    if (pref === "day") return { k: "day", a: 0 };
+    if (pref === "night") return { k: "night", a: 0.62 };
     const d = new Date(now()), m = d.getHours() * 60 + d.getMinutes();
     if (m >= 18 * 60 + 30 || m < 5 * 60 + 30) return { k: "night", a: 0.62 };
     if (m >= 17 * 60 + 30) return { k: "dusk", a: 0.62 * (m - (17 * 60 + 30)) / 60 };
@@ -4717,6 +4725,13 @@ const FARM_JS_VERSION = "2026-10-28 v2";
   const ACTS = {
 
     zoom: el => setZoom(Number(el.dataset.z)),
+    nightmode: el => {
+      const next = { auto: "night", night: "day", day: "auto" }[nightPref()] || "auto";
+      try { localStorage.setItem("farmNight", next); } catch (e) {}
+      el.textContent = nightBtnIcon();
+      toast({ auto: "🌗 照現實時間（18:30～5:30 是晚上）", night: "🌙 一直是晚上", day: "☀️ 一直是白天" }[next]);
+      renderAll();
+    },
     home: () => { UI.zoom = 1; closePop(); layoutMap(true); },
     retry: () => { net.dirty = true; saveNow(); },
     setup: () => openModal("setup"),
