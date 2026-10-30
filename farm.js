@@ -3712,6 +3712,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     s += road("M750 950 C750 1100 752 1250 750 1330");
     s += road("M880 880 C930 980 960 1060 985 1120");
     s += road("M1000 860 C1100 920 1180 990 1205 1020");
+    s += roadLampsSvg();
 
     /* 湖 */
     const { x: lx, y: ly, rx, ry } = LAKE;
@@ -4466,12 +4467,18 @@ const FARM_JS_VERSION = "2026-10-28 v2";
   ========================================================= */
   const GLOW_DECO = { stonelamp: 0.55, streetlamp: 0.92, wishlantern: 0.7, startree: 0.6, pumpkinlamp: 0.5, fairylights: 0.6,
     redlanterns: 0.85, starfountain: 0.6, tangyuanstall: 0.6, sakuralantern: 0.7, mushroomlamp: 0.6, lovemailbox: 0.6, snowman: 0, cocoastall: 0.6 };
+  /* 島上小路兩旁的路燈（白天是燈柱，晚上會亮） */
+  const ROAD_LAMPS = [[420, 386], [1080, 384], [700, 1040], [700, 1240], [395, 862], [905, 990], [1120, 952]];
+  function roadLampsSvg() {
+    return ROAD_LAMPS.map(([x, y]) => `<g pointer-events="none"><ellipse cx="${x}" cy="${y}" rx="9" ry="3" fill="#000" opacity=".15"/><rect x="${x - 2.5}" y="${y - 46}" width="5" height="46" rx="2" fill="#4a4f5c"/><path d="M${x - 9} ${y - 44} h18 l-4 -12 h-10z" fill="#3b404c"/><circle cx="${x}" cy="${y - 50}" r="5.5" fill="#ffe9a8" opacity=".9"/></g>`).join("");
+  }
+
   function dayPhase() {
     if (skinOn("nightmode")) return { k: "night", a: 0 };            // 星夜模式已經有自己的夜空
     const d = new Date(now()), m = d.getHours() * 60 + d.getMinutes();
-    if (m >= 18 * 60 + 30 || m < 5 * 60 + 30) return { k: "night", a: 0.46 };
-    if (m >= 17 * 60 + 30) return { k: "dusk", a: 0.46 * (m - (17 * 60 + 30)) / 60 };
-    if (m < 6 * 60 + 30) return { k: "dawn", a: 0.46 * ((6 * 60 + 30) - m) / 60 };
+    if (m >= 18 * 60 + 30 || m < 5 * 60 + 30) return { k: "night", a: 0.62 };
+    if (m >= 17 * 60 + 30) return { k: "dusk", a: 0.62 * (m - (17 * 60 + 30)) / 60 };
+    if (m < 6 * 60 + 30) return { k: "dawn", a: 0.62 * ((6 * 60 + 30) - m) / 60 };
     return { k: "day", a: 0 };
   }
   function nightLayer() {
@@ -4480,10 +4487,12 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     if (!ph.a && !lit) return "";
     let s = `<defs><radialGradient id="fmLampGlow"><stop offset="0" stop-color="#fff3b0" stop-opacity=".95"/><stop offset=".35" stop-color="#ffd36b" stop-opacity=".55"/><stop offset="1" stop-color="#ffb23e" stop-opacity="0"/></radialGradient>
       <radialGradient id="fmWinGlow"><stop offset="0" stop-color="#ffe7a0" stop-opacity=".8"/><stop offset="1" stop-color="#ffb23e" stop-opacity="0"/></radialGradient></defs>`;
-    if (ph.a) s += `<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#141d52" opacity="${ph.a.toFixed(3)}" pointer-events="none"/>`;
+    if (ph.a) s += `<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#0b1240" opacity="${ph.a.toFixed(3)}" pointer-events="none"/>`;
     if (!lit) return `<g pointer-events="none">${s}</g>`;
     /* 星星 */
     if (ph.a) for (let i = 0; i < 40; i++) s += `<circle class="fm-twinkle" cx="${hash("st" + i) % MAP_W}" cy="${hash("sy" + i) % 260}" r="${1 + (i % 3) * 0.6}" fill="#fff" opacity=".85"/>`;
+    /* 小路燈 */
+    for (const [x, y] of ROAD_LAMPS) s += `<circle class="fm-lamp" cx="${x}" cy="${y - 50}" r="58" fill="url(#fmLampGlow)"/><ellipse cx="${x}" cy="${y - 2}" rx="34" ry="12" fill="#ffd36b" opacity=".35"/><circle cx="${x}" cy="${y - 50}" r="7" fill="#fff8d0"/>`;
     /* 建築窗戶的光 */
     for (const k of ["barn", "kitchen", "workshop", "market", "green"]) {
       const p = POS[k]; if (!p) continue;

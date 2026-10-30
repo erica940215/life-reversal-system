@@ -758,6 +758,6 @@
     Object.keys(orig).forEach(k => { window.finishFocus[k] = orig[k]; });
   }
 
-  window.RpgGame = { version: RPG_JS_VERSION, reload: load, render, state: RP, autoAttack };
+  window.RpgGame = { version: RPG_JS_VERSION, reload: load, render, state: RP, autoAttack, gear: gearInfo };
 
 })();

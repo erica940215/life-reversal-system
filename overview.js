@@ -28,6 +28,10 @@
         const { data, error } = await db.rpc("life_year", { p_year: OV.year || null });
         if (error) throw error;
         OV.yr = data;
+      } else if (OV.tab === "game") {
+        const { data, error } = await db.rpc("life_game_week", { p_offset: OV.goffset || 0 });
+        if (error) throw error;
+        OV.game = data;
       } else if (OV.tab === "week") {
         const { data, error } = await db.rpc("life_week", { p_offset: OV.offset });
         if (error) throw error;
@@ -36,11 +40,38 @@
         const { data, error } = await db.rpc("life_collection");
         if (error) throw error;
         OV.coll = data;
+        const a = await db.rpc("life_achievements");
+        OV.ach = a.error ? null : a.data;
       }
     } catch (e) {
       OV.err = /life_year/.test(e.message || "") ? "setup2" : /life_week|life_collection|PGRST202|42883/.test(e.message || "") ? "setup" : (e.message || String(e));
     }
     render();
+  }
+
+  /* 📰 每週戰報：三個遊戲這週拿了什麼、打倒了什麼 */
+  function gameHtml() {
+    const w = OV.game;
+    if (!w) return `<div class="ov-empty">載入中…</div>`;
+    const n = w.now || {}, p = w.prev || {};
+    const card = (v, label, pv, unit = "") => `<div><b>${(v || 0).toLocaleString()}</b><span>${label}</span>${delta(v || 0, pv || 0, unit)}</div>`;
+    const gname = k => { const g = window.RpgGame && window.RpgGame.gear ? window.RpgGame.gear(k) : null; return g ? g.name : k; };
+    const hl = (n.doom_highlights || []).map(t => `<li>${esc(t)}</li>`).join("");
+    const score = (n.boss_kills || 0) * 5 + (n.zombie_kings || 0) * 3 + (n.wish_big || 0) * 3 + (n.new_gear || 0) + Math.floor((n.stardust || 0) / 20) + (n.doom_runs || 0);
+    const title = score >= 40 ? "這週是傳說級的一週 🌟" : score >= 20 ? "收穫滿滿的一週 ✨" : score >= 5 ? "穩穩前進的一週 💪" : "這週比較安靜，下週再出發 🌱";
+    return `<div class="ov-nav"><button type="button" class="ov-btn ghost" data-ov="gprev">‹ 上週</button>
+        <b>${w.start.slice(5).replace("-", "/")} – ${w.end.slice(5).replace("-", "/")}${(OV.goffset || 0) === 0 ? "（這週）" : ""}</b>
+        <button type="button" class="ov-btn ghost" data-ov="gnext" ${(OV.goffset || 0) >= 0 ? "disabled" : ""}>下週 ›</button></div>
+      <div class="ov-box"><div class="ov-sec">📰 本週戰報</div><p class="ov-note" style="font-size:15px">${title}</p></div>
+      <div class="ov-cards">${card(n.stardust, "⭐ 拿到的星屑", p.stardust)}${card(n.tickets + n.wishes, "🎫 用掉的券和瓶", (p.tickets || 0) + (p.wishes || 0))}</div>
+      <div class="ov-box"><div class="ov-sec">⚔️ 冒險</div><div class="ov-cards">
+        ${card(n.boss_hits, "出擊次數", p.boss_hits)}${card(n.boss_dmg, "造成傷害", p.boss_dmg)}${card(n.boss_kills, "打倒的王", p.boss_kills)}${card(n.summons, "召喚次數", p.summons)}</div>
+        <p class="ov-note">${n.new_gear ? `新拿到 ${n.new_gear} 件裝備${n.best_gear ? `，最好的是「${esc(gname(n.best_gear))}」` : ""}。` : "這週沒有新裝備。"}</p></div>
+      <div class="ov-box"><div class="ov-sec">🏝️ 星露島</div><div class="ov-cards">
+        ${card(n.wish_draws, "星願池抽獎", p.wish_draws)}${card(n.wish_big, "華品以上", p.wish_big)}${card(n.farm_orders, "交的訂單", p.farm_orders)}</div></div>
+      <div class="ov-box"><div class="ov-sec">☢️ 末世</div><div class="ov-cards">
+        ${card(n.doom_runs, "專注搜刮", p.doom_runs, " 趟")}${card(n.zombies, "打倒喪屍", p.zombies)}${card(n.cores, "💠 精核", p.cores)}${card(n.rescued, "救回倖存者", p.rescued)}${card(n.doom_draws, "抽物資", p.doom_draws)}${card(n.doom_meals, "好好吃飯的天數", p.doom_meals)}</div>
+        ${n.zombie_kings ? `<p class="ov-note">👑 打倒了 ${n.zombie_kings} 隻喪屍王！</p>` : ""}${hl ? `<div class="ov-sec">✨ 本週高光</div><ul class="ov-hl">${hl}</ul>` : ""}</div>`;
   }
 
   function weekHtml() {
@@ -153,6 +184,16 @@
       add("☢️ 末世", "隱藏區域", d.zones, d.zones_total);
       add("☢️ 末世", "城市工程階段", d.projects, d.projects_total);
     }
+    const A = OV.ach || {};
+    if (A.farm_ach_total) add("🏅 成就", "星露島成就", A.farm_ach, A.farm_ach_total);
+    if (A.farm_ltd_total) add("🏅 成就", "星露島每月限定", A.farm_ltd, A.farm_ltd_total);
+    if (A.rpg_ltd_total) add("🏅 成就", "冒險限定裝備", A.rpg_ltd, A.rpg_ltd_total);
+    if (A.rpg_stars_total) add("🏅 成就", "裝備突破星數", A.rpg_stars, A.rpg_stars_total);
+    if (A.food_total) add("🏅 成就", "末世美食收藏", A.food_got, A.food_total);
+    if (A.fach_total) add("🏅 成就", "末世美食成就", A.fach, A.fach_total);
+    if (A.tsets_total) add("🏅 成就", "生活小物系列集滿", A.tsets, A.tsets_total);
+    if (A.doom_ltd_total) add("🏅 成就", "末世每月限定", A.doom_ltd, A.doom_ltd_total);
+    if (A.powers_total) add("🏅 成就", "異能等級", A.powers, A.powers_total);
     if (!rows.length) return `<div class="ov-empty">還沒開始玩遊戲。</div>`;
     const ta = rows.reduce((s, r) => s + Math.min(r.a, r.b), 0), tb = rows.reduce((s, r) => s + r.b, 0);
     const p = pct(ta, tb);
@@ -174,9 +215,9 @@
     if (OV.err === "setup") body = `<p class="ov-note">⚠️ 回顧的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-10-30_通知與回顧.sql</b>。</p>`;
     else if (OV.err) body = `<p class="ov-note">載入失敗：${esc(OV.err)}</p>`;
     else if (OV.err === "setup2") body = `<p class="ov-note">⚠️ 年度熱力圖的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-10-30_目標與作息.sql</b>。</p>`;
-    else body = OV.tab === "week" ? weekHtml() : OV.tab === "year" ? yearHtml() : collHtml();
+    else body = OV.tab === "week" ? weekHtml() : OV.tab === "game" ? gameHtml() : OV.tab === "year" ? yearHtml() : collHtml();
     ov.querySelector(".ov-panel").innerHTML = `<div class="ov-head"><h2>📊 回顧</h2><button type="button" class="ov-x" data-ov="close" aria-label="關閉">✕</button></div>
-      <div class="ov-tabs"><button type="button" class="${OV.tab === "week" ? "on" : ""}" data-ov="tab" data-v="week">📅 週回顧</button><button type="button" class="${OV.tab === "year" ? "on" : ""}" data-ov="tab" data-v="year">🗓️ 年度</button><button type="button" class="${OV.tab === "coll" ? "on" : ""}" data-ov="tab" data-v="coll">🏆 收藏</button></div>${body}`;
+      <div class="ov-tabs"><button type="button" class="${OV.tab === "week" ? "on" : ""}" data-ov="tab" data-v="week">📅 週回顧</button><button type="button" class="${OV.tab === "game" ? "on" : ""}" data-ov="tab" data-v="game">📰 戰報</button><button type="button" class="${OV.tab === "year" ? "on" : ""}" data-ov="tab" data-v="year">🗓️ 年度</button><button type="button" class="${OV.tab === "coll" ? "on" : ""}" data-ov="tab" data-v="coll">🏆 收藏與成就</button></div>${body}`;
   }
 
   function openPanel() {
@@ -193,6 +234,8 @@
     const a = el.dataset.ov;
     if (a === "close") { OV.open = false; document.getElementById("ov-overlay").hidden = true; return; }
     if (a === "tab") { OV.tab = el.dataset.v; render(); load(); return; }
+    if (a === "gprev") { OV.goffset = (OV.goffset || 0) - 1; OV.game = null; render(); load(); return; }
+    if (a === "gnext") { OV.goffset = Math.min(0, (OV.goffset || 0) + 1); OV.game = null; render(); load(); return; }
     if (a === "yprev" || a === "ynext") { OV.year = (OV.yr ? OV.yr.year : new Date().getFullYear()) + (a === "yprev" ? -1 : 1); OV.yr = null; render(); load(); return; }
     if (a === "prev") { OV.offset--; OV.week = null; render(); load(); return; }
     if (a === "next" && OV.offset < 0) { OV.offset++; OV.week = null; render(); load(); }
@@ -212,6 +255,7 @@
         .ov-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 14px; }
         .ov-btn { background: #ff9f43; color: #1b1f2e; border: 0; border-radius: 10px; padding: 6px 12px; font-weight: 700; cursor: pointer; } .ov-btn.ghost { background: #2c3350; color: #e8ebf5; } .ov-btn:disabled { opacity: .4; }
         .ov-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 10px; }
+        .ov-hl { margin: 4px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.6; }
         .ov-cards div { background: #151927; border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 2px; }
         .ov-cards b { font-size: 20px; } .ov-cards span { font-size: 12px; color: #8f98b6; }
         .ov-up { color: #42d392; } .ov-down { color: #ff7b7b; } .ov-eq { color: #8f98b6; }
