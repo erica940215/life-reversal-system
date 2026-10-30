@@ -1,5 +1,6 @@
 // 序光計畫：🔔 推播提醒
 //   排程（pg_cron 每 10 分鐘）呼叫：送出 push_due() 算好的提醒
+//   每 30 秒（body {"timers":true}）：送出懸浮倒數到時間的通知
 //   網站「送測試通知」呼叫（帶登入 token、body {"test":true}）：送一則測試通知到自己的所有裝置
 // 私鑰從資料庫的 Vault 拿（push_vapid()），這裡只有公鑰
 import webpush from "npm:web-push@3.6.7";
@@ -44,7 +45,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   try {
     await init();
-    let body: { test?: boolean } = {};
+    let body: { test?: boolean; timers?: boolean } = {};
     try { body = await req.json(); } catch { /* 排程送的是空的 */ }
 
     if (body.test) {
@@ -57,6 +58,15 @@ Deno.serve(async (req) => {
         if (await send(s, { title: "🔔 通知設定成功", body: "之後會在你設定的時間提醒你還有哪些任務沒完成。", url: "./#today" })) sent++;
       }
       return json({ sent, devices: (subs || []).length });
+    }
+
+    // ⏱️ 懸浮倒數到時間（每 30 秒的排程）
+    if (body.timers) {
+      const { data: due, error: e2 } = await sb.rpc("push_timers_due");
+      if (e2) throw e2;
+      let n = 0;
+      for (const it of (due || []) as { msg: unknown; subs: Sub[] }[]) for (const s of it.subs || []) if (await send(s, it.msg)) n++;
+      return json({ timers: (due || []).length, sent: n });
     }
 
     const { data: items, error } = await sb.rpc("push_due");

@@ -10,7 +10,13 @@
   const load = () => { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { return {}; } };
   const W = Object.assign({ x: null, y: null, mini: false, hidden: false, end: null, left: null, total: 25 * 60 }, load());
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(W)); } catch (e) {} };
-  let pip = null, rang = false;
+  let pip = null, rang = false, vid = null, cvs = null;
+  const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const canVideoPip = () => { const v = document.createElement("video"); return !!(document.pictureInPictureEnabled || v.webkitSupportsPresentationMode); };
+  const signed = () => typeof db !== "undefined" && db && typeof currentUser !== "undefined" && currentUser;
+  /* ⏱️ 時間到推播：網站關掉也收得到 */
+  function pushSet(sec) { if (signed()) db.rpc("push_timer_set", { p_seconds: Math.round(sec) }).then(() => {}, () => {}); }
+  function pushCancel() { if (signed()) db.rpc("push_timer_cancel").then(() => {}, () => {}); }
 
   const pad = n => String(n).padStart(2, "0");
   const fmt = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return h ? `${h}:${pad(m)}:${pad(x)}` : `${pad(m)}:${pad(x)}`; };
@@ -45,12 +51,12 @@
       : W.end ? `<button data-ft="pause">⏸️ 暫停</button><button data-ft="reset">↺</button>`
       : W.left != null ? `<button data-ft="resume">▶️ 繼續</button><button data-ft="reset">↺</button>`
       : presets.map(m => `<button data-ft="set" data-v="${m}" class="${W.total === m * 60 ? "on" : ""}">${m}</button>`).join("") + `<button data-ft="custom">…</button><button data-ft="start" class="go">▶️</button>`;
-    return `<div class="ft-top"><span>${s.label}</span>${inPip ? "" : `<span class="ft-btns">${"documentPictureInPicture" in window ? `<button data-ft="pip" title="釘在所有視窗最上層">📌</button>` : ""}<button data-ft="mini" title="縮小">–</button><button data-ft="hide" title="收起來（右上角 ⏱️ 再打開）">✕</button></span>`}</div>
+    return `<div class="ft-top"><span>${s.label}</span>${inPip ? "" : `<span class="ft-btns">${"documentPictureInPicture" in window ? `<button data-ft="pip" title="釘在所有視窗最上層">📌</button>` : canVideoPip() ? `<button data-ft="vpip" title="浮動小視窗（切到別的 App 也看得到）">📺</button>` : ""}${IOS ? `<button data-ft="ios" title="用 iPhone 計時器倒數（鎖定畫面看得到）">📱</button>` : ""}<button data-ft="mini" title="縮小">–</button><button data-ft="hide" title="收起來（右上角 ⏱️ 再打開）">✕</button></span>`}</div>
       <div class="ft-time ${s.sec <= 60 && s.kind === "own" && W.end ? "warn" : ""}">${fmt(s.sec)}</div><div class="ft-ctrl">${ctrl}</div>`;
   }
 
   const CSS = `
-    .ft { position: fixed; z-index: 99990; width: 210px; padding: 10px 12px; border-radius: 18px; background: rgba(22,26,40,.92); color: #fff;
+    .ft { position: fixed; z-index: 99990; width: 230px; padding: 10px 12px; border-radius: 18px; background: rgba(22,26,40,.92); color: #fff;
       box-shadow: 0 10px 30px rgba(0,0,0,.35); backdrop-filter: blur(8px); font-family: inherit; user-select: none; touch-action: none; }
     .ft-top { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #c9cfe3; cursor: grab; gap: 6px; }
     .ft-top span:first-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -88,7 +94,7 @@
   }
 
   function place() {
-    const w = W.mini ? 64 : 210, h = W.mini ? 64 : 120;
+    const w = W.mini ? 64 : 230, h = W.mini ? 64 : 120;
     const x = W.x == null ? innerWidth - w - 14 : Math.min(Math.max(4, W.x), innerWidth - w - 4);
     const y = W.y == null ? innerHeight - h - 90 : Math.min(Math.max(4, W.y), innerHeight - h - 4);
     box.style.left = x + "px"; box.style.top = y + "px";
@@ -107,6 +113,7 @@
     }
     place();
     if (pip) pip.document.getElementById("ftp").innerHTML = bodyHtml(true);
+    drawCanvas();
   }
 
   function tick() {
@@ -133,16 +140,51 @@
     const a = el.dataset.ft;
     if (a === "set") { W.total = Number(el.dataset.v) * 60; W.left = null; }
     else if (a === "custom") { const m = Number(prompt("倒數幾分鐘？", Math.round(W.total / 60))); if (m > 0) { W.total = Math.round(m * 60); W.left = null; } }
-    else if (a === "start") { W.end = Date.now() + W.total * 1000; W.left = null; rang = false; try { if (window.Notification && Notification.permission === "default") Notification.requestPermission(); } catch (_) {} }
-    else if (a === "pause") { W.left = (W.end - Date.now()) / 1000; W.end = null; }
-    else if (a === "resume") { W.end = Date.now() + W.left * 1000; W.left = null; rang = false; }
-    else if (a === "reset") { W.end = null; W.left = null; }
+    else if (a === "start") { W.end = Date.now() + W.total * 1000; W.left = null; rang = false; pushSet(W.total); try { if (window.Notification && Notification.permission === "default") Notification.requestPermission(); } catch (_) {} }
+    else if (a === "pause") { W.left = (W.end - Date.now()) / 1000; W.end = null; pushCancel(); }
+    else if (a === "resume") { W.end = Date.now() + W.left * 1000; pushSet(W.left); W.left = null; rang = false; }
+    else if (a === "reset") { W.end = null; W.left = null; pushCancel(); }
+    else if (a === "vpip") return videoPip();
+    else if (a === "ios") return iosTimer();
     else if (a === "mini") W.mini = true;
     else if (a === "hide") W.hidden = true;
     else if (a === "open") W.mini = false;
     else if (a === "gofocus") { if (typeof showPage === "function") showPage("focus"); }
     else if (a === "pip") return openPip();
     save(); render();
+  }
+
+  /* 📺 iPhone：把倒數畫成影片，用影片的子母畫面浮在其他 App 上 */
+  function drawCanvas() {
+    if (!cvs) return;
+    const g = cvs.getContext("2d"), s = state();
+    g.fillStyle = "#161a28"; g.fillRect(0, 0, cvs.width, cvs.height);
+    if (s.pct != null) { g.fillStyle = "#2c3350"; g.fillRect(0, cvs.height - 14, cvs.width, 14); g.fillStyle = "#ff9f43"; g.fillRect(0, cvs.height - 14, cvs.width * Math.max(0, Math.min(1, s.pct)), 14); }
+    g.fillStyle = "#c9cfe3"; g.font = "28px system-ui, sans-serif"; g.textAlign = "center"; g.fillText(s.label, cvs.width / 2, 52);
+    g.fillStyle = s.kind === "own" && W.end && s.sec <= 60 ? "#ff7b7b" : "#ffffff"; g.font = "bold 110px system-ui, sans-serif"; g.fillText(fmt(s.sec), cvs.width / 2, 175);
+  }
+  async function videoPip() {
+    try {
+      if (!vid) {
+        cvs = document.createElement("canvas"); cvs.width = 480; cvs.height = 220; drawCanvas();
+        vid = document.createElement("video"); vid.muted = true; vid.playsInline = true; vid.setAttribute("playsinline", ""); vid.autoplay = true;
+        vid.style.cssText = "position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:.01;pointer-events:none";
+        vid.srcObject = cvs.captureStream(2);
+        document.body.appendChild(vid);
+      }
+      drawCanvas();
+      await vid.play();
+      if (vid.webkitSupportsPresentationMode && vid.webkitSupportsPresentationMode("picture-in-picture")) vid.webkitSetPresentationMode("picture-in-picture");
+      else await vid.requestPictureInPicture();
+    } catch (e) { alert("這支手機的瀏覽器開不了浮動小視窗：" + (e.message || e) + "\n可以改用 📱 iPhone 計時器"); }
+  }
+
+  /* 📱 iPhone：用「捷徑」開始內建計時器（鎖定畫面看得到） */
+  function iosTimer() {
+    const s = state();
+    const min = Math.max(1, Math.round((s.kind === "own" && !W.end && W.left == null ? W.total : s.sec) / 60));
+    if (s.kind === "own" && !W.end && W.left == null) { W.end = Date.now() + W.total * 1000; rang = false; pushSet(W.total); save(); render(); }
+    location.href = "shortcuts://run-shortcut?name=" + encodeURIComponent("序光倒數") + "&input=text&text=" + min;
   }
 
   /* 📌 子母畫面：一個永遠在最上層的小視窗 */
