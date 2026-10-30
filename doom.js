@@ -443,6 +443,8 @@
     if (act === "pwup") { call("doom_power_up", { p_id: el.dataset.v }, async d => { sfx("level"); toast(`⚡ ${d.lv === 1 ? "覺醒" : "升級"}成功！Lv${d.lv}`); await loadPower(); }); return; }
     if (act === "req") { const ok = el.dataset.ok === "1"; call("doom_req_answer", { p_i: Number(el.dataset.i), p_accept: ok }, async d => { if (ok) { sfx("coin"); toast(`💠 收到 ${d.cores} 顆精核，對方很開心！`); } else toast("婉拒了"); await loadPower(); await loadPantry(); }); return; }
     if (act === "ftab") { DM.ftab = el.dataset.v; if (el.dataset.v !== "pantry") loadFarm().then(render); render(); return; }
+    if (act === "kf") { DM.kf = el.dataset.v; render(); return; }
+    if (act === "fmlocked") { DM.fmShowLocked = !DM.fmShowLocked; render(); return; }
     if (act === "plant") { call("doom_farm_plant", { p_crop: el.dataset.v, p_n: Number(el.dataset.n) }, async d => { sfx("click"); toast(`🌱 種了 ${d.n} 塊（用了 💧${d.water}）`); await loadFarm(); }); return; }
     if (act === "harvest") { call("doom_farm_harvest", {}, async d => { sfx("coin"); toast(`🧺 收成：${Object.entries(d.got).map(([k, n]) => { const c = cropInfo(k); return (c ? c.emoji : "") + ((foodInfo(k) || c || {}).name || k) + " ×" + n; }).join("、")}${d.bonus ? "（專注加成 +1）" : ""}`); await loadFarm(); }); return; }
     if (act === "fmup") { call("doom_farm_upgrade", {}, async d => { sfx("level"); toast(`🌾 農場升到 Lv${d.lv}！`); await loadFarm(); }); return; }
@@ -1387,7 +1389,9 @@
       return `<div class="dm-plot ${done ? "ripe" : ""}">${ic("crop", c.id || p.crop, c.emoji, "sm")}<b>${esc(c.name)}</b><span>${done ? "✅ 可以收了" : `還要 <span data-fm-left="${p.t1}">${msLeft(p.t1)}</span>`}</span></div>`; }).join("") : `<p class="dm-note">田是空的，從下面挑作物種吧。</p>`;
     const usedIn = id => cat.recipes.filter(r => r.need[id]).map(r => { const x = foodInfo(r.out); return x ? x.emoji + x.name : r.out; });
     const free = row.plots - plots.length;
-    const cropRows = cat.crops.map(c => {
+    const showLocked = !!DM.fmShowLocked;
+    const lockedN = cat.crops.filter(c => lv < c.lv).length;
+    const cropRows = cat.crops.filter(c => showLocked || lv >= c.lv).map(c => {
       const locked = lv < c.lv, uses = usedIn(c.id);
       const maxn = Math.min(free, Math.floor(f.res.water / c.water));
       const yieldTxt = c.fruit ? `收 ${c.yield} 份${(foodInfo(c.fruit) || {}).name || ""}（直接進食物櫃）` : `收 ${c.yield} 個`;
@@ -1397,7 +1401,8 @@
     }).join("");
     return head + `<div class="card"><h3>🌱 田（${plots.length}/${row.plots}）</h3>${plotRows}
         ${ripe ? `<button type="button" class="btn dm-btn dm-wide" data-dm="harvest" ${DM.busy ? "disabled" : ""}>🧺 全部收成（${ripe} 塊）</button>` : ""}</div>
-      <div class="card"><h3>🌾 可以種什麼</h3><p class="dm-note">種作物要用水。蔬菜穀物收進作物倉庫，拿去廚房做菜；水果直接進食物櫃。</p>${cropRows}</div>`;
+      <div class="card"><h3>🌾 可以種什麼</h3><p class="dm-note">種作物要用水。蔬菜穀物收進作物倉庫，拿去廚房做菜；水果直接進食物櫃。</p>${cropRows}
+        ${lockedN ? `<button type="button" class="btn dm-btn ghost dm-wide" data-dm="fmlocked">${showLocked ? "收起還沒解鎖的" : `看還沒解鎖的 ${lockedN} 種作物`}</button>` : ""}</div>`;
   }
 
   function kitchenHtml() {
@@ -1413,7 +1418,14 @@
       return `<div class="dm-plot ${s.t1 <= now ? "ripe" : ""}">${ic("pantry", s.out, x.emoji, "sm")}<b>${esc(x.name)} ×${s.n}</b><span>${s.t1 <= now ? "✅ 好了（重新整理就會放進食物櫃）" : `還要 <span data-fm-left="${s.t1}">${msLeft(s.t1)}</span>`}</span></div>`;
     }).join("");
     const freeStove = stoves.length < row.stoves;
-    const rows = cat.recipes.map(r => {
+    const kf = DM.kf || "can";
+    const canMake = r => { if (lv < r.lv) return false; let m = 99; Object.entries(r.need).forEach(([k, n]) => { m = Math.min(m, Math.floor(haveIng(k) / n)); }); Object.entries(r.res || {}).forEach(([k, n]) => { m = Math.min(m, Math.floor((f.res[k] || 0) / n)); }); return m >= 1; };
+    const catOf = r => (foodInfo(r.out) || {}).c;
+    const list = cat.recipes.filter(r => kf === "can" ? canMake(r) : kf === "open" ? lv >= r.lv : kf === "all" ? true : catOf(r) === kf);
+    const usedCats = DM.fcat.cats.filter(c => cat.recipes.some(r => catOf(r) === c.id));
+    const filt = `<div class="dm-fchips">${[["can", `✅ 現在能做 ${cat.recipes.filter(canMake).length}`], ["open", "已解鎖"], ["all", "全部"]].concat(usedCats.map(c => [c.id, `${c.emoji} ${c.name}`]))
+      .map(([k, n]) => `<button type="button" class="${kf === k ? "on" : ""}" data-dm="kf" data-v="${k}">${esc(n)}</button>`).join("")}</div>`;
+    const rows = list.map(r => {
       const x = foodInfo(r.out) || { name: r.out, emoji: "🍲", t: "c" };
       const locked = lv < r.lv;
       let maxn = 20;
@@ -1428,7 +1440,7 @@
     const crops = Object.entries(f.crops || {}).filter(([, n]) => n > 0).map(([k, n]) => `<span class="dm-chip">${ingIcon(k)} ${esc((cropInfo(k) || {}).name || k)} ${n}</span>`).join("") || `<span class="dm-note">倉庫是空的，去農場種一些吧。</span>`;
     return `<div class="card"><h3>🔥 爐子（${stoves.length}/${row.stoves}）</h3>${stoveRows}</div>
       <div class="card"><h3>🧺 作物倉庫</h3><div class="dm-chips">${crops}</div></div>
-      <div class="card"><h3>📖 食譜（${cat.recipes.filter(r => r.lv <= lv).length}/${cat.recipes.length}）</h3><p class="dm-note">做好的菜會自動放進食物櫃。稀有度越高，吃了效果越好。一個爐子一次可以做好幾份。</p>${rows}</div>`;
+      <div class="card"><h3>📖 食譜（${cat.recipes.filter(r => r.lv <= lv).length}/${cat.recipes.length}）</h3><p class="dm-note">做好的菜會自動放進食物櫃。稀有度越高，吃了效果越好。一個爐子一次可以做好幾份。星露島的料理也都能在這裡做（家常菜、拿手菜、招牌菜、傳說料理）。</p>${filt}${rows || `<p class="dm-note">${kf === "can" ? "現在材料都不夠，去農場種一些吧，或切到「已解鎖」看看要種什麼。" : "這一類還沒有食譜。"}</p>`}</div>`;
   }
   setInterval(() => { document.querySelectorAll("[data-fm-left]").forEach(el => { el.textContent = msLeft(Number(el.dataset.fmLeft)); }); }, 30000);
 
