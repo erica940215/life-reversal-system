@@ -812,3 +812,11 @@ body.fm-page #idea-fab { display: none !important; }
 .fm-castbtn { width: 100%; padding: 12px; font-size: 17px; }
 .fm-quick { margin: 10px 0 4px; font-size: 13px; }
 .fm-quick summary { cursor: pointer; opacity: .8; }
+
+/* 🌙 晚上：燈會呼吸、星星會閃 */
+.fm-lamp { animation: fmLampPulse 3.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes fmLampPulse { 50% { opacity: .78; transform: scale(.94); } }
+.fm-twinkle { animation: fmTwinkle 2.6s ease-in-out infinite; }
+.fm-twinkle:nth-child(3n) { animation-delay: .9s; }
+.fm-twinkle:nth-child(3n+1) { animation-delay: 1.7s; }
+@keyframes fmTwinkle { 50% { opacity: .25; } }

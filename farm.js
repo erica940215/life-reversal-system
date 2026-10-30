@@ -4399,10 +4399,53 @@ const FARM_JS_VERSION = "2026-10-28 v2";
   let HITS = [];
   let STARFIELD_ON = false;
 
+  /* =========================================================
+     🌙 白天／黃昏／晚上：照現實時間，18:30～5:30 是晚上，前後一小時是黃昏和清晨
+     晚上整座島變暗，燈類家具、建築窗戶會亮
+  ========================================================= */
+  const GLOW_DECO = { stonelamp: 0.55, streetlamp: 0.92, wishlantern: 0.7, startree: 0.6, pumpkinlamp: 0.5, fairylights: 0.6,
+    redlanterns: 0.85, starfountain: 0.6, tangyuanstall: 0.6, sakuralantern: 0.7, mushroomlamp: 0.6, lovemailbox: 0.6, snowman: 0, cocoastall: 0.6 };
+  function dayPhase() {
+    if (skinOn("nightmode")) return { k: "night", a: 0 };            // 星夜模式已經有自己的夜空
+    const d = new Date(now()), m = d.getHours() * 60 + d.getMinutes();
+    if (m >= 18 * 60 + 30 || m < 5 * 60 + 30) return { k: "night", a: 0.46 };
+    if (m >= 17 * 60 + 30) return { k: "dusk", a: 0.46 * (m - (17 * 60 + 30)) / 60 };
+    if (m < 6 * 60 + 30) return { k: "dawn", a: 0.46 * ((6 * 60 + 30) - m) / 60 };
+    return { k: "day", a: 0 };
+  }
+  function nightLayer() {
+    const ph = dayPhase();
+    const lit = ph.k === "night" || ph.a > 0.15 || skinOn("nightmode");
+    if (!ph.a && !lit) return "";
+    let s = `<defs><radialGradient id="fmLampGlow"><stop offset="0" stop-color="#fff3b0" stop-opacity=".95"/><stop offset=".35" stop-color="#ffd36b" stop-opacity=".55"/><stop offset="1" stop-color="#ffb23e" stop-opacity="0"/></radialGradient>
+      <radialGradient id="fmWinGlow"><stop offset="0" stop-color="#ffe7a0" stop-opacity=".8"/><stop offset="1" stop-color="#ffb23e" stop-opacity="0"/></radialGradient></defs>`;
+    if (ph.a) s += `<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#141d52" opacity="${ph.a.toFixed(3)}" pointer-events="none"/>`;
+    if (!lit) return `<g pointer-events="none">${s}</g>`;
+    /* 星星 */
+    if (ph.a) for (let i = 0; i < 40; i++) s += `<circle class="fm-twinkle" cx="${hash("st" + i) % MAP_W}" cy="${hash("sy" + i) % 260}" r="${1 + (i % 3) * 0.6}" fill="#fff" opacity=".85"/>`;
+    /* 建築窗戶的光 */
+    for (const k of ["barn", "kitchen", "workshop", "market", "green"]) {
+      const p = POS[k]; if (!p) continue;
+      const w = p[2] || 180;
+      s += `<ellipse cx="${p[0]}" cy="${f1(p[1] - w * 0.32)}" rx="${f1(w * 0.42)}" ry="${f1(w * 0.3)}" fill="url(#fmWinGlow)" opacity=".75"/>`;
+    }
+    /* 燈類家具：光暈＋再畫一次本體（亮起來） */
+    S.deco.slots.forEach((k, i) => {
+      if (!k || !D.deco[k] || i >= DECO_SLOTS.length || !GLOW_DECO[k]) return;
+      const [x, y] = DECO_SLOTS[i];
+      const art = decoArt(k, x, y, i);
+      const gy = y - art.h * GLOW_DECO[k];
+      const r = Math.max(46, D.deco[k].w * 0.9);
+      s += `<circle class="fm-lamp" cx="${x}" cy="${f1(gy)}" r="${f1(r)}" fill="url(#fmLampGlow)"/>${art.svg}<circle cx="${x}" cy="${f1(gy)}" r="${f1(r * 0.22)}" fill="#fff8d0" opacity=".55"/>`;
+    });
+    return `<g pointer-events="none">${s}</g>`;
+  }
+
   function renderScene() {
 
     const dyn = UI.root && UI.root.querySelector("#fm-dyn");
     if (!dyn) return;
+    UI.phase = dayPhase().k;
 
     STARFIELD_ON = skinOn("starfield");
 
@@ -4413,7 +4456,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     items.sort((a, b) => a.y - b.y);
     HITS.sort((a, b) => a.y - b.y);
 
-    dyn.innerHTML = items.map(it => it.svg).join("") + `<g class="fm-hits">${HITS.map(it => it.svg).join("")}</g>`;
+    dyn.innerHTML = items.map(it => it.svg).join("") + nightLayer() + `<g class="fm-hits">${HITS.map(it => it.svg).join("")}</g>`;
     UI.nextEventAt = nextEvent();
 
     if (!UI.centered) layoutMap(true);
@@ -6580,6 +6623,14 @@ const FARM_JS_VERSION = "2026-10-28 v2";
 
     if (now() >= UI.nextEventAt) {
       renderAll();
+      return;
+    }
+
+    /* 天色換了（白天→黃昏→晚上）就重畫；黃昏、清晨每分鐘慢慢變暗變亮 */
+    const ph = dayPhase();
+    if (ph.k !== UI.phase || ((ph.k === "dusk" || ph.k === "dawn") && Date.now() - (UI.phaseAt || 0) > 60000)) {
+      UI.phaseAt = Date.now();
+      renderScene();
       return;
     }
 
