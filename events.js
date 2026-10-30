@@ -13,9 +13,7 @@
   const IMG = "img/event/";
 
   /* 有圖的就加進來（放在 img/event/），沒加的先用 emoji */
-  const EV_IMG = new Set(["place_forest", "place_swamp", "place_ruins", "place_peak", "place_sky",
-    "ghost_pumpkin", "ghost_bat", "ghost_witch_cat", "ghost_king", "hw_banner",
-    "shop_frame_pumpkin", "shop_jack_staff", "shop_witch_hat", "candy"]);
+  const EV_IMG = new Set(["candy", "cur_leaf", "cur_red_envelope", "cur_stocking", "cur_thanks_card", "ev_harvest_banner", "ev_harvest_king", "ev_harvest_leaf_sprite", "ev_harvest_squirrel", "ev_harvest_straw_imp", "ev_sale11_banner", "ev_spring_banner", "ev_spring_caishen", "ev_spring_king", "ev_spring_lion", "ev_spring_nian_kid", "ev_thanks_banner", "ev_thanks_dove", "ev_thanks_king", "ev_thanks_tree", "ev_thanks_turkey", "ev_xmas_banner", "ev_xmas_ginger_soldier", "ev_xmas_king", "ev_xmas_reindeer", "ev_xmas_snow_sprite", "ghost_bat", "ghost_king", "ghost_pumpkin", "ghost_witch_cat", "hw_banner", "place_forest", "place_peak", "place_ruins", "place_sky", "place_swamp", "shop_dragon_spear", "shop_fortune_robe", "shop_frame_couplet", "shop_frame_firework", "shop_frame_friends", "shop_frame_maple", "shop_frame_pumpkin", "shop_frame_snowflake", "shop_jack_staff", "shop_maple_bow", "shop_reindeer_cloak", "shop_santa_hat", "shop_scarecrow_hat", "shop_turkey_feather", "shop_witch_hat"]);
 
   const PLACES = [
     { key: "place_forest", name: "晨光森林", emoji: "🌲", min: 10 },
@@ -288,6 +286,8 @@
   }
   const md = d => `${Number(d.slice(5, 7))}/${Number(d.slice(8))}`;
 
+  const banner = e => EV_IMG.has("ev_" + e.id + "_banner") ? `<img src="${IMG}ev_${e.id}_banner.webp" alt="" style="display:block;width:100%;aspect-ratio:2.1;object-fit:cover;border-radius:12px;margin-bottom:10px">` : "";
+
   function saleHtml(sl) {
     if (!sl || !sl.event) return "";
     const e = sl.event, bought = sl.bought || {};
@@ -297,7 +297,7 @@
         <b>${esc(o.name)}</b><span class="ev-sub">🪙 ${o.price}・${n} / ${o.limit}</span>
         <button type="button" class="btn btn-small ${full ? "" : "btn-primary"}" data-ev="sebuy" data-v="${o.item}" data-e="${e.id}" ${full || sl.cur < o.price || EV.busy ? "disabled" : ""}>${full ? "賣完" : "買"}</button></div>`;
     }).join("");
-    return `<div class="card rp-card ev-hw"><div class="ev-hw-top">${art("ev_" + e.id + "_banner", e.emoji, "ev-hw-ic")}<div class="ev-grow"><h3>${esc(e.name)}</h3>
+    return `<div class="card rp-card ev-hw">${banner(e)}<div class="ev-hw-top"><span class="ev-emo ev-hw-ic">${e.emoji}</span><div class="ev-grow"><h3>${esc(e.name)}</h3>
         <span class="ev-sub">今天限定！${esc(e.desc)}</span></div>
         <div class="rp-power"><span class="rp-sub">金幣</span><b class="ev-candy">🪙 ${(sl.cur || 0).toLocaleString()}</b></div></div>
       <div class="ev-shop">${shop}</div></div>`;
@@ -314,7 +314,7 @@
     const e = h.event;
     if (!e) {
       const n = h.next;
-      return n ? `<div class="card rp-card ev-hw"><div class="ev-hw-top">${art("ev_" + n.id + "_banner", n.emoji, "ev-hw-ic")}<div class="ev-grow"><h3>下一個活動：${esc(n.name)}</h3>
+      return n ? `<div class="card rp-card ev-hw">${banner(n)}<div class="ev-hw-top"><span class="ev-emo ev-hw-ic">${n.emoji}</span><div class="ev-grow"><h3>下一個活動：${esc(n.name)}</h3>
         <span class="ev-sub">${md(n.start)}${n.end !== n.start ? `～${md(n.end)}` : " 當天"}・${esc(n.desc)}</span></div></div></div>` : "";
     }
     const end = new Date(e.end + "T23:59:00+08:00");
@@ -333,8 +333,8 @@
     const caught = h.caught || {};
     const dex = Object.entries(e.mobs || {}).map(([k, g]) => `<span class="ev-chip">${g.emoji} ${esc(g.name)} ×${caught[k] || 0}</span>`).join("");
     const how = e.sale ? "" : `<p class="rp-note">完成任務 40%、專注 25 分鐘以上一定、每週王每次出擊 30% 會遇到${e.cheer ? "；幫好友加油每次一定遇到" : ""}${e.king_day ? `；${esc(e.king_note)}會出現${esc(mob("king").name)}` : ""}。商店關了之後，剩下的${esc(e.cur_name)}會自動換成星屑。</p>`;
-    return `<div class="card rp-card ev-hw">
-      <div class="ev-hw-top">${art("ev_" + e.id + "_banner", e.emoji, "ev-hw-ic")}<div class="ev-grow"><h3>${esc(e.name)}</h3>
+    return `<div class="card rp-card ev-hw">${banner(e)}
+      <div class="ev-hw-top"><span class="ev-emo ev-hw-ic">${e.emoji}</span><div class="ev-grow"><h3>${esc(e.name)}</h3>
         <span class="ev-sub">${h.active ? (e.sale ? "今天限定！" : `還剩 ${days} 天（${md(e.end)} 結束，商店開到 ${md(e.shop_end)}）`) : `活動結束了，商店開到 ${md(e.shop_end)}`}</span></div>
         <div class="rp-power"><span class="rp-sub">${esc(e.cur_name)}</span><b class="ev-candy">${art("cur_" + e.currency, e.cur_emoji, "ev-candy-ic")}${(h.cur || 0).toLocaleString()}</b></div></div>
       <p class="rp-note">${esc(e.desc)}</p>${how}

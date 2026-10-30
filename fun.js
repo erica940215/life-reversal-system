@@ -85,7 +85,7 @@
   ];
 
   /* 還沒給圖的頭像框 */
-  const FRAME_NOIMG = new Set(["frame_maple", "frame_friends", "frame_snowflake", "frame_firework", "frame_couplet"]);
+  const FRAME_NOIMG = new Set([]);
   const FRAME_EMO = { frame_pumpkin: "🎃", frame_maple: "🍁", frame_friends: "📸", frame_snowflake: "❄️", frame_firework: "🎆", frame_couplet: "🧧" };
   const frameImg = (k, cls) => FRAME_NOIMG.has(k) ? `<span class="fn-frame-emo ${cls}">${FRAME_EMO[k] || "🌌"}</span>` : img(k, cls);
 

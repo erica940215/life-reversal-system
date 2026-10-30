@@ -23,7 +23,7 @@
     "gear:order_sword", "gear:eternal_book", "gear:order_crown",
     "gear:harvest_scythe", "gear:maple_cape", "gear:harvest_crown",
     "gear:lantern_blade", "gear:letter_cape", "gear:red_thread", "gear:hanami_katana", "gear:hanami_haori", "gear:sakura_hairpin",
-    "gear:umbrella_staff", "gear:moss_cloak", "gear:rain_pendant",
+    "gear:umbrella_staff", "gear:moss_cloak", "gear:rain_pendant", "gear:scarecrow_hat", "gear:maple_bow", "gear:turkey_feather", "gear:santa_hat", "gear:reindeer_cloak", "gear:dragon_spear", "gear:fortune_robe",
     "gear:iron_sword", "gear:quill_pen", "gear:hunter_bow", "gear:leather_armor", "gear:apprentice_robe",
     "gear:night_cloak", "gear:focus_earring", "gear:runner_shoes", "gear:oath_ring",
     "gear:dew_rapier", "gear:dew_mail", "gear:dew_wreath", "gear:bulwark_hammer", "gear:bulwark_plate", "gear:bulwark_badge",
