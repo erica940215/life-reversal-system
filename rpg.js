@@ -116,7 +116,8 @@
     const g = gearInfo(key);
     const out = { str: 0, int: 0, vit: 0, wil: 0 };
     if (!g || !level) return out;
-    for (const [k, v] of Object.entries(g.stat || {})) out[k] = Math.round(v * (1 + 0.2 * (level - 1)));
+    const star = (RP.status && RP.status.stars && RP.status.stars[key]) || 0;
+    for (const [k, v] of Object.entries(g.stat || {})) out[k] = Math.round(v * (1 + 0.2 * (level - 1)) * (1 + 0.2 * star));
     return out;
   }
 
@@ -167,7 +168,14 @@
     return SLOTS.some(([slot]) => { const g = eq[slot] ? gearInfo(eq[slot]) : null; return g && g.class && g.class === RP.status.class; });
   }
 
+  /* 三件同一個限定系列：全部屬性 +15% */
+  function seriesFull() {
+    const eq = (RP.status && RP.status.equip) || {};
+    const ser = SLOTS.map(([slot]) => { const g = eq[slot] ? gearInfo(eq[slot]) : null; return g && g.pool === "limited" ? g.series : null; });
+    return ser[0] && ser.every(x => x === ser[0]) ? ser[0] : null;
+  }
   function applySet(st) {
+    if (seriesFull()) { const o = {}; for (const k of Object.keys(st)) o[k] = Math.round(st[k] * 1.15); st = o; }
     const { full } = setInfo();
     const sets = (RP.status.catalog && RP.status.catalog.sets) || {};
     if (!full || !sets[full]) return st;
@@ -267,7 +275,8 @@
     const si = setInfo();
     const setLine = Object.entries(si.count).map(([k, n]) => sets[k]
       ? `<div class="rp-setline ${n >= 3 ? "on" : ""}">🧩 ${esc(sets[k].name)} ${n} / 3${n >= 3 ? `：${esc(sets[k].desc)} ✨` : `（湊滿 3 件：${esc(sets[k].desc)}）`}</div>` : "").join("")
-      + (classHit() ? `<div class="rp-setline on">👑 職業專屬傳說：戰力 +20% ✨</div>` : "");
+      + (classHit() ? `<div class="rp-setline on">👑 職業專屬傳說：戰力 +20% ✨</div>` : "")
+      + (seriesFull() ? `<div class="rp-setline on">🌟 限定系列「${esc(((st0.catalog || {}).series_name || {})[seriesFull()] || seriesFull())}」三件：全部屬性 +15% ✨</div>` : `<div class="rp-setline">🌟 武器、防具、飾品都穿同一個限定系列，全部屬性 +15%</div>`);
     const src = st0.src || {};
     const srcText = {
       str: `完成 ${src.tasks || 0} 個任務`,
@@ -435,6 +444,9 @@
       <div class="card rp-card"><h3>本週好友傷害排行</h3>${rank || `<p class="rp-note">加好友之後就能一起比。</p>`}</div>`;
   }
 
+  const starOf = k => (RP.status && RP.status.stars && RP.status.stars[k]) || 0;
+  const starCost = k => { const n = starOf(k) + 1, t = (gearInfo(k) || {}).tier; return { gold: n * ({ c: 100, r: 200, l: 400, x: 800 }[t] || 1500), dust: 10 * n }; };
+
   function bookHtml() {
     const gear = (RP.status.catalog && RP.status.catalog.gear) || {};
     const sets = (RP.status.catalog && RP.status.catalog.sets) || {};
@@ -447,11 +459,12 @@
         const lv = gearLevel(k);
         const g = gear[k];
         return `<div class="rp-gear t-${t} ${lv ? "" : "locked"}">${gearIcon(k, true)}<b>${lv ? esc(g.name) : "？？？"}</b>
-          <span class="rp-sub">${lv ? `Lv${lv}・${statLine(gearStats(k, lv))}` : (g.pool === "limited" ? "限定" : SLOTS.find(s => s[0] === g.slot)[1])}</span>
+          <span class="rp-sub">${lv ? `Lv${lv}${starOf(k) ? " " + "★".repeat(starOf(k)) : ""}・${statLine(gearStats(k, lv))}` : (g.pool === "limited" ? "限定" : SLOTS.find(s => s[0] === g.slot)[1])}</span>
+          ${lv >= 5 && starOf(k) < 3 ? `<button type="button" class="btn btn-small" data-rp="star" data-v="${k}">突破 ★${starOf(k) + 1}<br><small>🪙${starCost(k).gold} ✨${starCost(k).dust}</small></button>` : ""}
           ${g.set && sets[g.set] ? `<span class="rp-mini">${esc(sets[g.set].name)}</span>` : ""}${g.class && CLASSES[g.class] ? `<span class="rp-mini cls">${CLASSES[g.class].name}專屬</span>` : ""}</div>`;
       }).join("")}</div>`;
     }).join("");
-    return `<div class="card rp-card"><h3>裝備圖鑑 ${got} / ${keys.length}</h3>${groups}</div>`;
+    return `<div class="card rp-card"><h3>裝備圖鑑 ${got} / ${keys.length}</h3><p class="rp-note">Lv5 的裝備可以用金幣和星屑「突破」，最多 ★3，每顆星屬性 +20%（你有 ✨${RP.status.stardust ?? "?"} 星屑）。</p>${groups}</div>`;
   }
 
   function render() {
@@ -510,6 +523,11 @@
         if (window.TeamGame) window.TeamGame.reload();
         if (window.StudyGame) window.StudyGame.reloadWorld();
       });
+      return;
+    }
+    if (act === "star") {
+      const k = el.dataset.v;
+      call("rpg_gear_star", { p_key: k }, d => toast(`⭐ ${(gearInfo(k) || {}).name || k} 突破到 ★${d.star}！`));
       return;
     }
     if (act === "retro") {
