@@ -37,7 +37,7 @@ begin
   if pg_column_size(p_state) > 500000 then raise exception '存檔太大'; end if;
 
   v_lv := coalesce((p_state->>'lv')::integer, 1);
-  if v_lv < 1 or v_lv > 50 then raise exception '島嶼等級不正確'; end if;
+  if v_lv < 1 or v_lv > 70 then raise exception '島嶼等級不正確'; end if;
 
   select rev into v_rev from public.farm_saves where user_id = v_user for update;
 
