@@ -1493,6 +1493,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       const r = D.recipes[j.r];
       if (!NOT_STORED(r.out) && invSpace() < r.qty) { i++; continue; }
       addItem(r.out, r.qty);
+      if (r.out === "feed") dayLog().made += r.qty;
       addExp(3);
       goalAdd("process");
       out.push(r.out);
@@ -1882,6 +1883,21 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     return `<br>今天自動餵掉 <b>${today}</b> 個飼料。動物每小時大約吃 <b>${Math.round(eat)}</b> 個，飼料機三條線全開每小時最多做 <b>${Math.round(make)}</b> 個${eat > make ? "（動物太多，飼料一定不夠，會有動物餓著不產出）" : ""}。`;
   }
 
+  function dayLogHtml() {
+    const L = dayLog();
+    const nm = k => { const [sp, st] = k.split(":"), i = D.animals[sp]; return i ? `${i.emoji}${st === "adult" ? i.name : (i.baby || "小" + i.name)}` : k; };
+    const fed = Object.entries(L.fed).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${nm(k)} ${v} 次`).join("、") || "還沒有";
+    const got = Object.entries(L.got).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${D.items[k] ? D.items[k].name : k} ×${v}`).join("、") || "還沒有";
+    const hungry = {};
+    for (const a of S.ranch.animals) if (animalState(a) === "hungry" && D.animals[a.sp].feed > 0) hungry[feedKey(a)] = (hungry[feedKey(a)] || 0) + 1;
+    const hu = Object.entries(hungry).map(([k, v]) => `${nm(k)} ${v}`).join("、") || "沒有，全部吃飽了 🎉";
+    return `<div class="fm-panel" style="margin-top:8px"><div class="fm-sec ol">📋 今天的牧場紀錄</div>
+      <p class="fm-note" style="margin:2px 0">🥣 做出飼料：<b>${L.made}</b> 份</p>
+      <p class="fm-note" style="margin:2px 0">🐔 餵了：${fed}</p>
+      <p class="fm-note" style="margin:2px 0">🧺 收了：${got}</p>
+      <p class="fm-note" style="margin:2px 0">😢 現在餓著：${hu}</p></div>`;
+  }
+
   function animalsOf(sp) {
     return S.ranch.animals.filter(a => a.sp === sp);
   }
@@ -1901,11 +1917,19 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     return a.t1 && now() >= a.t1 ? "ready" : "working";
   }
 
+  /* 今天的牧場紀錄：餵了誰、收了什麼、做了多少飼料 */
+  function dayLog() {
+    const dk = todayKey();
+    if (!S.dayLog || S.dayLog.day !== dk) S.dayLog = { day: dk, fed: {}, got: {}, made: 0, hungry: 0 };
+    return S.dayLog;
+  }
+
   function feedAnimal(a) {
     const info = D.animals[a.sp];
     if (animalState(a) !== "hungry") return false;
     const n = info.feed;
     if (n > 0 && !takeItem("feed", n)) return false;
+    { const L = dayLog(); L.fed[feedKey(a)] = (L.fed[feedKey(a)] || 0) + 1; }
     a.fed = true;
     a.t1 = now() + (a.adult ? everyH(info) : info.grow) * HOUR;
     goalAdd("feed");
@@ -1923,6 +1947,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     addExp(info.exp * qty);
     S.known.crops[item] = (S.known.crops[item] || 0) + qty;
     goalAdd("animal");
+    { const L = dayLog(); L.got[item] = (L.got[item] || 0) + qty; }
     if (info.feed > 0) {
       a.fed = false;
       a.t1 = null;
@@ -6091,7 +6116,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       const feedRow = `<div class="fm-pen"><div class="fm-pen-head"><h3 class="ol" style="--olc:#4f8f35">${miniIcon("feed", "🌾")} 飼料 ${have("feed")}</h3>
         <button type="button" class="fm-btn small green" data-act="feedall">${uiIcon("feedbowl", "fm-btn-ic")}全部餵食</button>
         <button type="button" class="fm-btn small" data-act="collectall">${uiIcon("harvest", "fm-btn-ic")}全部收成</button></div>
-        <p class="fm-note" style="margin:0">動物每次產出前要吃飼料；幼崽吃飽才會長大。${S.lv >= D.caps.autoFeed ? `自動餵食器運作中：飼料一做好就會被餵掉，所以倉庫裡常常看不到飼料。${feedBalance()}` : `Lv${D.caps.autoFeed} 開自動餵食器。`}</p></div>`;
+        <p class="fm-note" style="margin:0">動物每次產出前要吃飼料；幼崽吃飽才會長大。${S.lv >= D.caps.autoFeed ? `自動餵食器運作中：飼料一做好就會被餵掉，所以倉庫裡常常看不到飼料。${feedBalance()}` : `Lv${D.caps.autoFeed} 開自動餵食器。`}</p>${dayLogHtml()}</div>`;
 
       const sps = feedSpecies(), skip = S.feedSkip || {};
       const priRows = sps.map((sp, i) => { const [s0, st] = sp.split(":"), info = D.animals[s0], n = S.ranch.animals.filter(a => feedKey(a) === sp).length;
