@@ -1858,15 +1858,18 @@ const FARM_JS_VERSION = "2026-10-28 v2";
   ========================================================= */
 
   /* 餵食順序：照你排的物種先後；設成「不自動餵」的物種，自動餵食和自動處理會跳過（手動全部餵食還是會餵） */
+  /* 每一組 = 物種＋成年／幼年，例如 "chicken:adult"、"chicken:baby" */
+  const feedKey = a => a.sp + (a.adult ? ":adult" : ":baby");
   function feedSpecies() {
-    const have = [...new Set(S.ranch.animals.map(a => a.sp))].filter(sp => D.animals[sp] && D.animals[sp].feed > 0);
-    const pri = (S.feedPri || []).filter(sp => have.includes(sp));
-    return pri.concat(have.filter(sp => !pri.includes(sp)));
+    const have = [...new Set(S.ranch.animals.filter(a => D.animals[a.sp] && D.animals[a.sp].feed > 0).map(feedKey))]
+      .sort((x, y) => (x.endsWith(":adult") ? 0 : 1) - (y.endsWith(":adult") ? 0 : 1));
+    const pri = (S.feedPri || []).filter(k => have.includes(k));
+    return pri.concat(have.filter(k => !pri.includes(k)));
   }
   function feedOrder(auto) {
     const order = feedSpecies();
     const skip = S.feedSkip || {};
-    return S.ranch.animals.filter(a => !(auto && skip[a.sp])).slice().sort((a, b) => order.indexOf(a.sp) - order.indexOf(b.sp) || (b.adult ? 1 : 0) - (a.adult ? 1 : 0));
+    return S.ranch.animals.filter(a => !(auto && skip[feedKey(a)])).slice().sort((a, b) => order.indexOf(feedKey(a)) - order.indexOf(feedKey(b)));
   }
 
   /* 飼料夠不夠：動物每小時吃多少、飼料機每小時做多少、今天自動餵掉多少 */
@@ -5996,12 +5999,12 @@ const FARM_JS_VERSION = "2026-10-28 v2";
         <p class="fm-note" style="margin:0">動物每次產出前要吃飼料；幼崽吃飽才會長大。${S.lv >= D.caps.autoFeed ? `自動餵食器運作中：飼料一做好就會被餵掉，所以倉庫裡常常看不到飼料。${feedBalance()}` : `Lv${D.caps.autoFeed} 開自動餵食器。`}</p></div>`;
 
       const sps = feedSpecies(), skip = S.feedSkip || {};
-      const priRows = sps.map((sp, i) => { const info = D.animals[sp], n = animalsOf(sp).length;
-        return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;${skip[sp] ? "opacity:.5" : ""}"><b style="width:22px;text-align:center">${i + 1}</b><span style="flex:1">${info.emoji} ${esc(info.name)} ×${n}<small class="fm-note">・一次吃 ${info.feed}</small></span>
+      const priRows = sps.map((sp, i) => { const [s0, st] = sp.split(":"), info = D.animals[s0], n = S.ranch.animals.filter(a => feedKey(a) === sp).length;
+        return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;${skip[sp] ? "opacity:.5" : ""}"><b style="width:22px;text-align:center">${i + 1}</b><span style="flex:1">${info.emoji} ${esc(st === "adult" ? info.name : (info.baby || "小" + info.name))}<small class="fm-note">（${st === "adult" ? "成年" : "幼年"}）×${n}・一次吃 ${info.feed}</small></span>
           <button type="button" class="fm-btn small" data-act="feedpri" data-sp="${sp}" data-d="-1" ${i ? "" : "disabled"}>↑</button><button type="button" class="fm-btn small" data-act="feedpri" data-sp="${sp}" data-d="1" ${i < sps.length - 1 ? "" : "disabled"}>↓</button>
           <button type="button" class="fm-btn small ${skip[sp] ? "" : "green"}" data-act="feedskip" data-sp="${sp}">${skip[sp] ? "不自動餵" : "自動餵"}</button></div>`; }).join("");
       const priPanel = sps.length > 1 ? `<div class="fm-pen"><div class="fm-pen-head"><h3 class="ol" style="--olc:#4f8f35">🥣 餵食順序</h3></div>
-        <p class="fm-note" style="margin:0 0 6px">飼料不夠時，排前面的先吃。設成「不自動餵」的，自動餵食和⚡自動處理會跳過（按「全部餵食」還是會餵）。</p>${priRows}</div>` : "";
+        <p class="fm-note" style="margin:0 0 6px">飼料不夠時，排前面的先吃；成年和幼年分開排。成年吃了才會產出，幼年吃飽才會長大。設成「不自動餵」的，自動餵食和⚡自動處理會跳過（按「全部餵食」還是會餵）。</p>${priRows}</div>` : "";
       const mill = priPanel + machineHtml("feedmill", true) + machineHtml("baitline", true);
 
       let inc = "";
