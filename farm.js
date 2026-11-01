@@ -3567,6 +3567,96 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     return log;
   }
 
+  /* ---------- 🌙 不在的時候：麥田一天種 7 次小麥 → 收 → 做飼料 → 照餵食順序餵；一天收全部田 2 次 ---------- */
+  const AWAY_WHEAT_H = [2, 5, 8, 11, 14, 17, 20];
+  const AWAY_HARVEST_H = [8, 20];
+  function awayOn() { try { return localStorage.getItem("farmAway") !== "0"; } catch (e) { return true; } }
+
+  function awayRun() {
+    if (!S || !awayOn()) return null;
+    const t = now();
+    if (!S.away) S.away = { last: t };
+    const from = Math.max(S.away.last || t, t - 3 * 24 * HOUR);
+    const slots = [];
+    const d0 = new Date(from); d0.setHours(0, 0, 0, 0);
+    for (let d = d0.getTime(); d <= t; d += 24 * HOUR) {
+      const day = new Date(d);
+      const at = h => { const x = new Date(day); x.setHours(h, 0, 0, 0); return x.getTime(); };
+      for (const h of AWAY_WHEAT_H) slots.push({ at: at(h), wheat: true, all: AWAY_HARVEST_H.includes(h) });
+    }
+    const todo = slots.filter(s => s.at > from && s.at <= t).sort((a, b) => a.at - b.at);
+    S.away.last = t;
+    if (!todo.length) return null;
+
+    const sum = { plant: 0, wheat: 0, all: 0, feed: 0, fed: 0, runs: 0 };
+    const realNow = Date.now;
+    try {
+      for (const s of todo) {
+        Date.now = () => s.at;
+        sum.runs++;
+        /* 收：麥田每次都收；8 點、20 點收全部的田 */
+        const zones = s.all ? ["field", "herb", "green", "pond", "wheatfield"] : ["wheatfield"];
+        for (const zone of zones) {
+          const z = plotZone(zone);
+          for (const key of z.keys) if (plotState(z.store[key]) === "ripe" && harvestOne(zone, key)) {
+            if (zone === "wheatfield") sum.wheat++; else sum.all++;
+          }
+        }
+        if (s.all) {
+          for (const i of Object.keys(S.orchard.trees)) if (treeState(S.orchard.trees[i]) === "ripe" && harvestTree(i)) sum.all++;
+          for (const i of Object.keys(S.logs.slots)) if (logState(S.logs.slots[i]) === "ripe" && harvestLog(i)) sum.all++;
+          for (const i of Object.keys(S.tea.bushes)) if (teaState(S.tea.bushes[i]) === "ripe" && harvestTea(i)) sum.all++;
+          if (bambooReady() > 0 && harvestBamboo()) sum.all++;
+        }
+        /* 收飼料、把小麥全部做成飼料 */
+        const before = have("feed");
+        collectMachine("feedmill");
+        sum.feed += Math.max(0, have("feed") - before);
+        if (machineOpen("feedmill") && S.lv >= D.recipes.feed_wheat.lv) {
+          for (let i = 0; i < 40 && have("wheat") > 0; i++) if (startRecipe("feed_wheat") !== "ok") break;
+        }
+        /* 麥田種滿小麥（口渴的格子能澆就澆） */
+        if (S.wheatfield.open && cropAvailable("wheat")) {
+          const z = plotZone("wheatfield");
+          for (const key of z.keys) {
+            const p = z.store[key];
+            if (p && !p.s && !p.t1 && hasWater()) waterOne("wheatfield", key);
+            if (p) continue;
+            const r = plantOne("wheatfield", key, "wheat");
+            if (r === "ok" || r === "thirsty") sum.plant++; else break;
+          }
+        }
+        /* 照餵食順序餵 */
+        for (const a of feedOrder(true)) if (animalState(a) === "hungry" && feedAnimal(a)) sum.fed++;
+      }
+    } finally { Date.now = realNow; }
+    /* 回到現在：做好的飼料收起來再餵一次 */
+    const b2 = have("feed");
+    collectMachine("feedmill");
+    sum.feed += Math.max(0, have("feed") - b2);
+    for (const a of feedOrder(true)) if (animalState(a) === "hungry" && feedAnimal(a)) sum.fed++;
+
+    const log = [`🌙 你不在的時候跑了 ${sum.runs} 次`];
+    if (sum.plant) log.push(`🌾 種小麥 ${sum.plant} 格、收 ${sum.wheat} 格`);
+    if (sum.feed) log.push(`🥣 做出飼料 ${sum.feed} 份`);
+    if (sum.fed) log.push(`🐔 照順序餵了 ${sum.fed} 次`);
+    if (sum.all) log.push(`🧺 早晚收成 ${sum.all} 格`);
+    S.away.log = { at: t, log };
+    saveSoon(true);
+    return log;
+  }
+
+  async function bgAway() {
+    if (!awayOn() || !uid() || net.loading || UI.autoBusy) return;
+    if (typeof gameOn === "function" && !gameOn()) return;
+    if (isFarmVisible() && !net.gated) return;
+    try {
+      if (!net.loaded || net.userId !== uid()) await loadSave();
+      awayRun();
+    } catch (e) { console.warn("不在時自動處理失敗：", e); }
+  }
+  setInterval(bgAway, 10 * 60 * 1000);
+
   function autoBgOn() { try { return localStorage.getItem("farmAutoBg") === "1"; } catch (e) { return false; } }
 
   async function bgAuto() {
@@ -4770,6 +4860,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     goals: () => openSheet("goals"),
     auto: () => openSheet("auto"),
     autorun: () => runAuto(true),
+    awaytoggle: () => { const on = !awayOn(); try { localStorage.setItem("farmAway", on ? "1" : "0"); } catch (e) {} if (on && S) S.away = { last: now() }; toast(on ? "🌙 不在時小幫手打開了" : "不在時小幫手關掉了"); renderSheet(); },
     autobg: () => { const on = !autoBgOn(); try { localStorage.setItem("farmAutoBg", on ? "1" : "0"); } catch (e) {} toast(on ? "⚡ 背景自動處理打開了" : "背景自動處理關掉了"); renderSheet(); renderDock(); },
     autoopt: el => { S.auto = Object.assign(autoOpts(), { [el.dataset.k]: !autoOpts()[el.dataset.k] }); saveSoon(); renderSheet(); },
     storage: () => openSheet("storage"),
@@ -6140,6 +6231,10 @@ const FARM_JS_VERSION = "2026-10-28 v2";
             ${tg("plant", "自動種空格")}${tg("cook", "自動做菜")}${tg("process", "自動加工")}${tg("sell", "倉庫快滿時賣多的（每樣留 20 個）")}
           </div>
           <p class="fm-note" style="margin:8px 2px 0">背景自動是記在這台裝置上的；手機和電腦要各自打開。果樹、茶樹、動物要種要買還是你自己決定，大訂單也留給你交。</p></div>
+        <div class="fm-panel"><div class="fm-sec ol">🌙 不在時小幫手</div>
+          <button type="button" class="fm-btn small ${awayOn() ? "green" : ""}" data-act="awaytoggle">${awayOn() ? "✅" : "⬜"} 開著</button>
+          <p class="fm-note" style="margin:8px 2px 0">你不在農場的時候：每天 2、5、8、11、14、17、20 點，麥田收小麥 → 全部做成飼料 → 麥田種滿小麥 → 照你設的餵食順序餵動物。8 點和 20 點順便收全部的田、果樹、菇木、茶、竹子。不用開網站，下次打開時會補算。</p>
+          ${S.away && S.away.log ? `<ul style="margin:6px 0 0;padding-left:18px">${S.away.log.log.map(l => `<li class="fm-note" style="margin:2px 0">${esc(l)}</li>`).join("")}</ul>` : ""}</div>
         ${last ? `<div class="fm-panel"><div class="fm-sec ol">上次處理（${when}${last.bg ? "・背景" : ""}）</div><ul style="margin:0;padding-left:18px">${last.log.map(l => `<li class="fm-note" style="margin:2px 0">${esc(l)}</li>`).join("")}</ul></div>` : ""}`;
     },
 
@@ -6775,6 +6870,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
   function tick() {
 
     if (!S || !UI.root || !isFarmVisible()) return;
+    if (S.away && !net.gated) S.away.last = now();
 
     if (processTimers()) {
       saveSoon();
@@ -6849,11 +6945,11 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       <h3 class="ol" style="margin:0 0 6px">🚪 ${expired ? "農場時間到了" : "進農場"}</h3>
       <p class="fm-note" style="margin:0 0 12px">${expired ? "時間用完了，再用一張卷或等明天的免費時段。" : "要有入場時間才能進農場。"}</p>
       <div style="display:flex;flex-direction:column;gap:8px;align-items:stretch">
-        ${btn("morning", "☀️ 早上免費 15 分鐘", g.morning_ok)}
+        ${btn("morning", g.tasks_today === 0 ? "☀️ 早上免費 15 分鐘（先完成 1 個任務）" : "☀️ 早上免費 15 分鐘", g.morning_ok)}
         ${btn("pass10", `🎫 入場卷 10 分鐘（剩 ${g.pass10 || 0} 張）`, (g.pass10 || 0) > 0)}
         ${btn("pass30", `🌙 睡前卷 30 分鐘（剩 ${g.pass30 || 0} 張）`, (g.pass30 || 0) > 0)}
       </div>
-      <p class="fm-note" style="margin:12px 0 0">完成一個任務、專注每滿 1 小時，都會得到一張入場卷。早上免費是 5:00～11:59，每天一次。</p></div>`;
+      <p class="fm-note" style="margin:12px 0 0">完成一個任務、專注每滿 1 小時，都會得到一張入場卷。早上免費是 5:00～11:59，每天一次，要先完成今天的 1 個任務。</p></div>`;
   }
 
   async function enterGate(kind) {
@@ -6920,10 +7016,12 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       return;
     }
 
+    const awayLog = awayRun();
     buildRoot();
     calicoHelp();
     renderAll();
     checkLevelPopup();
+    if (awayLog) toast(awayLog.join("・"));
     creditWater(false);
 
     /* 之前升級但還沒領到的星願瓶（例如資料庫晚設定），存檔後補發 */
@@ -6939,6 +7037,8 @@ const FARM_JS_VERSION = "2026-10-28 v2";
   function onShow() {
     if (!S || !UI.root) return;
     layoutMap(false);
+    const awayLog = awayRun();
+    if (awayLog) toast(awayLog.join("・"));
     processTimers();
     calicoHelp();
     renderAll();
@@ -6955,7 +7055,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     if (btn) btn.hidden = !on;
     if (page) page.classList.toggle("fm-on", on);
 
-    if (on) { startFarm(); setTimeout(bgAuto, 4000); }
+    if (on) { startFarm(); setTimeout(bgAuto, 4000); setTimeout(bgAway, 3000); }
 
   }
 
