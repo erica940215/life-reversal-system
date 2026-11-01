@@ -1857,6 +1857,14 @@ const FARM_JS_VERSION = "2026-10-28 v2";
      11. 牧場
   ========================================================= */
 
+  /* 飼料夠不夠：動物每小時吃多少、飼料機每小時做多少、今天自動餵掉多少 */
+  function feedBalance() {
+    const eat = S.ranch.animals.reduce((t, a) => { const i = D.animals[a.sp]; return t + (a.adult && i.feed ? i.feed / everyH(i) : 0); }, 0);
+    const make = Object.values(D.recipes).filter(r => r.machine === "feedmill" && S.lv >= r.lv).reduce((t, r) => t + r.qty * 60 / machineMinutes(r), 0);
+    const today = S.feedLog && S.feedLog.day === todayKey() ? S.feedLog.n : 0;
+    return `<br>今天自動餵掉 <b>${today}</b> 個飼料。動物每小時大約吃 <b>${Math.round(eat)}</b> 個，飼料機三條線全開每小時最多做 <b>${Math.round(make)}</b> 個${eat > make ? "（動物太多，飼料一定不夠，會有動物餓著不產出）" : ""}。`;
+  }
+
   function animalsOf(sp) {
     return S.ranch.animals.filter(a => a.sp === sp);
   }
@@ -2050,6 +2058,9 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       for (const a of S.ranch.animals) {
         if (animalState(a) === "hungry" && have("feed") >= D.animals[a.sp].feed) {
           feedAnimal(a);
+          const dk = todayKey();
+          if (!S.feedLog || S.feedLog.day !== dk) S.feedLog = { day: dk, n: 0 };
+          S.feedLog.n += D.animals[a.sp].feed;
           changed = true;
         }
       }
@@ -5957,7 +5968,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       const feedRow = `<div class="fm-pen"><div class="fm-pen-head"><h3 class="ol" style="--olc:#4f8f35">${miniIcon("feed", "🌾")} 飼料 ${have("feed")}</h3>
         <button type="button" class="fm-btn small green" data-act="feedall">${uiIcon("feedbowl", "fm-btn-ic")}全部餵食</button>
         <button type="button" class="fm-btn small" data-act="collectall">${uiIcon("harvest", "fm-btn-ic")}全部收成</button></div>
-        <p class="fm-note" style="margin:0">動物每次產出前要吃飼料；幼崽吃飽才會長大。${S.lv >= D.caps.autoFeed ? "自動餵食器運作中。" : `Lv${D.caps.autoFeed} 開自動餵食器。`}</p></div>`;
+        <p class="fm-note" style="margin:0">動物每次產出前要吃飼料；幼崽吃飽才會長大。${S.lv >= D.caps.autoFeed ? `自動餵食器運作中：飼料一做好就會被餵掉，所以倉庫裡常常看不到飼料。${feedBalance()}` : `Lv${D.caps.autoFeed} 開自動餵食器。`}</p></div>`;
 
       const mill = machineHtml("feedmill", true) + machineHtml("baitline", true);
 
