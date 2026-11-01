@@ -174,5 +174,7 @@
   /* 加工坊的機器：一次最多排 10 個 */
   for (const m of Object.values(D.machines)) if (m.where === "workshop") m.queue = 10;
   D.machines.feedmill.auto = true;
+  /* 小麥飼料：1 份小麥做 5 份飼料 */
+  D.recipes.feed_wheat.qty = 5;
   D.recipes.bait = { out: "bait", qty: 5, need: { feed: 2, wheat: 1 }, minutes: 10, machine: "baitline", lv: 15 };
 })();
