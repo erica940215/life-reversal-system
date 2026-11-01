@@ -8,7 +8,7 @@
   const KEY = "todayOrder";
   const HOLD_MS = 450;
   const SKIP = ".page-title, .subnav, .game-mode-bar, script, style";
-  const NO_GRAB = "button, a, input, select, textarea, label, [contenteditable], .no-drag";
+  const NO_GRAB = "button, a, input, select, textarea, label, [contenteditable], .no-drag, .task-item";
 
   const load = () => { try { const v = JSON.parse(localStorage.getItem(KEY) || "[]"); return Array.isArray(v) ? v : []; } catch (_) { return []; } };
   const save = v => { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (_) {} };

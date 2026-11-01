@@ -1985,10 +1985,6 @@ function renderTasks() {
 
             <div class="task-actions">
 
-              <button title="往上" class="task-move" onclick="moveTask('${task.id}', -1)">⬆️</button>
-
-              <button title="往下" class="task-move" onclick="moveTask('${task.id}', 1)">⬇️</button>
-
               <button
                 title="編輯"
                 onclick="editTask('${task.id}')"
@@ -2044,22 +2040,83 @@ function sortByTaskOrder(list) {
     .map(x => x.t);
 }
 
-function moveTask(taskId, dir) {
-  const all = sortByTaskOrder(currentTasks || []);
-  const me = all.find(t => String(t.id) === String(taskId));
-  if (!me) return;
-  const same = all.filter(t => (t.category || "") === (me.category || ""));
-  const i = same.indexOf(me), j = i + dir;
-  if (j < 0 || j >= same.length) return;
-  const other = same[j];
-  const ids = all.map(t => String(t.id));
-  const a = ids.indexOf(String(me.id)), b = ids.indexOf(String(other.id));
-  [ids[a], ids[b]] = [ids[b], ids[a]];
-  try { localStorage.setItem("taskOrder", JSON.stringify(ids.slice(-500))); } catch (_) {}
-  renderTasks();
-}
+/* 長按任務卡片 0.45 秒 → 浮起來，在同一個分類裡上下拖，放開就記住 */
+(function () {
+  const NO = "button, a, input, select, textarea, label, .task-checkbox";
+  let hold = null, drag = null, eat = false;
 
-window.moveTask = moveTask;
+  function saveDomOrder() {
+    const dom = [...document.querySelectorAll("#task-list .task-item[data-task-id]")].map(el => String(el.dataset.taskId));
+    const rest = loadTaskOrder().filter(id => !dom.includes(id));
+    try { localStorage.setItem("taskOrder", JSON.stringify(dom.concat(rest).slice(0, 500))); } catch (_) {}
+  }
+
+  function place() {
+    const { card } = drag;
+    card.style.transform = "";
+    const sibs = [...card.parentElement.querySelectorAll(":scope > .task-item")];
+    const i = sibs.indexOf(card), prev = sibs[i - 1], next = sibs[i + 1];
+    if (prev) { const r = prev.getBoundingClientRect(); if (drag.y < r.top + r.height / 2) { card.parentElement.insertBefore(card, prev); return place(); } }
+    if (next) { const r = next.getBoundingClientRect(); if (drag.y > r.top + r.height / 2) { card.parentElement.insertBefore(card, next.nextSibling); return place(); } }
+    card.style.transform = `translateY(${drag.y - drag.grab - card.getBoundingClientRect().top}px) scale(1.02)`;
+  }
+
+  function loop() {
+    if (!drag) return;
+    const bottom = window.innerHeight - 120;
+    let dy = 0;
+    if (drag.y < 90) dy = -Math.ceil((90 - drag.y) / 6); else if (drag.y > bottom) dy = Math.ceil((drag.y - bottom) / 6);
+    if (dy) { window.scrollBy(0, dy); place(); }
+    drag.raf = requestAnimationFrame(loop);
+  }
+
+  function cancel() { if (hold) { clearTimeout(hold.t); hold.card.classList.remove("tk-pressing"); hold = null; } }
+
+  document.addEventListener("pointerdown", e => {
+    if (e.button !== undefined && e.button !== 0) return;
+    const card = e.target.closest("#task-list .task-item");
+    if (!card || e.target.closest(NO)) return;
+    cancel();
+    card.classList.add("tk-pressing");
+    hold = { card, x: e.clientX, y: e.clientY, t: setTimeout(() => {
+      const c = hold.card; c.classList.remove("tk-pressing"); hold = null;
+      drag = { card: c, grab: e.clientY - c.getBoundingClientRect().top, y: e.clientY, raf: 0 };
+      c.classList.add("tk-lift"); document.body.classList.add("tk-dragging");
+      if (navigator.vibrate) try { navigator.vibrate(25); } catch (_) {}
+      place(); loop();
+    }, 450) };
+  }, { passive: true });
+
+  document.addEventListener("pointermove", e => {
+    if (hold && !drag) { if (Math.abs(e.clientX - hold.x) > 8 || Math.abs(e.clientY - hold.y) > 8) cancel(); return; }
+    if (!drag) return;
+    e.preventDefault(); drag.y = e.clientY; place();
+  }, { passive: false });
+
+  function up() {
+    cancel();
+    if (!drag) return;
+    cancelAnimationFrame(drag.raf);
+    drag.card.classList.remove("tk-lift"); drag.card.style.transform = "";
+    document.body.classList.remove("tk-dragging");
+    drag = null; eat = true; setTimeout(() => { eat = false; }, 350);
+    saveDomOrder();
+    if (typeof showToast === "function") showToast("↕️ 任務順序已記住");
+  }
+  document.addEventListener("pointerup", up);
+  document.addEventListener("pointercancel", up);
+  document.addEventListener("touchmove", e => { if (drag) e.preventDefault(); }, { passive: false });
+  document.addEventListener("contextmenu", e => { if (drag || hold) e.preventDefault(); });
+  document.addEventListener("click", e => { if (eat) { e.stopPropagation(); e.preventDefault(); } }, true);
+
+  const st = document.createElement("style");
+  st.textContent = `#task-list .task-item{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+    #task-list .tk-pressing{transform:scale(.985);transition:transform .45s}
+    #task-list .tk-lift{position:relative;z-index:50;box-shadow:0 14px 34px rgba(0,0,0,.45);opacity:.96}
+    #task-list .tk-lift *{pointer-events:none}
+    body.tk-dragging{user-select:none;-webkit-user-select:none;touch-action:none}`;
+  document.head.appendChild(st);
+})();
 
 
 /* =========================================================
