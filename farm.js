@@ -17,6 +17,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
 
   const D = window.FARM_DATA;
   const MAX_LV = 70; // 星露島的滿級（50 之後還有 51–70）
+  const EXP_RATE = 0.3;     // 所有經驗 ×0.3（原本收一輪田就升一級，太快）
 
   if (!D) {
     console.warn("星露島：找不到 farm-data.js");
@@ -584,7 +585,8 @@ const FARM_JS_VERSION = "2026-10-28 v2";
 
     if (n <= 0 || S.lv >= MAX_LV) return;
 
-    S.exp += Math.round(n);
+    /* 經驗只拿 3 成：大約收 3～4 輪田才升一級 */
+    S.exp += Math.max(1, Math.round(n * EXP_RATE));
 
     let up = false;
 
@@ -2001,7 +2003,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
         const names = {};
         for (const c of cooked) names[c.dish] = (names[c.dish] || 0) + 1;
         const perfect = cooked.filter(c => c.perfect).length;
-        toast(`🍳 做好了：${Object.entries(names).map(([k, v]) => `${D.dishes[k].name} ×${v}`).join("、")}，+${cooked.reduce((a, c) => a + c.exp, 0)} EXP${perfect ? `（🐥 完美料理 ${perfect} 份）` : ""}`);
+        toast(`🍳 做好了：${Object.entries(names).map(([k, v]) => `${D.dishes[k].name} ×${v}`).join("、")}，+${Math.max(1, Math.round((cooked.reduce((a, c) => a + c.exp, 0)) * EXP_RATE))} EXP${perfect ? `（🐥 完美料理 ${perfect} 份）` : ""}`);
       }
     }
 
@@ -4823,7 +4825,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       if (st === "ripe") {
         const res = harvestOne(zone, key);
         if (!res) return toast("倉庫滿了，先去賣掉或用掉一些東西");
-        floatAt(el, `+${res.qty} ${itemIconInline(res.crop)} <small>+${res.exp} EXP</small>${res.seedBack ? " 🌰" : ""}${res.fox ? " 🦊" : ""}${res.x2 ? " ×2" : ""}`);
+        floatAt(el, `+${res.qty} ${itemIconInline(res.crop)} <small>+${Math.max(1, Math.round((res.exp) * EXP_RATE))} EXP</small>${res.seedBack ? " 🌰" : ""}${res.fox ? " 🦊" : ""}${res.x2 ? " ×2" : ""}`);
         closePop();
         return after();
       }
@@ -4841,7 +4843,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       if (logState(l) === "ripe") {
         const res = harvestLog(i);
         if (!res) return toast("倉庫滿了");
-        floatAt(el, `+${res.qty} ${itemIconInline(res.crop)} <small>+${res.exp} EXP</small>`);
+        floatAt(el, `+${res.qty} ${itemIconInline(res.crop)} <small>+${Math.max(1, Math.round((res.exp) * EXP_RATE))} EXP</small>`);
         if (res.used) toast("這根菇木採完了，可以放新的");
         return after();
       }
@@ -4857,7 +4859,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       if (orchardRipeKeys().length) {
         const got = harvestOrchard();
         if (!got.n) return toast("倉庫滿了");
-        floatAt(el, `🍎 收了 ${got.n} 棵 <small>+${got.exp} EXP</small>${got.full ? " 倉庫滿了" : ""}`);
+        floatAt(el, `🍎 收了 ${got.n} 棵 <small>+${Math.max(1, Math.round((got.exp) * EXP_RATE))} EXP</small>${got.full ? " 倉庫滿了" : ""}`);
         return after();
       }
       openPop({ type: "tree", key: i, el });
@@ -4881,7 +4883,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       if (!tr) return openSheet("seeds", { zone: "orchard", key: i });
       if (treeState(tr) === "ripe") {
         const got = harvestOrchard();
-        toast(got.n ? `🍎 收了 ${got.n} 棵，+${got.exp} EXP` : "倉庫滿了");
+        toast(got.n ? `🍎 收了 ${got.n} 棵，+${Math.max(1, Math.round((got.exp) * EXP_RATE))} EXP` : "倉庫滿了");
         after();
         return openSheet("orchard");
       }
@@ -4895,7 +4897,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       if (teaState(b) === "ripe") {
         const res = harvestTea(i);
         if (!res) return toast("倉庫滿了");
-        floatAt(el, `+${res.qty} ${itemIconInline("tea")} <small>+${res.exp} EXP</small>`);
+        floatAt(el, `+${res.qty} ${itemIconInline("tea")} <small>+${Math.max(1, Math.round((res.exp) * EXP_RATE))} EXP</small>`);
         return after();
       }
       openPop({ type: "tea", key: i, el });
@@ -4907,7 +4909,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
         if (bambooReady() > 0) return toast("倉庫滿了");
         return toast(`竹筍還沒冒出來，${dur(bambooNextAt() - now())} 後會有`);
       }
-      floatAt(el, `+${res.qty} ${itemIconInline("bamboo")} <small>+${res.exp} EXP</small>`);
+      floatAt(el, `+${res.qty} ${itemIconInline("bamboo")} <small>+${Math.max(1, Math.round((res.exp) * EXP_RATE))} EXP</small>`);
       after();
     },
 
@@ -4923,7 +4925,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
         if (res.full) return toast("倉庫滿了，先去賣掉或用掉一些東西");
         return toast("現在沒有成熟的作物");
       }
-      toast(`🌾 收成 ${res.count} 次，+${res.exp} EXP${res.full ? "（倉庫滿了，有些沒收）" : ""}`);
+      toast(`🌾 收成 ${res.count} 次，+${Math.max(1, Math.round((res.exp) * EXP_RATE))} EXP${res.full ? "（倉庫滿了，有些沒收）" : ""}`);
       after();
     },
 
@@ -5092,7 +5094,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       const feedN = feedOut ? feedOut.length : 0;
       if (gold) toast(`🥚✨ 金雞生了 ${gold} 顆金蛋！`);
       if (!n && !feedN) return toast(invSpace() < 1 ? "倉庫滿了" : "現在沒有可以收的");
-      toast([n ? `🧺 收了 ${n} 個畜產品，+${exp} EXP` : "", feedN ? `飼料機收了 ${feedN} 批` : ""].filter(Boolean).join("・"));
+      toast([n ? `🧺 收了 ${n} 個畜產品，+${Math.max(1, Math.round((exp) * EXP_RATE))} EXP` : "", feedN ? `飼料機收了 ${feedN} 批` : ""].filter(Boolean).join("・"));
       after();
     },
 
@@ -6379,7 +6381,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     if (st === "ripe") {
       const res = harvestOne("green", key);
       if (!res) return toast("倉庫滿了");
-      toast(`+${res.qty} ${itemName(res.crop)}，+${res.exp} EXP`);
+      toast(`+${res.qty} ${itemName(res.crop)}，+${Math.max(1, Math.round((res.exp) * EXP_RATE))} EXP`);
       return after();
     }
     if (st === "growing" && have("fert") > 0 && !p.f) {
@@ -6694,7 +6696,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       if (v === "collect") {
         const res = collectAnimal(a);
         if (!res) return toast("倉庫滿了");
-        toast(`🧺 +1 ${itemName(res.item)}，+${res.exp} EXP`);
+        toast(`🧺 +1 ${itemName(res.item)}，+${Math.max(1, Math.round((res.exp) * EXP_RATE))} EXP`);
       } else if (v === "feed") {
         if (!feedAnimal(a)) return toast("飼料不夠");
         toast("🌾 餵好了");
