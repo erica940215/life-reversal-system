@@ -1857,6 +1857,18 @@ const FARM_JS_VERSION = "2026-10-28 v2";
      11. 牧場
   ========================================================= */
 
+  /* 餵食順序：照你排的物種先後；設成「不自動餵」的物種，自動餵食和自動處理會跳過（手動全部餵食還是會餵） */
+  function feedSpecies() {
+    const have = [...new Set(S.ranch.animals.map(a => a.sp))].filter(sp => D.animals[sp] && D.animals[sp].feed > 0);
+    const pri = (S.feedPri || []).filter(sp => have.includes(sp));
+    return pri.concat(have.filter(sp => !pri.includes(sp)));
+  }
+  function feedOrder(auto) {
+    const order = feedSpecies();
+    const skip = S.feedSkip || {};
+    return S.ranch.animals.filter(a => !(auto && skip[a.sp])).slice().sort((a, b) => order.indexOf(a.sp) - order.indexOf(b.sp) || (b.adult ? 1 : 0) - (a.adult ? 1 : 0));
+  }
+
   /* 飼料夠不夠：動物每小時吃多少、飼料機每小時做多少、今天自動餵掉多少 */
   function feedBalance() {
     const eat = S.ranch.animals.reduce((t, a) => { const i = D.animals[a.sp]; return t + (a.adult && i.feed ? i.feed / everyH(i) : 0); }, 0);
@@ -2055,7 +2067,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     }
 
     if (S.lv >= D.caps.autoFeed) {
-      for (const a of S.ranch.animals) {
+      for (const a of feedOrder(true)) {
         if (animalState(a) === "hungry" && have("feed") >= D.animals[a.sp].feed) {
           feedAnimal(a);
           const dk = todayKey();
@@ -2301,6 +2313,8 @@ const FARM_JS_VERSION = "2026-10-28 v2";
 
   function setWishStatus(st) {
     if (!st) return;
+    const lb = st.ltd_bonus && st.ltd_bonus.got;
+    if (lb && lb.length) setTimeout(() => toast(`🌠 限定星願瓶 +${lb.length}（${lb.map(x => x.why).join("、")}）`), 600);
     net.ws = st;
     const items = st.items || {};
     net.wish = { wish_normal: items.wish_normal || 0, wish_rare: items.wish_rare || 0, wish_limited: items.wish_limited || 0 };
@@ -3432,7 +3446,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
         for (let i = 0; i < 5 && have("feed") < needFeed * 3; i++) if (startRecipe(rk) !== "ok") break;
       }
     }
-    for (const a of S.ranch.animals) if (animalState(a) === "hungry" && feedAnimal(a)) fed++;
+    for (const a of feedOrder(true)) if (animalState(a) === "hungry" && feedAnimal(a)) fed++;
     if (got || fed) log.push(`🐔 收了 ${got} 個動物產物、餵了 ${fed} 隻`);
 
     /* 5. 澆口渴的格子 */
@@ -5041,9 +5055,20 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       after();
     },
 
+    feedpri: el => {
+      const order = feedSpecies(), i = order.indexOf(el.dataset.sp), j = i + Number(el.dataset.d);
+      if (i < 0 || j < 0 || j >= order.length) return;
+      [order[i], order[j]] = [order[j], order[i]];
+      S.feedPri = order; saveSoon(); renderSheet();
+    },
+    feedskip: el => {
+      S.feedSkip = Object.assign({}, S.feedSkip || {});
+      if (S.feedSkip[el.dataset.sp]) delete S.feedSkip[el.dataset.sp]; else S.feedSkip[el.dataset.sp] = true;
+      saveSoon(); renderSheet();
+    },
     feedall: () => {
       let n = 0, lack = false;
-      for (const a of S.ranch.animals) {
+      for (const a of feedOrder(false)) {
         if (animalState(a) !== "hungry") continue;
         if (feedAnimal(a)) n++;
         else lack = true;
@@ -5970,7 +5995,14 @@ const FARM_JS_VERSION = "2026-10-28 v2";
         <button type="button" class="fm-btn small" data-act="collectall">${uiIcon("harvest", "fm-btn-ic")}全部收成</button></div>
         <p class="fm-note" style="margin:0">動物每次產出前要吃飼料；幼崽吃飽才會長大。${S.lv >= D.caps.autoFeed ? `自動餵食器運作中：飼料一做好就會被餵掉，所以倉庫裡常常看不到飼料。${feedBalance()}` : `Lv${D.caps.autoFeed} 開自動餵食器。`}</p></div>`;
 
-      const mill = machineHtml("feedmill", true) + machineHtml("baitline", true);
+      const sps = feedSpecies(), skip = S.feedSkip || {};
+      const priRows = sps.map((sp, i) => { const info = D.animals[sp], n = animalsOf(sp).length;
+        return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;${skip[sp] ? "opacity:.5" : ""}"><b style="width:22px;text-align:center">${i + 1}</b><span style="flex:1">${info.emoji} ${esc(info.name)} ×${n}<small class="fm-note">・一次吃 ${info.feed}</small></span>
+          <button type="button" class="fm-btn small" data-act="feedpri" data-sp="${sp}" data-d="-1" ${i ? "" : "disabled"}>↑</button><button type="button" class="fm-btn small" data-act="feedpri" data-sp="${sp}" data-d="1" ${i < sps.length - 1 ? "" : "disabled"}>↓</button>
+          <button type="button" class="fm-btn small ${skip[sp] ? "" : "green"}" data-act="feedskip" data-sp="${sp}">${skip[sp] ? "不自動餵" : "自動餵"}</button></div>`; }).join("");
+      const priPanel = sps.length > 1 ? `<div class="fm-pen"><div class="fm-pen-head"><h3 class="ol" style="--olc:#4f8f35">🥣 餵食順序</h3></div>
+        <p class="fm-note" style="margin:0 0 6px">飼料不夠時，排前面的先吃。設成「不自動餵」的，自動餵食和⚡自動處理會跳過（按「全部餵食」還是會餵）。</p>${priRows}</div>` : "";
+      const mill = priPanel + machineHtml("feedmill", true) + machineHtml("baitline", true);
 
       let inc = "";
       if (S.lv >= D.zones["孵蛋器"].lv) {
@@ -6157,7 +6189,11 @@ const FARM_JS_VERSION = "2026-10-28 v2";
           <div class="fm-wish-btns"><button type="button" class="fm-btn small ${color}" data-act="draw" data-pool="${k}" data-n="1" ${n >= 1 && !wishBusy ? "" : "disabled"}>開 1</button>${n >= 10 ? `<button type="button" class="fm-btn small ${color}" data-act="draw" data-pool="${k}" data-n="10" ${wishBusy ? "disabled" : ""}>開 10</button>` : ""}</div></div>`;
       };
       const bottles = `<div class="fm-panel"><div class="fm-wishes">${bottle("wish_normal", "用現在的幸運值")}${bottle("wish_rare", `第 ${st.rare_n} 瓶・大獎 ${pct(ro.x + ro.s)}`)}${bottle("wish_limited", "本月主題")}</div>
-        <p class="fm-note" style="margin:8px 2px 0">網站連續簽到每 3 天送普通瓶、每 7 天送稀有瓶；每月累計簽到 7 天送限定瓶，全勤再 2 瓶。</p></div>`;
+        <p class="fm-note" style="margin:8px 2px 0">網站連續簽到每 3 天送普通瓶、每 7 天送稀有瓶；每月累計簽到 7 天送限定瓶，全勤再 2 瓶。</p>
+        ${st.ltd_bonus && st.ltd_bonus.week_checkins !== undefined ? `<div class="fm-note" style="margin:8px 2px 0"><b>🌠 限定瓶加碼</b><br>
+          ${st.ltd_bonus.week_checkins >= 5 ? "✅" : "⬜"} 這週簽到滿 5 天（${Math.min(5, st.ltd_bonus.week_checkins)}/5）・每週 1 瓶<br>
+          ${st.ltd_bonus.boss_killed ? "✅" : "⬜"} 打倒這週的冒險每週王・每週 1 瓶<br>
+          ${st.ltd_bonus.focus_got >= 3 ? "✅" : "⬜"} 這個月專注每滿 10 小時（${st.ltd_bonus.month_hours} 小時，已拿 ${st.ltd_bonus.focus_got}/3 瓶）</div>` : ""}</div>`;
 
       /* 🔁 復刻池：過去月份的限定，還沒有的才會出 */
       const W0 = W, retroList = [];
