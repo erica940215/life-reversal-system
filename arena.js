@@ -1,6 +1,6 @@
 /* 序光計畫：⚔️ 冒險 → 🏟️ 競技場（資料在 sql/2026-11-01_冒險_競技場.sql） */
 (function () {
-  const ARENA_JS_VERSION = "20261101a";
+  const ARENA_JS_VERSION = "20261101b";
   const AR = { data: null, error: null, loading: false, busy: false, shown: false };
 
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -9,8 +9,8 @@
   const rerender = () => { if (window.RpgGame && window.RpgGame.state.tab === "arena") window.RpgGame.render(); };
 
   const TIER = {
-    bronze: ["青銅", "🥉", 0, 15], silver: ["白銀", "🥈", 15, 30], gold: ["黃金", "🥇", 30, 45],
-    diamond: ["鑽石", "💎", 45, 60], legend: ["傳說", "👑", 60, null]
+    bronze: ["青銅", "🥉", 0, 10], silver: ["白銀", "🥈", 10, 20], gold: ["黃金", "🥇", 20, 30],
+    diamond: ["鑽石", "💎", 30, 40], legend: ["傳說", "👑", 40, null]
   };
   const THEME = {
     focus: ["⏱️ 專注週", "這週專注分鐘數（不算補記）"], task: ["✅ 任務週", "這週完成的任務數"],
@@ -54,9 +54,9 @@
     const pct = t[3] ? Math.min(100, Math.round((d.week_points - t[2]) / (t[3] - t[2]) * 100)) : 100;
 
     const opp = (d.opponents || []).map(o => `<div class="ar-opp"><span class="ar-oe">${o.emoji}</span><div><b>${esc(o.name)}</b>
-      <small>${o.kind === "friend" ? `好友・今天 ${o.score} 分` : `電腦・實力 ${o.base}`}</small></div></div>`).join("");
+      <small>好友・今天目前 ${o.score} 分</small></div></div>`).join("");
     const recent = (d.recent || []).length ? (d.recent || []).map(r => `<li class="${r.win ? "w" : "l"}"><span>${md(r.day)}</span>
-      <span>${r.emoji || "🤖"} ${esc(r.name || "?")}</span><span>${r.my} : ${r.op}</span><b>${r.win ? "勝" : "敗"}</b></li>`).join("")
+      <span>${r.emoji || "🧑"} ${esc(r.name || "?")}</span><span>${r.my} : ${r.op}</span><b>${r.win ? "勝" : "敗"}</b></li>`).join("")
       : `<li class="ar-empty">還沒有戰績。今天做點事，明天就會結算。</li>`;
 
     const cup = d.cup || {}, today = d.today;
@@ -64,7 +64,7 @@
     const cupRounds = (cup.rounds || []).map(r => {
       const lab = { win: "✅ 勝", lose: "❌ 敗", out: "—", later: "⏳", today: "🔥 今天比賽" }[r.state] || "";
       const sc = r.op != null ? ` ${r.my} : ${r.op}` : r.state === "today" ? `（你目前 ${r.my} 分）` : "";
-      return `<li><span>${["八強", "四強", "決賽"][r.round - 1]} ${md(r.day)}</span><span>${r.opp.emoji} ${esc(r.opp.name)}</span><span>${lab}${sc}</span></li>`;
+      return `<li><span>${["第一戰", "第二戰", "第三戰"][r.round - 1]} ${md(r.day)}</span><span>${r.opp.emoji} ${esc(r.opp.name)}</span><span>${lab}${sc}</span></li>`;
     }).join("");
 
     const bought = d.bought || {};
@@ -84,28 +84,28 @@
 
     <div class="card rp-card">
       <h3>🗡️ 每日決鬥</h3>
-      <p class="rp-note">今天的 3 個對手。今天結束後用整天的分數自動比，贏 +3 聯賽點、15 競技幣；輸 +1、5 競技幣。那天什麼都沒做就不打。</p>
+      <p class="rp-note">每天跟好友比一場。今天結束後用整天的分數自動比，贏 +3 聯賽點、30 競技幣；輸 +1、10 競技幣。那天什麼都沒做就不打。</p>
       <p class="ar-today">你今天目前 <b>${d.score_today}</b> 分</p>
-      <div class="ar-opps">${opp}</div>
+      <div class="ar-opps">${opp || `<p class="rp-note">還沒有好友。到好友頁加好友之後就能每天對決。</p>`}</div>
       <h4>最近戰績（${d.record.win} 勝 ${d.record.lose} 敗）</h4>
       <ul class="ar-recent">${recent}</ul>
     </div>
 
     <div class="card rp-card">
       <h3>🏆 每週聯賽</h3>
-      <p class="rp-note">決鬥（贏 3、輸 1）＋這週分數每 20 分 1 點。下週一依段位發獎：青銅 30 幣 → 傳說 250 幣＋限定券＋限定瓶 2＋星光寶箱。</p>
+      <p class="rp-note">決鬥（贏 3、輸 1）＋這週分數每 20 分 1 點。下週一依段位發獎（青銅 <10、白銀 10、黃金 20、鑽石 30、傳說 40 點）：青銅 30 幣 → 傳說 250 幣＋限定券＋限定瓶 2＋星光寶箱。</p>
       ${boardHtml(d.board, "p", " 點")}
     </div>
 
     <div class="card rp-card">
       <h3>🎯 本週主題：${th[0]}</h3>
-      <p class="rp-note">${th[1]}。週日結束時前 3 名有獎：第 1 名 80 幣＋黃金寶箱、第 2 名 50 幣＋扭蛋幣 2、第 3 名 30 幣＋扭蛋幣 1。</p>
+      <p class="rp-note">${th[1]}。週日結束時第 1 名拿 80 幣＋黃金寶箱。</p>
       ${boardHtml(d.theme_board, "s", "")}
     </div>
 
     <div class="card rp-card">
       <h3>👑 每月錦標賽</h3>
-      <p class="rp-note">${md(cup.start)}～${md(cup.end)}・8 人淘汰賽，比賽那天的分數高就晉級。三場全勝拿冠軍：300 幣、星光寶箱、限定券 2、競技冠軍框。${inCup ? "" : "還沒開始，先把分數練起來。"}</p>
+      <p class="rp-note">${md(cup.start)}～${md(cup.end)}・跟好友三場對決，比那天的分數，三戰兩勝拿冠軍：300 幣、星光寶箱、限定券 2、競技冠軍框。${inCup ? "" : "還沒開始，先把分數練起來。"}</p>
       <ul class="ar-cup">${cupRounds}</ul>
       <p class="rp-note">🌟 賽季：每個月結束時，用這個月最高的週段位再發一次競技幣（20～200）。</p>
     </div>
@@ -140,7 +140,7 @@
     .ar-bar { height: 8px; border-radius: 4px; background: rgba(0,0,0,.08); overflow: hidden; margin-top: 4px; }
     .ar-bar i { display: block; height: 100%; background: linear-gradient(90deg, #e8a317, #d4889a); }
     .ar-today { margin: 6px 0; }
-    .ar-opps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .ar-opps { display: grid; gap: 8px; }
     .ar-opp { display: flex; gap: 6px; align-items: center; padding: 8px; border-radius: 10px; background: rgba(0,0,0,.04); }
     .ar-opp small, .ar-item small { display: block; opacity: .7; font-size: 12px; }
     .ar-oe, .ar-ie { font-size: 26px; }

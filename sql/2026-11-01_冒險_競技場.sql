@@ -3,11 +3,11 @@
 -- 要先跑過「2026-10-22_每週王.sql」「2026-10-19_好友.sql」。可以重複執行。
 --
 --   分數全部來自真實行動（不算運動）：簽到、專注、完成任務、習慣打卡 → 每天的「競技分」
---   🗡️ 每日決鬥：每天 3 場（好友優先，其他是電腦對手），那天結束後用整天的競技分＋戰力比輸贏
---       贏 +3 聯賽點、15 競技幣；輸 +1 點、5 競技幣
+--   🗡️ 每日決鬥：每天跟好友比一場，那天結束後用整天的競技分＋戰力比輸贏（沒有電腦對手）
+--       贏 +3 聯賽點、30 競技幣；輸 +1 點、10 競技幣
 --   🏆 每週聯賽：一週的聯賽點決定段位（青銅／白銀／黃金／鑽石／傳說），下週領獎
---   🎯 每週主題：專注週／任務週／習慣週／早起週輪流，跟好友和電腦比排名，前 3 名有獎
---   👑 每月錦標賽：每月最後 7 天，8 人淘汰賽（倒數第 6、4、2 天各一輪），冠軍拿頭像框和大獎
+--   🎯 每週主題：專注週／任務週／習慣週／早起週輪流，跟好友和電腦比排名，第 1 名有獎
+--   👑 每月錦標賽：每月最後 7 天，跟好友三戰兩勝（倒數第 6、4、2 天各一場），贏的拿頭像框和大獎
 --   🌟 賽季（每月）：這個月最高的週段位，月底發賽季獎
 --   🪙 競技商店：用競技幣換券、星願瓶、寶箱、頭像框
 -- =========================================================
@@ -88,18 +88,14 @@ begin
     my := public.arena_day_score(u, d);
     -- 那天什麼都沒做就不打（不算輸）
     continue when my <= 0;
-    select f into fr from public.arena_friends(u) f order by public.arena_h(f::text || d) limit 1;
-    for s in 1..3 loop
-      if s = 1 and fr is not null then
-        okind := 'friend'; oid := fr::text; op := public.arena_day_score(fr, d); opw := public.arena_power(fr);
-      else
-        b := bots->((abs(hashtext(u::text || d || s)) % jsonb_array_length(bots)));
-        okind := 'bot'; oid := b->>'id'; op := public.arena_bot_score(b, d); opw := pw * (0.8 + 0.4 * public.arena_h(oid || d));
-      end if;
+    s := 0;
+    for fr in select f from public.arena_friends(u) f loop
+      s := s + 1;
+      okind := 'friend'; oid := fr::text; op := public.arena_day_score(fr, d); opw := public.arena_power(fr);
       insert into public.arena_duels (user_id, day, slot, opp_kind, opp_id, my_score, opp_score, win)
         values (u, d, s, okind, oid, round(my + pw * 0.02, 1), round(op + opw * 0.02, 1), my + pw * 0.02 >= op + opw * 0.02)
         on conflict do nothing;
-      perform public.grant_item(u, 'arena_coin', case when my + pw * 0.02 >= op + opw * 0.02 then 15 else 5 end, 'arena-duel:' || d || ':' || s);
+      perform public.grant_item(u, 'arena_coin', case when my + pw * 0.02 >= op + opw * 0.02 then 30 else 10 end, 'arena-duel:' || d || ':' || s);
       n := n + 1;
     end loop;
   end loop;
@@ -122,7 +118,7 @@ $$;
 
 create or replace function public.arena_tier(p integer)
 returns text language sql immutable as $$
-  select case when p >= 60 then 'legend' when p >= 45 then 'diamond' when p >= 30 then 'gold' when p >= 15 then 'silver' else 'bronze' end
+  select case when p >= 40 then 'legend' when p >= 30 then 'diamond' when p >= 20 then 'gold' when p >= 10 then 'silver' else 'bronze' end
 $$;
 
 -- 週主題
@@ -159,12 +155,8 @@ declare
 begin
   select f into fr from public.arena_friends(u) f limit 1;
   for r in 1..3 loop
-    if fr is not null and r = 3 then
-      opp := jsonb_build_object('kind', 'friend', 'id', fr, 'name', public.arena_name(fr), 'emoji', '🧑');
-    else
-      opp := bots->((abs(hashtext(u::text || mon || 'cup' || r)) % jsonb_array_length(bots)));
-      opp := jsonb_build_object('kind', 'bot', 'id', opp->>'id', 'name', opp->>'name', 'emoji', opp->>'emoji', 'base', opp->'base');
-    end if;
+    if fr is null then exit; end if;
+    opp := jsonb_build_object('kind', 'friend', 'id', fr, 'name', public.arena_name(fr), 'emoji', '🧑');
     if not alive or pending then
       rounds := rounds || jsonb_build_object('round', r, 'day', rdays[r], 'opp', opp, 'state', case when pending then 'later' else 'out' end);
       continue;
@@ -178,10 +170,9 @@ begin
     op := case when opp->>'kind' = 'friend' then public.arena_day_score(fr, rdays[r]) + public.arena_power(fr) * 0.02
                else public.arena_bot_score((select e from jsonb_array_elements(bots) e where e->>'id' = opp->>'id'), rdays[r]) * (1 + 0.15 * r) + pw * 0.02 end;
     rounds := rounds || jsonb_build_object('round', r, 'day', rdays[r], 'opp', opp, 'my', round(my, 1), 'op', round(op, 1), 'state', case when my >= op then 'win' else 'lose' end);
-    if my < op then alive := false; end if;
   end loop;
   return jsonb_build_object('start', last - 6, 'end', last, 'rounds', rounds,
-    'champion', (select count(*) from jsonb_array_elements(rounds) x where x->>'state' = 'win') = 3);
+    'champion', (select count(*) from jsonb_array_elements(rounds) x where x->>'state' = 'win') >= 2);
 end; $$;
 revoke all on function public.arena_cup(uuid, date) from public, anon, authenticated;
 
@@ -211,9 +202,8 @@ begin
   my := public.arena_theme_score(u, th, pws);
   if my > 0 then
     select 1 + count(*) into rank from (
-      select public.arena_bot_theme(b, th, pws) s from (select b from jsonb_array_elements(public.arena_bots()) b limit 5) q
-      union all select public.arena_theme_score(f, th, pws) from public.arena_friends(u) f) x where x.s > my;
-    if rank <= 3 then
+      select public.arena_theme_score(f, th, pws) from public.arena_friends(u) f) x where x.s > my;
+    if rank = 1 and exists (select 1 from public.arena_friends(u)) then
       g := case rank when 1 then '{"arena_coin":80,"chest_gold":1}' when 2 then '{"arena_coin":50,"gacha_coin":2}' else '{"arena_coin":30,"gacha_coin":1}' end::jsonb;
       if public.grant_item(u, 'arena_coin', (g->>'arena_coin')::int, 'arena-theme:' || pws) then
         for k, v in select key, value::int from jsonb_each_text(g - 'arena_coin') loop perform public.grant_item(u, k, v, 'arena-theme:' || pws || ':' || k); end loop;
@@ -261,25 +251,19 @@ declare
 begin
   if u is null then raise exception '尚未登入'; end if;
   perform public.arena_settle(u);
+  perform public.arena_settle(f) from public.arena_friends(u) f;
   rewards := public.arena_rewards(u);
   pw := public.arena_power(u);
-  select f into fr from public.arena_friends(u) f order by public.arena_h(f::text || t) limit 1;
-  -- 今天的對手（今天結束後結算）
-  select jsonb_agg(x order by s) into today from (
-    select s, case when s = 1 and fr is not null then jsonb_build_object('slot', s, 'kind', 'friend', 'name', public.arena_name(fr), 'emoji', '🧑', 'score', round(public.arena_day_score(fr, t), 1))
-      else (select jsonb_build_object('slot', s, 'kind', 'bot', 'name', b->>'name', 'emoji', b->>'emoji', 'base', b->'base')
-            from (select bots->((abs(hashtext(u::text || t || s)) % jsonb_array_length(bots))) b) q) end x
-    from generate_series(1, 3) s) z;
+  -- 今天的對手：好友
+  select jsonb_agg(jsonb_build_object('slot', 1, 'kind', 'friend', 'name', public.arena_name(f), 'emoji', '🧑', 'score', round(public.arena_day_score(f, t), 1))) into today
+    from public.arena_friends(u) f;
   -- 聯賽排行：你、好友、8 個電腦
   select jsonb_agg(x order by (x->>'p')::int desc) into board from (
     select jsonb_build_object('name', '你', 'emoji', '⭐', 'me', true, 'p', public.arena_week_points(u, ws)) x
-    union all select jsonb_build_object('name', public.arena_name(f), 'emoji', '🧑', 'p', public.arena_week_points(f, ws)) from public.arena_friends(u) f
-    union all select jsonb_build_object('name', b->>'name', 'emoji', b->>'emoji', 'p', public.arena_bot_week(b, ws, t)) from (select b from jsonb_array_elements(bots) b limit 8) q) z;
+    union all select jsonb_build_object('name', public.arena_name(f), 'emoji', '🧑', 'p', public.arena_week_points(f, ws)) from public.arena_friends(u) f) z;
   select jsonb_agg(x order by (x->>'s')::numeric desc) into tboard from (
     select jsonb_build_object('name', '你', 'emoji', '⭐', 'me', true, 's', round(public.arena_theme_score(u, th, ws), 0)) x
-    union all select jsonb_build_object('name', public.arena_name(f), 'emoji', '🧑', 's', round(public.arena_theme_score(f, th, ws), 0)) from public.arena_friends(u) f
-    union all select jsonb_build_object('name', b->>'name', 'emoji', b->>'emoji', 's', round(public.arena_bot_theme(b, th, ws) * least(1, (t - ws + 1) / 7.0), 0))
-      from (select b from jsonb_array_elements(bots) b limit 5) q) z;
+    union all select jsonb_build_object('name', public.arena_name(f), 'emoji', '🧑', 's', round(public.arena_theme_score(f, th, ws), 0)) from public.arena_friends(u) f) z;
   return json_build_object(
     'today', t, 'week_start', ws, 'power', pw,
     'score_today', round(public.arena_day_score(u, t), 1),
