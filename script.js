@@ -2280,7 +2280,7 @@ async function addTask() {
 
           gold_reward: reward.gold,
 
-          task_date: getToday(),
+          task_date: (document.getElementById("new-task-date") || {}).value || getToday(),
 
           completed: false
 
@@ -2394,6 +2394,10 @@ function clearTaskForm() {
     title.value = "";
 
   }
+
+  const newDate = document.getElementById("new-task-date");
+
+  if (newDate) newDate.value = "";
 
 
   const endDate =
@@ -2563,7 +2567,7 @@ async function editTask(taskId) {
 
   if (task.completed) {
 
-    notes.push("已完成的任務不能改難度（要先取消勾選，避免 EXP 對不上）。");
+    notes.push("已完成的任務不能改難度和日期（要先取消勾選，避免 EXP 對不上）。");
 
   }
 
@@ -2598,6 +2602,11 @@ async function editTask(taskId) {
         <select id="edit-task-difficulty" ${task.completed ? "disabled" : ""}>
           ${difficultyOptionsHtml(task.difficulty)}
         </select>
+      </div>
+
+      <div class="modal-field">
+        <label for="edit-task-date">日期</label>
+        <input type="date" id="edit-task-date" value="${escapeHtml(task.task_date || "")}" ${task.completed ? "disabled" : ""}>
       </div>
 
       ${notes.map(note => `<p class="small-note">${note}</p>`).join("")}
@@ -2648,6 +2657,15 @@ async function saveTaskEdit(task) {
     title,
     category
   };
+
+  const dateEl = document.getElementById("edit-task-date");
+
+  if (!task.completed && dateEl && dateEl.value && dateEl.value !== task.task_date) {
+
+    update.task_date = dateEl.value;
+
+
+  }
 
 
   /* 難度改了 → 獎勵跟著改（只限還沒完成的任務） */
