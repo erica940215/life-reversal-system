@@ -1985,6 +1985,10 @@ function renderTasks() {
 
             <div class="task-actions">
 
+              <button title="往上" class="task-move" onclick="moveTask('${task.id}', -1)">⬆️</button>
+
+              <button title="往下" class="task-move" onclick="moveTask('${task.id}', 1)">⬇️</button>
+
               <button
                 title="編輯"
                 onclick="editTask('${task.id}')"
@@ -2011,11 +2015,51 @@ function renderTasks() {
   };
 
 
-  /* 照分類分組（分類的順序 = 🏷️ 任務分類的順序） */
+  /* 照分類分組（分類的順序 = 🏷️ 任務分類的順序）；同一組裡照你用 ⬆⬇ 排的順序 */
+
+  tasks = sortByTaskOrder(tasks);
 
   list.innerHTML = renderTaskGroups(tasks, renderOne) + skippedHtml;
 
 }
+
+
+/* =========================================================
+   18-b. 今日任務順序（⬆⬇，記在這台裝置）
+========================================================= */
+
+function loadTaskOrder() {
+  try { const v = JSON.parse(localStorage.getItem("taskOrder") || "[]"); return Array.isArray(v) ? v.map(String) : []; } catch (_) { return []; }
+}
+
+function sortByTaskOrder(list) {
+  const rank = new Map(loadTaskOrder().map((id, i) => [id, i]));
+  return list
+    .map((t, i) => ({ t, i }))
+    .sort((a, b) => {
+      const ra = rank.has(String(a.t.id)) ? rank.get(String(a.t.id)) : 1e6 + a.i;
+      const rb = rank.has(String(b.t.id)) ? rank.get(String(b.t.id)) : 1e6 + b.i;
+      return ra - rb;
+    })
+    .map(x => x.t);
+}
+
+function moveTask(taskId, dir) {
+  const all = sortByTaskOrder(currentTasks || []);
+  const me = all.find(t => String(t.id) === String(taskId));
+  if (!me) return;
+  const same = all.filter(t => (t.category || "") === (me.category || ""));
+  const i = same.indexOf(me), j = i + dir;
+  if (j < 0 || j >= same.length) return;
+  const other = same[j];
+  const ids = all.map(t => String(t.id));
+  const a = ids.indexOf(String(me.id)), b = ids.indexOf(String(other.id));
+  [ids[a], ids[b]] = [ids[b], ids[a]];
+  try { localStorage.setItem("taskOrder", JSON.stringify(ids.slice(-500))); } catch (_) {}
+  renderTasks();
+}
+
+window.moveTask = moveTask;
 
 
 /* =========================================================
