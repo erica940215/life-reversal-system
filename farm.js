@@ -369,7 +369,10 @@ const FARM_JS_VERSION = "2026-10-28 v2";
 
   function machineMinutes(rec) {
     if (D.machines[rec.machine]?.fixed) return rec.minutes;
-    return S.lv >= D.caps.workshopHalf ? Math.max(1, Math.round(rec.minutes / 2)) : rec.minutes;
+    const base = S.lv >= D.caps.workshopHalf ? rec.minutes / 2 : rec.minutes;
+    /* 🧹 生活打卡等級：每級快 1%，最多 30% */
+    const sp = typeof net !== "undefined" && net.life && net.life.perks ? Math.min(30, net.life.perks.speed || 0) : 0;
+    return Math.max(1, Math.round(base * (1 - sp / 100)));
   }
 
 
@@ -1320,6 +1323,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
         const perfect = own("p_phoenix") && Math.random() < 0.1;
         if (perfect) addDew(d.sell);
         out.push({ dish: job.d, exp: d.exp, perfect });
+        rollDish(job.d);
         got++;
       }
       job.got = got;
@@ -2363,6 +2367,32 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     }
   }
 
+  /* 🌱 生活打卡：加成（加工速度、水車） */
+  async function loadLife() {
+    if (net.mode !== "server") return;
+    try { const { data, error } = await db.rpc("life_status"); if (!error) net.life = data; } catch (e) { /* 還沒跑 SQL */ }
+  }
+
+  /* 🍱 做好一道菜：擲品種（豪華、奇蹟） */
+  const dishRollQ = [];
+  let dishRolling = false;
+  function rollDish(dish) {
+    if (net.mode !== "server" || !net.life || !net.life.domains || !(net.life.domains.food && net.life.domains.food.level > 0)) return;
+    dishRollQ.push(dish);
+    if (dishRolling) return;
+    dishRolling = true;
+    (async () => {
+      while (dishRollQ.length) {
+        const d = dishRollQ.shift();
+        try {
+          const { data } = await db.rpc("life_dish_roll", { p_game: "farm", p_dish: d });
+          if (data && data.tier) toast(`${data.tier === "mir" ? "🌈 奇蹟品種" : "👑 豪華品種"}：${D.dishes[d] ? D.dishes[d].name : d}${data.first ? "（新收藏！送星屑）" : ""}`);
+        } catch (e) { break; }
+      }
+      dishRolling = false;
+    })();
+  }
+
   async function loadWishStatus() {
     if (net.mode !== "server") return;
     try {
@@ -3022,6 +3052,15 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       for (const row of data || []) if (!row.is_makeup) credits.push([row.log_date, row.habit_id, "hbucket"]);
     });
 
+    await read("生活打卡", async () => {
+      /* 💧 健康領域全勤：多裝幾桶水 */
+      const { data, error } = await db.rpc("life_status");
+      if (error) throw error;
+      net.life = data;
+      const n = (data && data.perks && data.perks.water_buckets) || 0;
+      for (let i = 1; i <= n; i++) credits.push([day, "LH" + i, "hbucket"]);
+    });
+
     await read("晨間打卡", async () => {
       const { data, error } = await db.from("morning_checkins").select("check_date")
         .eq("user_id", uid()).gte("check_date", day).limit(10);
@@ -3678,6 +3717,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     if (isFarmVisible() && !net.gated) return;
     try {
       if (!net.loaded || net.userId !== uid()) await loadSave();
+      await loadLife();
       awayRun();
       /* 自動餵食器：不在農場時也照順序收飼料、餵 */
       if (processTimers()) saveSoon(true);
@@ -7037,6 +7077,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       if (!(net.loaded && net.userId === uid())) await loadSave();
       await loadWishStatus();
       await loadAchStatus();
+      await loadLife();
       replayPending();
     } catch (error) {
       console.error("星露島載入失敗：", error);

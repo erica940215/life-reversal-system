@@ -9,7 +9,8 @@
   const shift = (d, n) => { const t = new Date(d + "T00:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
   const lastDays = n => { const t = today(); return Array.from({ length: n }, (_, i) => shift(t, i - n + 1)); };
   const dayOf = ts => (typeof appDateOf === "function" ? appDateOf(ts) : String(ts).slice(0, 10));
-  const checked = (sid, d) => !!(P.logs[sid] && P.logs[sid][d]);
+  const weekOf = d => { const t = new Date(d + "T00:00:00Z"); const w = (t.getUTCDay() + 6) % 7; t.setUTCDate(t.getUTCDate() - w); return t.toISOString().slice(0, 10); };
+  const checked = (sid, d) => !!(P.logs[sid] && P.logs[sid][P.wk && P.wk.has(sid) ? weekOf(d) : d]);
   /* 那一天已經存在的步驟（之後才加的步驟不算進以前的日子） */
   const stepsOn = (p, d) => (P.steps[p.id] || []).filter(s => dayOf(s.created_at) <= d);
   const startOf = p => dayOf(p.created_at);
@@ -82,6 +83,22 @@
     .pj-kind button{border:1px solid #343b4b;background:transparent;color:inherit;font:inherit;font-weight:600;padding:10px;border-radius:10px;cursor:pointer;text-align:left}
     .pj-kind button small{display:block;font-weight:400;font-size:12px;opacity:.65;margin-top:2px}
     .pj-kind button.on{border-color:var(--accent,#6c63ff);background:rgba(108,99,255,.18)}
+    .lf-head{display:flex;justify-content:space-between;align-items:center;gap:8px}.lf-head h2{margin:0}
+    .lf-tabs{display:flex;gap:4px}.lf-tabs button{border:1px solid #343b4b;background:transparent;color:inherit;font:inherit;font-size:13px;padding:5px 10px;border-radius:99px;cursor:pointer}
+    .lf-tabs button.on{background:var(--accent,#6c63ff);border-color:transparent;color:#fff}
+    .lf-sum{font-size:12px;opacity:.7;margin:8px 0 10px}
+    .lf-doms{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+    .lf-dom{border:1px solid rgba(127,127,127,.22);border-radius:12px;padding:10px;cursor:pointer}
+    .lf-dom.clear{border-color:#e8b931;box-shadow:0 0 0 1px #e8b93155 inset}
+    .lf-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}.lf-top span{font-size:12px;font-weight:700;opacity:.8}
+    .lf-dom small{display:block;font-size:12px;opacity:.75;margin-top:4px}.lf-dom .lf-perk{opacity:.95;color:#e8b931}
+    .lf-tag{font-size:11px;opacity:.55;margin-left:auto;white-space:nowrap}
+    .lf-vars{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-top:10px}
+    .lf-var{border-radius:12px;padding:10px;font-weight:700;position:relative}
+    .lf-var small{display:block;font-weight:500;font-size:11px;margin-top:3px;opacity:.85}
+    .lf-var.lux{background:linear-gradient(135deg,#3a2c0a,#6b4f12);color:#ffe9a8;border:2px solid #e8b931;box-shadow:0 0 12px #e8b93166}
+    .lf-var.mir{color:#fff;background:linear-gradient(135deg,#ff6fa8,#ffb86b,#ffe66b,#7ee8a5,#6bc8ff,#b48cff);background-size:300% 300%;animation:lfrain 4s ease infinite;border:2px solid #fff;box-shadow:0 0 16px #b48cffaa;text-shadow:0 1px 3px rgba(0,0,0,.45)}
+    @keyframes lfrain{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
     .pj-grid{overflow-x:auto;margin:10px 0 4px}
     .pj-grid table{border-collapse:collapse;font-size:12px;width:100%}
     .pj-grid th,.pj-grid td{padding:5px 4px;text-align:center;border-bottom:1px solid rgba(127,127,127,.14);white-space:nowrap}
@@ -136,21 +153,98 @@
 
   async function load() {
     if (!hasDb()) return;
-    const [pr, st, ss, lg] = await Promise.all([
+    const [pr, st, ss, lg, lf] = await Promise.all([
       db.from("projects").select("*").order("status").order("sort").order("created_at"),
       db.from("project_steps").select("*").order("sort").order("created_at"),
       db.from("project_stats").select("*").maybeSingle(),
-      db.from("project_step_logs").select("step_id,day,done").gte("day", lastDays(60)[0])
+      db.from("project_step_logs").select("step_id,day,done").gte("day", lastDays(66)[0]),
+      db.rpc("life_status")
     ]);
+    P.life = lf.error ? null : lf.data;
+    if (P.life && (P.life.rewards || []).length) lifeToast(P.life.rewards);
     if (pr.error) { render(pr.error); return; }
     P.list = pr.data || [];
     P.steps = {};
     (st.data || []).forEach(s => (P.steps[s.project_id] = P.steps[s.project_id] || []).push(s));
     P.stats = ss.data || null;
+    P.wk = new Set();
+    P.list.filter(p => p.domain === "weekly").forEach(p => (P.steps[p.id] || []).forEach(x => P.wk.add(x.id)));
     P.logs = {};
     (lg.data || []).forEach(l => { if (l.done) (P.logs[l.step_id] = P.logs[l.step_id] || {})[l.day] = true; });
     P.loaded = true;
     render();
+  }
+
+  /* ---------- 🌱 生活打卡：六個領域、依時段看、加成、品種圖鑑 ---------- */
+  const DOM = [
+    ["sleep", "🛏️", "作息", L => `早上免費農場 ${L.perks.morning_minutes} 分鐘`],
+    ["care", "🧴", "清潔保養", L => `全勤：刮刮樂${(L.domains.care.level || 0) >= 10 ? "＋扭蛋幣" : "（Lv10 再加扭蛋幣）"}`],
+    ["health", "💧", "健康", L => `全勤：水車 +${L.perks.water_max} 桶`],
+    ["food", "🍱", "飲食", L => `料理品種：👑 ${L.perks.lux}%・🌈 ${L.perks.mir}%`],
+    ["life", "🧹", "生活", L => `農場加工快 ${L.perks.speed}%`],
+    ["weekly", "📅", "每週", L => `這週全勤：每週王每天 +1 次出擊`]
+  ];
+  const TIMES = [["☀️", "☀️ 早晨"], ["🍱", "🍱 午間"], ["🌙", "🌙 晚上"], ["", "🕐 隨時"]];
+  const ITEMN = { scratch_card: "刮刮樂", gacha_coin: "扭蛋幣", wish_limited: "限定星願瓶", wish_rare: "稀有星願瓶", chest_star: "星光寶箱",
+    chest_gold: "金寶箱", ticket_normal: "普通召喚券", farmpass10: "農場入場卷" };
+  P.lifeView = (() => { try { return localStorage.getItem("lifeView") || "domain"; } catch (_) { return "domain"; } })();
+
+  function lifeToast(list) {
+    list.forEach((r, i) => setTimeout(() => {
+      const txt = r.item ? `生活寶箱：✨ 星屑 ×50＋${ITEMN[r.item] || r.item} ×${r.qty}` : r.text;
+      if (r.box) pop("🎁 生活寶箱！", txt.replace("生活寶箱：", ""), "crit"); else toast(`${r.why}：${txt}`);
+    }, 1300 + i * 1300));
+  }
+
+  function dishName(game, key) {
+    const D = window.FARM_DATA;
+    const d = D && ((D.dishes && D.dishes[key]) || (D.items && D.items[key]) || (D.crops && D.crops[key]));
+    return d ? (d.emoji ? d.emoji + " " : "") + d.name : key;
+  }
+
+  function lifeHtml() {
+    const L = P.life;
+    if (!L) return "";
+    const ps = P.list.filter(p => p.domain && p.status === "active");
+    if (!ps.length) return `<section class="card lf-card"><h2>🌱 生活打卡</h2>
+      <p style="font-size:13px;opacity:.75">作息、清潔保養、健康、飲食、生活、每週，六個領域各自升級，等級會變成農場、冒險、末世的加成。</p>
+      <button class="btn btn-primary" data-a="lifeseed">🌱 一鍵建立六個領域</button></section>`;
+    const t = today();
+    const byDom = d => ps.find(p => p.domain === d);
+    const view = P.lifeView === "time" ? "time" : "domain";
+    let body;
+    if (view === "domain") {
+      body = `<div class="lf-doms">${DOM.map(([k, em, nm, perk]) => {
+        const p = byDom(k); if (!p) return "";
+        const st = P.steps[p.id] || [], d = st.filter(x => checked(x.id, t)).length;
+        const clear = st.length && d === st.length;
+        return `<div class="lf-dom ${clear ? "clear" : ""}" data-a="expand" data-id="${p.id}"><div class="lf-top"><b>${em} ${nm}</b><span>Lv ${p.level}</span></div>
+          <div class="pj-bar"><i style="width:${st.length ? Math.round(d / st.length * 100) : 0}%"></i></div>
+          <small>${k === "weekly" ? "這週" : "今天"} ${d}/${st.length}${clear ? " 🌟" : ""}</small><small class="lf-perk">${esc(perk(L))}</small></div>`;
+      }).join("")}</div>`;
+    } else {
+      const rows = [];
+      ps.forEach(p => (P.steps[p.id] || []).forEach(x => rows.push({ x, p })));
+      const timeOf = r => r.p.domain === "weekly" ? "W" : (TIMES.find(([e]) => e && r.x.title.startsWith(e)) || ["", ""])[0];
+      const groups = TIMES.concat([["W", "📅 這週"]]);
+      body = groups.map(([e, label]) => {
+        const list = rows.filter(r => timeOf(r) === e);
+        if (!list.length) return "";
+        const d = list.filter(r => checked(r.x.id, t)).length;
+        return `<h3 class="pj-cat-h">${label}<small>${d}/${list.length}</small></h3><ul class="pj-steps">${list.map(({ x, p }) => `
+          <li class="${checked(x.id, t) ? "done" : ""}"><input type="checkbox" data-a="step" data-id="${x.id}" ${checked(x.id, t) ? "checked" : ""}>
+          <span class="pj-st">${esc(x.title)}</span><small class="lf-tag">${esc(p.title)}</small></li>`).join("")}</ul>`;
+      }).join("");
+    }
+    const vars = L.vars || [];
+    const varHtml = P.lifeVars ? (vars.length ? `<div class="lf-vars">${vars.map(v => `<div class="lf-var ${v.tier}"><span>${esc(dishName(v.game, v.dish))}</span>
+        <small>${v.tier === "mir" ? "🌈 奇蹟" : "👑 豪華"}・${v.game === "doom" ? "末世" : "農場"}・×${v.n}</small></div>`).join("")}</div>`
+        : `<p style="font-size:13px;opacity:.7">還沒有。飲食升級之後，在農場或末世做料理就有機會做出豪華、奇蹟品種，第一次做出來送星屑。</p>`) : "";
+    return `<section class="card lf-card"><div class="lf-head"><h2>🌱 生活打卡</h2>
+        <div class="lf-tabs"><button data-a="lifeview" data-id="domain" class="${view === "domain" ? "on" : ""}">依領域</button><button data-a="lifeview" data-id="time" class="${view === "time" ? "on" : ""}">依時段</button></div></div>
+      <p class="lf-sum">${L.all_clear ? "🌟 今天五個領域全勤，生活寶箱已開" : "五個每日領域今天都全勤 → 開生活寶箱"}・這週全勤 ${L.week_all}/5 天（滿 5 天送限定星願瓶）・☀️ 項目 9 點前勾經驗 ×1.5</p>
+      ${body}
+      <button class="btn btn-small" data-a="lifevars" style="margin-top:10px">🍽️ 品種圖鑑（${vars.length}）${P.lifeVars ? " ▴" : " ▾"}</button>${varHtml}</section>`;
   }
 
   function statsHtml() {
@@ -288,7 +382,7 @@
       </div>
       <div class="pj-bar"><i style="width:${pct}%"></i></div>
       <div class="pj-bar xp"><i style="width:${xpPct}%"></i></div>
-      <div class="pj-meta"><span>今天 ${pct}%${steps.length && done === steps.length ? " 🌟 全部完成" : ""}</span><span>EXP ${p.xp - lo}/${hi - lo}</span></div>
+      <div class="pj-meta"><span>${p.domain === "weekly" ? "這週" : "今天"} ${pct}%${steps.length && done === steps.length ? " 🌟 全部完成" : ""}</span><span>EXP ${p.xp - lo}/${hi - lo}</span></div>
       ${open ? `
         ${p.done_def ? `<div class="pj-def">🎯 目標：${esc(p.done_def)}</div>` : ""}
         <ul class="pj-steps">${steps.map(s => `
@@ -302,7 +396,7 @@
         ${P.makeup[p.id] ? makeupHtml(p) : ""}
         ${P.grid[p.id] ? gridHtml(p) : ""}
         <div class="pj-actions">
-          ${stepsOn(p, shift(t, -1)).length && shift(t, -1) >= startOf(p) ? `<button class="btn btn-small" data-a="makeup" data-id="${p.id}">📅 ${P.makeup[p.id] ? "收起補打卡" : "補昨天" + (dayClear(p, shift(t, -1)) ? " ✓" : "")}</button>` : ""}
+          ${p.domain !== "weekly" && stepsOn(p, shift(t, -1)).length && shift(t, -1) >= startOf(p) ? `<button class="btn btn-small" data-a="makeup" data-id="${p.id}">📅 ${P.makeup[p.id] ? "收起補打卡" : "補昨天" + (dayClear(p, shift(t, -1)) ? " ✓" : "")}</button>` : ""}
           <button class="btn btn-small" data-a="grid" data-id="${p.id}">📊 ${P.grid[p.id] ? "收起紀錄表" : "近 14 天紀錄表"}</button>
           <button class="btn btn-small" data-a="edit" data-id="${p.id}">✏️ 編輯</button>
           <button class="btn btn-small" data-a="del" data-id="${p.id}">🗑️ 刪除</button>
@@ -322,7 +416,7 @@
     const done = P.list.filter(p => p.status === "done");
     const daily = P.newKind === "daily";
     const order = p => (p.kind === "daily" ? 0 : 1);
-    root.innerHTML = statsHtml() + overviewHtml() + `
+    root.innerHTML = lifeHtml() + statsHtml() + overviewHtml() + `
       <section class="card"><h2>➕ 新專案</h2><div class="pj-add">
         <div class="pj-kind">
           <button type="button" data-a="kind" data-id="daily" class="${daily ? "on" : ""}">🔁 每日重複<small>每天重新打勾，會記錄成表格</small></button>
@@ -387,7 +481,9 @@
       else pop(`+${data.xp} EXP`, [dust, data.combo > 1 ? `🔥 連擊 ${data.combo} 天` : ""].filter(Boolean).join("　"));
       levelToast(data.levelUps);
     }
-    if (data.dayClear) setTimeout(() => toast(`🌟 今天全部完成！+${data.dayClear.xp} EXP、✨ 星屑 ×${data.dayClear.stardust}`), 1000);
+    if (data.morning) setTimeout(() => toast(`☀️ 早上 9 點前完成：多 +${data.morning} EXP`), 700);
+    if (data.dayClear) setTimeout(() => toast(`🌟 ${P.wk.has(id) ? "這週" : "今天"}全部完成！+${data.dayClear.xp} EXP、✨ 星屑 ×${data.dayClear.stardust}`), 1000);
+    if (data.life && data.life.length) lifeToast(data.life);
     load();
   }
 
@@ -418,6 +514,14 @@
       const { data, error } = await db.rpc("project_step_makeup", { p_step: id });
       if (error) { toast("❌ " + error.message); return load(); }
       if (data.done && data.xp > 0) { pop(`+${data.xp} EXP`, `📅 補打卡　✨ +${data.stardust || 0} 星屑`); levelToast(data.levelUps); }
+      return load();
+    }
+    if (a === "lifeview") { P.lifeView = id; try { localStorage.setItem("lifeView", id); } catch (_) {} render(); return; }
+    if (a === "lifevars") { P.lifeVars = !P.lifeVars; render(); return; }
+    if (a === "lifeseed") {
+      const { data, error } = await db.rpc("life_seed");
+      if (error) { toast("❌ " + error.message); return; }
+      toast(`🌱 建好 ${data.made} 個生活打卡領域`);
       return load();
     }
     if (a === "grid") { P.grid[id] = !P.grid[id]; render(); return; }
