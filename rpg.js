@@ -9,7 +9,7 @@
 
 (function () {
 
-  const RPG_JS_VERSION = "2026-10-23 v9";
+  const RPG_JS_VERSION = "2026-11-01 v10";
 
   /* 有圖的檔名（放進 img/rpg/ 之後把 key 加進來，沒加的就顯示 emoji） */
   const RPG_IMG = new Set([
@@ -481,8 +481,8 @@
     if (RP.error) { root.innerHTML = `<div class="card rp-card"><p class="rp-note">載入失敗：${esc(RP.error)}</p></div>`; return; }
     if (!RP.status) { root.innerHTML = `<div class="card rp-card"><p class="rp-note">冒險載入中…</p></div>`; return; }
 
-    const tabs = [["hero", "角色"], ["boss", "每週王"], ["team", "小隊"], ["journey", "旅程"], ["fun", "驚喜"], ["summon", "召喚"], ["book", "圖鑑"]];
-    const body = RP.tab === "summon" ? summonHtml() : RP.tab === "book" ? bookHtml()
+    const tabs = [["hero", "角色"], ["boss", "每週王"], ["team", "小隊"], ["journey", "旅程"], ["arena", "競技"], ["fun", "驚喜"], ["summon", "召喚"], ["book", "圖鑑"]];
+    const body = RP.tab === "arena" ? (window.ArenaGame ? window.ArenaGame.html() : "") : RP.tab === "summon" ? summonHtml() : RP.tab === "book" ? bookHtml()
       : RP.tab === "boss" ? (window.StudyGame ? window.StudyGame.worldHtml() : "") + bossHtml()
       : RP.tab === "fun" ? (window.EventGame ? window.EventGame.seasonHtml() + window.EventGame.halloweenHtml() : "") + (window.FunGame ? window.FunGame.html() : "")
       : RP.tab === "team" ? (window.TeamGame ? window.TeamGame.html() : "") + (window.GrowthGame ? window.GrowthGame.betsHtml() : "")
