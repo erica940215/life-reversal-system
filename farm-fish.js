@@ -176,5 +176,7 @@
   D.machines.feedmill.auto = true;
   /* 小麥飼料：1 份小麥做 5 份飼料 */
   D.recipes.feed_wheat.qty = 5;
+  /* 小麥種子便宜：1 星露 */
+  D.crops.wheat.seed = 1;
   D.recipes.bait = { out: "bait", qty: 5, need: { feed: 2, wheat: 1 }, minutes: 10, machine: "baitline", lv: 15 };
 })();
