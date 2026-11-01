@@ -6945,11 +6945,12 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       <h3 class="ol" style="margin:0 0 6px">🚪 ${expired ? "農場時間到了" : "進農場"}</h3>
       <p class="fm-note" style="margin:0 0 12px">${expired ? "時間用完了，再用一張卷或等明天的免費時段。" : "要有入場時間才能進農場。"}</p>
       <div style="display:flex;flex-direction:column;gap:8px;align-items:stretch">
-        ${btn("morning", g.tasks_today === 0 ? "☀️ 早上免費 15 分鐘（先完成 1 個任務）" : "☀️ 早上免費 15 分鐘", g.morning_ok)}
-        ${btn("pass10", `🎫 入場卷 10 分鐘（剩 ${g.pass10 || 0} 張）`, (g.pass10 || 0) > 0)}
-        ${btn("pass30", `🌙 睡前卷 30 分鐘（剩 ${g.pass30 || 0} 張）`, (g.pass30 || 0) > 0)}
+        ${g.tasks_today === 0 ? `<p class="fm-note" style="margin:0;color:#b8322a;font-weight:600">✅ 先完成今天的 1 個任務才能進農場</p>` : ""}
+        ${btn("morning", "☀️ 早上免費 15 分鐘", g.morning_ok)}
+        ${btn("pass10", `🎫 入場卷 10 分鐘（剩 ${g.pass10 || 0} 張）`, (g.pass10 || 0) > 0 && g.tasks_today !== 0)}
+        ${btn("pass30", `🌙 睡前卷 30 分鐘（剩 ${g.pass30 || 0} 張）`, (g.pass30 || 0) > 0 && g.tasks_today !== 0)}
       </div>
-      <p class="fm-note" style="margin:12px 0 0">完成一個任務、專注每滿 1 小時，都會得到一張入場卷。早上免費是 5:00～11:59，每天一次，要先完成今天的 1 個任務。</p></div>`;
+      <p class="fm-note" style="margin:12px 0 0">完成一個任務、專注每滿 1 小時，都會得到一張入場卷。早上免費是 5:00～11:59，每天一次。不管用哪一種，都要先完成今天的 1 個任務。</p></div>`;
   }
 
   async function enterGate(kind) {

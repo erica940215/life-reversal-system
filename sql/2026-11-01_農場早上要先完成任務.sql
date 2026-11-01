@@ -1,5 +1,5 @@
 -- =========================================================
--- 序光計畫：🚪 農場早上免費 15 分鐘，要先完成今天的 1 個任務才能用
+-- 序光計畫：🚪 進農場（早上免費、入場卷、睡前卷）都要先完成今天的 1 個任務
 -- 要先跑過「2026-10-22_農場入場.sql」。可以重複執行。
 -- =========================================================
 do $$ begin
@@ -29,8 +29,8 @@ grant execute on function public.farm_status() to authenticated;
 create or replace function public.farm_enter(p_kind text)
 returns json language plpgsql security definer set search_path to 'public' as $$
 begin
-  if p_kind = 'morning' and public.farm_task_today(auth.uid()) < 1 then
-    raise exception '先完成今天的 1 個任務，才能用早上免費時間';
+  if public.farm_task_today(auth.uid()) < 1 then
+    raise exception '先完成今天的 1 個任務，才能進農場';
   end if;
   return public.farm_enter_base(p_kind);
 end; $$;
