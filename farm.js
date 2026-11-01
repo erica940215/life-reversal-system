@@ -3653,9 +3653,11 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     try {
       if (!net.loaded || net.userId !== uid()) await loadSave();
       awayRun();
+      /* 自動餵食器：不在農場時也照順序收飼料、餵 */
+      if (processTimers()) saveSoon(true);
     } catch (e) { console.warn("不在時自動處理失敗：", e); }
   }
-  setInterval(bgAway, 10 * 60 * 1000);
+  setInterval(bgAway, 3 * 60 * 1000);
 
   function autoBgOn() { try { return localStorage.getItem("farmAutoBg") === "1"; } catch (e) { return false; } }
 
