@@ -881,22 +881,22 @@ function getTaskReward(difficulty) {
   const rewards = {
 
     easy: {
-      exp: 15,
+      exp: 10,
       gold: 10
     },
 
     normal: {
-      exp: 30,
+      exp: 18,
       gold: 20
     },
 
     hard: {
-      exp: 50,
+      exp: 30,
       gold: 35
     },
 
     epic: {
-      exp: 80,
+      exp: 50,
       gold: 55
     }
 
