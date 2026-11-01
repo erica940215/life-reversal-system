@@ -6124,8 +6124,9 @@ const FARM_JS_VERSION = "2026-10-28 v2";
         return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;${skip[sp] ? "opacity:.5" : ""}"><b style="width:22px;text-align:center">${i + 1}</b><span style="flex:1">${info.emoji} ${esc(st === "adult" ? info.name : (info.baby || "小" + info.name))}<small class="fm-note">（${st === "adult" ? "成年" : "幼年"}）×${n}・一次吃 ${info.feed}</small></span>
           <button type="button" class="fm-btn small" data-act="feedpri" data-sp="${sp}" data-d="-1" ${i ? "" : "disabled"}>↑</button><button type="button" class="fm-btn small" data-act="feedpri" data-sp="${sp}" data-d="1" ${i < sps.length - 1 ? "" : "disabled"}>↓</button>
           <button type="button" class="fm-btn small ${skip[sp] ? "" : "green"}" data-act="feedskip" data-sp="${sp}">${skip[sp] ? "不自動餵" : "自動餵"}</button></div>`; }).join("");
-      const priPanel = sps.length > 1 ? `<div class="fm-pen"><div class="fm-pen-head"><h3 class="ol" style="--olc:#4f8f35">🥣 餵食順序</h3></div>
-        <p class="fm-note" style="margin:0 0 6px">飼料不夠時，排前面的先吃；成年和幼年分開排。成年吃了才會產出，幼年吃飽才會長大。設成「不自動餵」的，自動餵食和⚡自動處理會跳過（按「全部餵食」還是會餵）。</p>${priRows}</div>` : "";
+      let priOpen = false; try { priOpen = localStorage.getItem("farmFeedPriOpen") === "1"; } catch (e) {}
+      const priPanel = sps.length > 1 ? `<details class="fm-pen" ${priOpen ? "open" : ""} ontoggle="try{localStorage.setItem('farmFeedPriOpen',this.open?'1':'0')}catch(e){}"><summary class="fm-pen-head" style="cursor:pointer"><h3 class="ol" style="--olc:#4f8f35;display:inline">🥣 餵食順序 <small style="font-size:.7em">（點一下${priOpen ? "收起" : "展開"}）</small></h3></summary>
+        <p class="fm-note" style="margin:0 0 6px">飼料不夠時，排前面的先吃；成年和幼年分開排。成年吃了才會產出，幼年吃飽才會長大。設成「不自動餵」的，自動餵食和⚡自動處理會跳過（按「全部餵食」還是會餵）。</p>${priRows}</details>` : "";
       const mill = priPanel + machineHtml("feedmill", true) + machineHtml("baitline", true);
 
       let inc = "";
