@@ -122,7 +122,10 @@
     .pj-draw-box{background:var(--card-bg,#fff);color:inherit;border-radius:18px;padding:26px 24px;text-align:center;max-width:300px;width:86%;box-shadow:0 10px 40px rgba(0,0,0,.3)}
     .pj-draw-box .big{font-size:56px;margin:6px 0;animation:pjspin .8s}
     @keyframes pjspin{from{transform:rotate(-200deg) scale(.3)}to{transform:none}}
-    .pj-draw-box.s{background:linear-gradient(135deg,#fff3c4,#ffd1e8);color:#222}`;
+    .pj-draw-box.s{background:linear-gradient(135deg,#fff3c4,#ffd1e8);color:#222}
+    .pj-draw-box.r{background:linear-gradient(135deg,#d6ecff,#b9d4ff);color:#16213a}
+    .pj-draw-box.x{background:linear-gradient(135deg,#e6d4ff,#ffc8ef);color:#2a1640;box-shadow:0 0 30px #b48cffaa}
+    .pj-draw-box.lv-l{background:linear-gradient(135deg,#ff6fa8,#ffb86b,#ffe66b,#7ee8a5,#6bc8ff,#b48cff);background-size:300% 300%;animation:lfrain 3s ease infinite;color:#1a1a1a;box-shadow:0 0 40px #ffd54acc}`;
     document.head.appendChild(s);
   }
 
@@ -467,8 +470,31 @@
   }
 
   function levelToast(ups) {
-    (ups || []).forEach((u, i) => setTimeout(() =>
-      toast(`⬆️ 專案升到 Lv ${u.level}！✨ 星屑 ×${u.stardust}${u.bonus ? "，再加召喚券和星願瓶各 1" : ""}`), 900 + i * 700));
+    const draws = [];
+    (ups || []).forEach((u, i) => {
+      if (u.draw) draws.push(u);
+      else setTimeout(() => toast(`⬆️ 專案升到 Lv ${u.level}！✨ 星屑 ×${u.stardust}${u.bonus ? "，再加召喚券和星願瓶各 1" : ""}`), 900 + i * 700);
+    });
+    if (draws.length) setTimeout(() => showLvDraws(draws), 1000);
+  }
+
+  /* 🎰 生活打卡領域升級抽獎 */
+  const TIER = { c: ["🎁", "普通", ""], r: ["💎", "稀有！", "r"], e: ["🔮", "史詩！！", "x"], l: ["🌟", "傳說！！！", "s"] };
+  const ITEM2 = Object.assign({ stardust: "星屑", farmpass10: "農場入場卷", gacha_coin: "扭蛋幣", scratch_card: "刮刮樂", ticket_special: "特殊召喚券",
+    wish_rare: "稀有星願瓶", chest_gold: "金寶箱", chest_star: "星光寶箱", ticket_limited: "限定召喚券", wish_limited: "限定星願瓶" }, typeof ITEM !== "undefined" ? ITEM : {});
+  function showLvDraws(list) {
+    const u = list.shift();
+    if (!u) return;
+    const t = TIER[u.draw.tier] || TIER.c;
+    const items = Object.entries(u.draw.items || {}).map(([k, v]) => `${ITEM2[k] || k} ×${v}`).join("<br>");
+    const box = document.createElement("div");
+    box.className = "pj-draw";
+    box.innerHTML = `<div class="pj-draw-box ${t[2]} lv-${u.draw.tier}"><div style="font-size:13px;opacity:.75">⬆️ ${esc(u.domain || "")} 升到 Lv ${u.level}・升級抽獎</div>
+      <div class="big">${t[0]}</div><h3 style="margin:4px 0">${t[1]}</h3><p>${items}<br><small style="opacity:.7">另外 ✨ 星屑 ×${u.stardust}</small></p>
+      <button class="btn btn-primary" type="button">收下${list.length ? `（還有 ${list.length} 抽）` : ""}</button></div>`;
+    box.addEventListener("click", e => { if (e.target === box || e.target.tagName === "BUTTON") { box.remove(); showLvDraws(list); } });
+    document.body.appendChild(box);
+    if (u.draw.tier === "e" || u.draw.tier === "l") { const f = document.createElement("div"); f.className = "pj-flash"; document.body.appendChild(f); setTimeout(() => f.remove(), 800); }
   }
 
   async function toggleStep(id) {

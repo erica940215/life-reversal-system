@@ -339,3 +339,52 @@ begin
 end; $$;
 revoke all on function public.life_seed() from public, anon;
 grant execute on function public.life_seed() to authenticated;
+
+-- ---------- 🎰 領域升級抽獎（生活打卡的專案每升一級抽一次） ----------
+--   普通 52%：星屑 50＋10×等級／農場入場卷 ×3／扭蛋幣 ×2／刮刮樂 ×2
+--   稀有 30%：特殊召喚券／稀有星願瓶 ×2／金寶箱
+--   史詩 13%：星光寶箱／限定召喚券／限定星願瓶
+--   傳說  5%（每級 +0.2%，最多 10%）：限定召喚券＋限定星願瓶 ×2＋星屑 300
+--   保底：每 5 級至少稀有、每 10 級至少史詩、每 25 級必定傳說
+create or replace function public.life_lv_draw(u uuid, p_project uuid, lv integer)
+returns jsonb language plpgsql security definer set search_path to 'public' as $$
+declare
+  r double precision := random(); tier text; pick jsonb; k text; v integer; src text := 'life-lv:' || p_project || ':' || lv;
+  pool jsonb := $j${
+    "c":[{"stardust":0},{"farmpass10":3},{"gacha_coin":2},{"scratch_card":2}],
+    "r":[{"ticket_special":1},{"wish_rare":2},{"chest_gold":1}],
+    "e":[{"chest_star":1},{"ticket_limited":1},{"wish_limited":1}],
+    "l":[{"ticket_limited":1,"wish_limited":2,"stardust":300}]}$j$::jsonb;
+  leg double precision := least(0.10, 0.05 + 0.002 * lv);
+begin
+  tier := case when r < leg then 'l' when r < leg + 0.13 then 'e' when r < leg + 0.43 then 'r' else 'c' end;
+  if lv % 25 = 0 then tier := 'l';
+  elsif lv % 10 = 0 and tier in ('c', 'r') then tier := 'e';
+  elsif lv % 5 = 0 and tier = 'c' then tier := 'r'; end if;
+  pick := pool->tier->(floor(random() * jsonb_array_length(pool->tier))::int);
+  if pick ? 'stardust' and tier = 'c' then pick := jsonb_build_object('stardust', 50 + 10 * lv); end if;
+  for k, v in select key, value::int from jsonb_each_text(pick) loop
+    perform public.grant_item(u, k, v, src || ':' || k);
+  end loop;
+  return jsonb_build_object('tier', tier, 'items', pick);
+end; $$;
+revoke all on function public.life_lv_draw(uuid, uuid, integer) from public, anon, authenticated;
+
+do $$ begin
+  if to_regprocedure('public.project_add_xp_life(uuid, uuid, integer)') is null then
+    alter function public.project_add_xp(uuid, uuid, integer) rename to project_add_xp_life;
+  end if;
+end $$;
+revoke all on function public.project_add_xp_life(uuid, uuid, integer) from public, anon, authenticated;
+create or replace function public.project_add_xp(p_user uuid, p_project uuid, p_xp integer)
+returns jsonb language plpgsql security definer set search_path to 'public' as $$
+declare ups jsonb := public.project_add_xp_life(p_user, p_project, p_xp); out jsonb := '[]'::jsonb; x jsonb;
+begin
+  if jsonb_array_length(ups) = 0 or not exists (select 1 from public.projects where id = p_project and domain is not null) then return ups; end if;
+  for x in select * from jsonb_array_elements(ups) loop
+    out := out || (x || jsonb_build_object('draw', public.life_lv_draw(p_user, p_project, (x->>'level')::int),
+                                           'domain', (select title from public.projects where id = p_project)));
+  end loop;
+  return out;
+end; $$;
+revoke all on function public.project_add_xp(uuid, uuid, integer) from public, anon, authenticated;
