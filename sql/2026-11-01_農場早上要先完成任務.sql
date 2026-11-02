@@ -13,7 +13,7 @@ create or replace function public.farm_task_today(u uuid)
 returns integer language sql stable security definer set search_path to 'public' as $$
   select count(*)::int from public.tasks
    where user_id = u and completed and completed_at is not null
-     and ((completed_at at time zone 'Asia/Taipei') - interval '2 hours')::date = public.app_today()
+     and ((completed_at at time zone 'Asia/Taipei') - interval '3 hours')::date = public.app_today()
 $$;
 revoke all on function public.farm_task_today(uuid) from public, anon, authenticated;
 

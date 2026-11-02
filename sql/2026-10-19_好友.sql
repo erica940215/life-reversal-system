@@ -242,7 +242,7 @@ as $function$
 declare
   v_user uuid := auth.uid();
   v_day date := public.app_today();
-  v_start timestamptz := (v_day::timestamp + interval '2 hours') at time zone 'Asia/Taipei';
+  v_start timestamptz := (v_day::timestamp + interval '3 hours') at time zone 'Asia/Taipei';
   v_out jsonb := '[]'::jsonb;
   f record;
   v_name text;

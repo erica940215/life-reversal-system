@@ -652,13 +652,13 @@ function showAuthMessage(message, isError = false) {
 ========================================================= */
 
 /*
-  一天從凌晨 2 點開始：凌晨 0:00–1:59 還算前一天
+  一天從凌晨 3 點開始：凌晨 0:00–2:59 還算前一天
   （和資料庫的 app_today() 一致，改這裡要兩邊一起改）
 */
-const DAY_START_HOUR = 2;
+const DAY_START_HOUR = 3;
 
 
-/* 任意時間 → 「哪一天」（台灣時間、凌晨 2 點換日），YYYY-MM-DD */
+/* 任意時間 → 「哪一天」（台灣時間、凌晨 3 點換日），YYYY-MM-DD */
 function appDateOf(dateLike) {
 
   const time = new Date(dateLike).getTime() - DAY_START_HOUR * 3600 * 1000;
@@ -1463,7 +1463,7 @@ function renderReflections() {
 }
 
 
-/* 打字時記住草稿；並固定在這一天（寫到一半跨過凌晨 2 點也不會跳走） */
+/* 打字時記住草稿；並固定在這一天（寫到一半跨過凌晨 3 點也不會跳走） */
 function onReflectInput() {
 
   const date = reflectCurrentDate();
@@ -4648,7 +4648,7 @@ console.log(
    0. 共用小工具
 ========================================================= */
 
-/* 任意時間 → 算在哪一天（凌晨 2 點換日），YYYY-MM-DD
+/* 任意時間 → 算在哪一天（凌晨 3 點換日），YYYY-MM-DD
    例如凌晨 1 點開始的專注，算前一天的 */
 function toTaipeiDate(dateLike) {
 
@@ -10723,7 +10723,7 @@ let sleepLoadError = null;
 let sleepSaving = false;
 
 
-/* 作息用「真正的日曆日期」，不套用凌晨 2 點換日：
+/* 作息用「真正的日曆日期」，不套用凌晨 3 點換日：
    作息本來就有自己的規則（凌晨 0–6 點睡算前一晚），兩個疊在一起會多扣一天 */
 function sleepToday() {
 

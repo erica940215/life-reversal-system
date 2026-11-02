@@ -9,7 +9,7 @@
 create or replace function public.app_today()
 returns date language sql stable
 as $$
-  select ((now() at time zone 'Asia/Taipei') - interval '2 hours')::date
+  select ((now() at time zone 'Asia/Taipei') - interval '3 hours')::date
 $$;
 
 grant execute on function public.app_today() to authenticated, anon;

@@ -714,7 +714,7 @@
         const { data: st } = await db.from("doom_state").select("started_on,zones_unlocked,mastery").maybeSingle();
         if (st) syncZoneState(st);
         if (st && st.started_on) {
-          const today = new Date(Date.now() - 2 * 3600000);
+          const today = new Date(Date.now() - 3 * 3600000);
           const days = Math.floor((today - new Date(st.started_on + "T00:00:00")) / 86400000);
           DM.zoneWeek = Math.floor(Math.max(0, days) / 7) + 1;
         }

@@ -200,7 +200,7 @@ begin
     where user_id in (select user_id from public.team_members where team_id = p_team) and session_date between v_week and v_today;
   select count(*) into v_tasks from public.tasks
     where user_id in (select user_id from public.team_members where team_id = p_team) and completed
-      and ((completed_at at time zone 'Asia/Taipei') - interval '2 hours')::date between v_week and v_today;
+      and ((completed_at at time zone 'Asia/Taipei') - interval '3 hours')::date between v_week and v_today;
   select count(*) into v_check from public.checkins
     where user_id in (select user_id from public.team_members where team_id = p_team) and checkin_date between v_week and v_today;
 
@@ -263,7 +263,7 @@ begin
         'class', h.class, 'frame', fp.frame,
         'focus_min', (select coalesce(sum(duration_seconds), 0) / 60 from public.focus_sessions where user_id = m.user_id and session_date = v_today),
         'tasks', (select count(*) from public.tasks where user_id = m.user_id and completed
-                    and ((completed_at at time zone 'Asia/Taipei') - interval '2 hours')::date = v_today),
+                    and ((completed_at at time zone 'Asia/Taipei') - interval '3 hours')::date = v_today),
         'attacks', (select count(*) from public.rpg_boss_hits where user_id = m.user_id and hit_day = v_today),
         'raid_dmg', (select coalesce(sum(dmg), 0) from public.team_raid_hits where team_id = v_team and week_start = v_week and user_id = m.user_id)
       ) order by m.joined_at), '[]'::jsonb)

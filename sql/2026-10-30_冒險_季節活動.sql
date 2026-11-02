@@ -161,7 +161,7 @@ begin
   -- 完成任務：40%
   for t in select id from public.tasks
            where user_id = p_user and completed
-             and ((completed_at at time zone 'Asia/Taipei') - interval '2 hours')::date between v_start and v_end loop
+             and ((completed_at at time zone 'Asia/Taipei') - interval '3 hours')::date between v_start and v_end loop
     if (abs(hashtext(v_id || '-task:' || t.id)) % 10000) / 10000.0 < 0.4 then
       insert into public.ev_mobs (user_id, event, kind, source) values (p_user, v_id, public.ev_roll(ev, v_id || 'task:' || t.id), 'task:' || t.id)
         on conflict do nothing;

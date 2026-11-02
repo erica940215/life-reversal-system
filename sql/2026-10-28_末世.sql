@@ -308,11 +308,11 @@ as $function$
 begin
   select count(*) into tasks from public.tasks
     where user_id = u and completed and completed_at is not null
-      and (completed_at at time zone 'Asia/Taipei' - interval '2 hours')::date = d;
+      and (completed_at at time zone 'Asia/Taipei' - interval '3 hours')::date = d;
   select (select count(*) from public.project_step_logs where user_id = u and day = d and done)
        + (select count(*) from public.project_steps s join public.projects p on p.id = s.project_id
             where s.user_id = u and p.kind <> 'daily' and s.done and s.done_at is not null
-              and (s.done_at at time zone 'Asia/Taipei' - interval '2 hours')::date = d)
+              and (s.done_at at time zone 'Asia/Taipei' - interval '3 hours')::date = d)
     into steps;
   select coalesce(sum(duration_seconds), 0) into focus_s from public.focus_sessions
     where user_id = u and session_date = d;

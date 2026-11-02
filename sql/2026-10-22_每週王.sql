@@ -138,7 +138,7 @@ begin
     where user_id = p_user and session_date = v_today;
   select count(*) into v_tasks from public.tasks
     where user_id = p_user and completed
-      and ((completed_at at time zone 'Asia/Taipei') - interval '2 hours')::date = v_today;
+      and ((completed_at at time zone 'Asia/Taipei') - interval '3 hours')::date = v_today;
   select exists (select 1 from public.exercise_logs where user_id = p_user and log_date = v_today) into v_ex;
   select count(*) into v_used from public.rpg_boss_hits where user_id = p_user and hit_day = v_today;
 

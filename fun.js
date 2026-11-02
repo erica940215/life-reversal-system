@@ -520,7 +520,7 @@
         </span></div>`;
     }).join("");
     return `<div class="card rp-card fn-sec"><div class="fn-sec-top"><div style="font-size:52px;line-height:1">🏪</div>
-        <div><h3>冒險商店</h3><span class="rp-sub">每天都開，用金幣買。每樣每天有購買上限，凌晨 2 點重置${st.bargain ? `・🏷️ 砍價 -${st.bargain * 3}%` : ""}</span></div>
+        <div><h3>冒險商店</h3><span class="rp-sub">每天都開，用金幣買。每樣每天有購買上限，凌晨 3 點重置${st.bargain ? `・🏷️ 砍價 -${st.bargain * 3}%` : ""}</span></div>
         <div class="rp-power"><span class="rp-sub">金幣</span><b>${st.gold}</b></div></div>
       <div class="fn-shop">${rows}</div>
       <p class="rp-note">週末流浪商人還是會來，而且有一樣打 7 折。</p></div>`;

@@ -3069,8 +3069,8 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     });
 
     await read("任務", async () => {
-      /* 今天（凌晨 2 點之後）完成的任務 */
-      const start = new Date(day + "T02:00:00");
+      /* 今天（凌晨 3 點之後）完成的任務 */
+      const start = new Date(day + "T03:00:00");
       const { data, error } = await db.from("tasks").select("id, completed_at")
         .eq("user_id", uid()).eq("completed", true).gte("completed_at", start.toISOString()).limit(300);
       if (error) throw error;
@@ -6321,7 +6321,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
           <div><div class="fm-row-name">${t.name} ${g.n} 次</div><div class="fm-bar" style="margin-top:4px"><i style="width:${(g.got / g.n) * 100}%"></i></div><div class="fm-row-sub">${g.got} / ${g.n}・獎勵 ${GOAL_EXP} EXP、${GOAL_DEW} 星露</div></div>
           <div class="fm-row-btns">${g.claimed ? "✅" : `<button type="button" class="fm-btn small green" data-act="claimgoal" data-i="${i}" ${done ? "" : "disabled"}>領取</button>`}</div></div>`;
       }).join("");
-      return sheetTop("今日小目標") + `<div class="fm-panel"><div class="fm-list">${rows}</div><p class="fm-note" style="margin-top:10px">每天凌晨 2 點換新的小目標。</p></div>`;
+      return sheetTop("今日小目標") + `<div class="fm-panel"><div class="fm-list">${rows}</div><p class="fm-note" style="margin-top:10px">每天凌晨 3 點換新的小目標。</p></div>`;
     }
 
   };
