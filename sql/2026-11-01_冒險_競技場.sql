@@ -202,7 +202,7 @@ begin
   my := public.arena_theme_score(u, th, pws);
   if my > 0 then
     select 1 + count(*) into rank from (
-      select public.arena_theme_score(f, th, pws) from public.arena_friends(u) f) x where x.s > my;
+      select public.arena_theme_score(f, th, pws) s from public.arena_friends(u) f) x where x.s > my;
     if rank = 1 and exists (select 1 from public.arena_friends(u)) then
       g := case rank when 1 then '{"arena_coin":80,"chest_gold":1}' when 2 then '{"arena_coin":50,"gacha_coin":2}' else '{"arena_coin":30,"gacha_coin":1}' end::jsonb;
       if public.grant_item(u, 'arena_coin', (g->>'arena_coin')::int, 'arena-theme:' || pws) then
@@ -220,7 +220,7 @@ begin
     got := got || jsonb_build_object('why', '錦標賽冠軍！', 'reward', '{"arena_coin":300,"chest_star":1,"ticket_limited":2,"frame":"競技冠軍框"}'::jsonb);
   end if;
   -- 🌟 上個月賽季：當月最高的週段位
-  select public.arena_tier(max(public.arena_week_points(u, w::date))) into best
+  select case when max(public.arena_week_points(u, w::date)) > 0 then public.arena_tier(max(public.arena_week_points(u, w::date))) end into best
     from generate_series(pm - (extract(isodow from pm)::int - 1), (date_trunc('month', t) - interval '1 day')::date, interval '7 days') w;
   if best is not null and public.arena_week_points(u, pws) is not null
      and public.grant_item(u, 'arena_coin', case best when 'legend' then 200 when 'diamond' then 120 when 'gold' then 80 when 'silver' then 40 else 20 end, 'arena-season:' || pm) then
