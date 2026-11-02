@@ -4,7 +4,7 @@
 --
 --   領域：🛏️ 作息 sleep、🧴 清潔保養 care、💧 健康 health、🍱 飲食 food、🧹 生活 life、📅 每週 weekly
 --   每個領域是一個「每日重複」專案（每週那個是一週一次），各自升級
---   ☀️ 開頭的項目在早上 9 點前勾：經驗 ×1.5
+--   ☀️ 開頭的項目在早上 10:30 前勾：經驗 ×1.5
 --   加成：
 --     🛏️ 作息等級：早上免費進農場 15 分鐘 → 每 2 級 +1 分鐘，最多 30 分鐘
 --     💧 健康全勤：農場水車多裝水（1 桶，每 5 級多 1 桶，最多 5 桶）
@@ -248,10 +248,10 @@ begin
     res := public.project_step_toggle_life(p_step)::jsonb;
   end if;
 
-  -- ☀️ 早上 9 點前打勾：多 50% 經驗
-  hr := extract(hour from now() at time zone 'Asia/Taipei')::int;
+  -- ☀️ 早上 10:30 前打勾：多 50% 經驗
+  hr := (extract(hour from now() at time zone 'Asia/Taipei') * 60 + extract(minute from now() at time zone 'Asia/Taipei'))::int;
   if pr.domain is not null and coalesce((res->>'done')::boolean, false) and coalesce((res->>'xp')::int, 0) > 0
-     and s.title like '☀️%' and hr between 3 and 8 then
+     and s.title like '☀️%' and hr between 180 and 629 then
     bonus := ceil((res->>'xp')::int * 0.5);
     ups := public.project_add_xp(u, pr.id, bonus);
     res := res || jsonb_build_object('morning', bonus, 'levelUps', coalesce(res->'levelUps', '[]'::jsonb) || ups);
