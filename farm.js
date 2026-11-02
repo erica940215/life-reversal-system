@@ -3513,7 +3513,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     const needFeed = S.ranch.animals.reduce((t, a) => t + (D.animals[a.sp].feed || 0), 0) * 2;
     if (have("feed") < needFeed) {
       for (const rk of Object.keys(D.recipes).filter(k => D.recipes[k].machine === "feedmill")) {
-        for (let i = 0; i < 5 && have("feed") < needFeed * 3; i++) if (startRecipe(rk) !== "ok") break;
+        for (let i = 0; i < 5 && have("feed") < needFeed * 3 && feedTotal() < FEED_CAP; i++) if (startRecipe(rk) !== "ok") break;
       }
     }
     for (const a of feedOrder(true)) if (animalState(a) === "hungry" && feedAnimal(a)) fed++;
@@ -3633,6 +3633,12 @@ const FARM_JS_VERSION = "2026-10-28 v2";
   }
 
   /* ---------- 🌙 不在的時候：麥田一天種 7 次小麥 → 收 → 做飼料 → 照餵食順序餵；一天收全部田 2 次 ---------- */
+  /* 飼料（倉庫＋飼料機排隊中）到 3000 就不再自動做；小麥照樣種、照樣收 */
+  const FEED_CAP = 3000;
+  function feedTotal() {
+    return have("feed") + machineQueue("feedmill").reduce((t, j) => t + ((D.recipes[j.r] && D.recipes[j.r].qty) || 0), 0);
+  }
+
   const AWAY_WHEAT_H = Array.from({ length: 48 }, (_, i) => i / 2);   // 每 30 分鐘
   const AWAY_HARVEST_H = [8, 20];
   function awayOn() { try { return localStorage.getItem("farmAway") !== "0"; } catch (e) { return true; } }
@@ -3678,7 +3684,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
         collectMachine("feedmill");
         sum.feed += Math.max(0, have("feed") - before);
         if (machineOpen("feedmill") && S.lv >= D.recipes.feed_wheat.lv) {
-          for (let i = 0; i < 40 && have("wheat") > 0; i++) if (startRecipe("feed_wheat") !== "ok") break;
+          for (let i = 0; i < 40 && have("wheat") > 0 && feedTotal() < FEED_CAP; i++) if (startRecipe("feed_wheat") !== "ok") break;
         }
         /* 麥田種滿小麥（口渴的格子能澆就澆） */
         if (S.wheatfield.open && cropAvailable("wheat")) {
@@ -6302,7 +6308,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
           <p class="fm-note" style="margin:8px 2px 0">背景自動是記在這台裝置上的；手機和電腦要各自打開。果樹、茶樹、動物要種要買還是你自己決定，大訂單也留給你交。</p></div>
         <div class="fm-panel"><div class="fm-sec ol">🌙 不在時小幫手</div>
           <button type="button" class="fm-btn small ${awayOn() ? "green" : ""}" data-act="awaytoggle">${awayOn() ? "✅" : "⬜"} 開著</button>
-          <p class="fm-note" style="margin:8px 2px 0">你不在農場的時候：每 30 分鐘，麥田收小麥 → 全部做成飼料 → 麥田種滿小麥 → 照你設的餵食順序餵動物。8 點和 20 點順便收全部的田、果樹、菇木、茶、竹子。不用開網站，下次打開時會補算。</p>
+          <p class="fm-note" style="margin:8px 2px 0">你不在農場的時候：每 30 分鐘，麥田收小麥 → 做成飼料（飼料到 ${FEED_CAP} 就先不做，小麥留在倉庫）→ 麥田種滿小麥 → 照你設的餵食順序餵動物。8 點和 20 點順便收全部的田、果樹、菇木、茶、竹子。不用開網站，下次打開時會補算。</p>
           ${S.away && S.away.log ? `<ul style="margin:6px 0 0;padding-left:18px">${S.away.log.log.map(l => `<li class="fm-note" style="margin:2px 0">${esc(l)}</li>`).join("")}</ul>` : ""}</div>
         ${last ? `<div class="fm-panel"><div class="fm-sec ol">上次處理（${when}${last.bg ? "・背景" : ""}）</div><ul style="margin:0;padding-left:18px">${last.log.map(l => `<li class="fm-note" style="margin:2px 0">${esc(l)}</li>`).join("")}</ul></div>` : ""}`;
     },
