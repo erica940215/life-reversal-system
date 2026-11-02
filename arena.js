@@ -1,6 +1,6 @@
 /* 序光計畫：⚔️ 冒險 → 🏟️ 競技場（資料在 sql/2026-11-01_冒險_競技場.sql） */
 (function () {
-  const ARENA_JS_VERSION = "20261101b";
+  const ARENA_JS_VERSION = "20261102a";
   const AR = { data: null, error: null, loading: false, busy: false, shown: false };
 
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -47,7 +47,11 @@
   function html() {
     if (!hasDb()) return "";
     if (AR.error === "setup") return `<div class="card rp-card"><p class="rp-note">⚠️ 競技場的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-11-01_冒險_競技場.sql</b>。</p></div>`;
-    if (AR.error) return `<div class="card rp-card"><p class="rp-note">競技場載入失敗：${esc(AR.error)}</p></div>`;
+    if (AR.error) {
+      /* 失敗過：每次打開分頁、過 5 秒就自動再試一次 */
+      if (!AR.loading && Date.now() - (AR.failedAt || 0) > 5000) { AR.failedAt = Date.now(); setTimeout(load, 0); }
+      return `<div class="card rp-card"><p class="rp-note">競技場載入失敗：${esc(AR.error)}</p><button type="button" class="btn btn-small" data-ar="retry">🔄 重新載入</button></div>`;
+    }
     if (!AR.data) { load(); return `<div class="card rp-card"><p class="rp-note">競技場載入中…</p></div>`; }
     const d = AR.data, t = TIER[d.tier] || TIER.bronze, th = THEME[d.theme] || THEME.focus;
     const next = t[3] ? `再 ${t[3] - d.week_points} 點升段` : "最高段位";
@@ -129,6 +133,7 @@
     const el = e.target.closest("[data-ar]");
     if (!el) return;
     if (el.dataset.ar === "buy") buy(el.dataset.v);
+    if (el.dataset.ar === "retry") { AR.failedAt = Date.now(); AR.error = null; AR.data = null; rerender(); load(); }
   });
 
   const css = document.createElement("style");
