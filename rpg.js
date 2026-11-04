@@ -15,6 +15,7 @@
   const RPG_IMG = new Set([
     "class:scholar", "class:warrior", "class:guardian", "class:ranger",
     "ui:ticket_normal", "ui:ticket_special", "ui:ticket_limited",
+    "gear:arena_sword", "gear:arena_armor", "gear:arena_medal",
     "gear:wood_sword", "gear:practice_book", "gear:cloth_shirt",
     "gear:straw_bracer", "gear:old_watch", "gear:lucky_cord",
     "gear:starsteel_blade", "gear:sage_staff", "gear:guardian_shield", "gear:moonlight_robe",

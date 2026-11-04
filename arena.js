@@ -1,6 +1,6 @@
 /* 序光計畫：⚔️ 冒險 → 🏟️ 競技場（資料在 sql/2026-11-01_冒險_競技場.sql） */
 (function () {
-  const ARENA_JS_VERSION = "20261105b";
+  const ARENA_JS_VERSION = "20261105c";
   const AR = { data: null, error: null, loading: false, busy: false, shown: false };
 
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -106,6 +106,7 @@
 
     return `
     <div class="card rp-card ar-card">
+      <img class="ar-banner" src="img/arena/banner.webp" alt="" onerror="this.remove()">
       <div class="ar-head"><div class="ar-tier ar-${d.tier}"><img src="img/arena/${d.tier}.webp" alt="" onerror="this.replaceWith(document.createTextNode('${t[1]}'))"></div>
         <div><h3>🏟️ 競技場・本週 ${t[0]}段</h3><p class="rp-note">聯賽點 ${d.week_points}・${next}・🪙 ${d.coins} 競技幣</p>
         <div class="ar-bar"><i style="width:${pct}%"></i></div></div></div>
@@ -168,6 +169,7 @@
 
   const css = document.createElement("style");
   css.textContent = `
+    .ar-banner { display: block; width: 100%; margin: 0 0 12px; border-radius: 12px; aspect-ratio: 3 / 1; object-fit: cover; }
     .ar-head { display: flex; gap: 12px; align-items: center; }
     .ar-head h3 { margin: 0 0 2px; }
     .ar-tier { width: 64px; height: 64px; flex: none; display: grid; place-items: center; font-size: 40px; }

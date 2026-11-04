@@ -35,13 +35,14 @@
     [11, "roselle", "洛神花", "🌺", "dish_roselle", "洛神花茶", {}],
     [12, "yacon", "雪蓮果", "🤍", "dish_yacon", "雪蓮果沙拉", {}]
   ];
+  const ART = {"kumquat": {"mw": 0.567, "cx": 0.504, "bot": 0.0, "ar": 1.217}, "ume": {"mw": 0.479, "cx": 0.295, "bot": 0.0, "ar": 1.111}, "loquat": {"mw": 0.746, "cx": 0.492, "bot": 0.0, "ar": 1.098}, "mulberry": {"mw": 0.487, "cx": 0.393, "bot": 0.014, "ar": 1.179}, "waxberry": {"mw": 0.508, "cx": 0.425, "bot": 0.0, "ar": 1.142}, "plum": {"mw": 0.567, "cx": 0.396, "bot": 0.0, "ar": 1.125}, "rambutan": {"mw": 0.285, "cx": 0.431, "bot": 0.008, "ar": 0.861}, "sugarapple": {"mw": 0.552, "cx": 0.437, "bot": 0.0, "ar": 0.851}, "pomelo": {"mw": 0.453, "cx": 0.529, "bot": 0.0, "ar": 0.818}, "waterchestnut": {"mw": 0.788, "cx": 0.514, "bot": 0.0, "ar": 0.699}, "roselle": {"mw": 0.45, "cx": 0.45, "bot": 0.0, "ar": 0.84}, "yacon": {"mw": 0.779, "cx": 0.525, "bot": 0.0, "ar": 0.828}};
   D.season = {};
   for (const [m, k, name, emoji, dk, dname, extra] of SEASON) {
-    D.crops[k] = { name, zone: "菜田", lv: 1, hours: 2, baseHours: 8, rarity: "e", qty: 2, sell: 90, exp: 20, seed: 30, emoji, month: m };
-    D.items[k] = { name, sell: 90, emoji, kind: "crop", tier: "e" };
+    D.crops[k] = { name, zone: "菜田", lv: 1, hours: 2, baseHours: 8, rarity: "l", qty: 2, sell: 90, exp: 20, seed: 30, emoji, month: m, art: ART[k], icon: true };
+    D.items[k] = { name, sell: 90, emoji, kind: "crop", tier: "l", img: `crop/${k}_i.webp` };
     const need = Object.assign({ [k]: 3 }, extra);
-    D.dishes[dk] = { name: dname, tier: "季節限定", lv: 1, need, sell: 520, exp: 60, minutes: 10, img: false, gacha: false, rar: "e", month: m, emoji: "🍹" };
-    D.items[dk] = { name: dname, sell: 520, emoji: "🍹", kind: "dish", tier: "e" };
+    D.dishes[dk] = { name: dname, tier: "季節限定", lv: 1, need, sell: 520, exp: 60, minutes: 10, img: true, gacha: false, rar: "l", month: m, emoji: "🍹" };
+    D.items[dk] = { name: dname, sell: 520, emoji: "🍹", kind: "dish", tier: "l", img: `dish/${dk}.webp` };
     D.season[m] = { crop: k, dish: dk };
   }
 
