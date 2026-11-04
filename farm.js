@@ -6382,11 +6382,13 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     /* ---------- 🏝️ 島嶼擴建 ---------- */
     island(t) {
       const tab = t.tab || "spring", I = isl(), lv = S.lv;
+      const ban = k => `<img class="fm-isl-ban" src="${IMG}isl/${k}.webp" alt="" onerror="this.remove()">`;
+      const fl = (k, e) => `<img class="fm-isl-fl" src="${IMG}isl/${k}.webp" alt="" onerror="this.replaceWith(document.createTextNode('${e}'))">`;
       const lockMsg = need => `<div class="fm-panel"><p class="fm-note">🔒 島嶼 Lv ${need} 解鎖。</p></div>`;
       let body = "";
       if (tab === "spring") {
         const sp = D.island.spring, cap = lv >= 85 ? sp.max85 : sp.max, n = I.spring;
-        body = lv < sp.lv ? lockMsg(sp.lv) : `<div class="fm-panel fm-isl-spring"><div class="fm-isl-big">♨️</div>
+        body = lv < sp.lv ? lockMsg(sp.lv) : `<div class="fm-panel fm-isl-spring">${ban("spring")}
           <div class="fm-sec ol">溫泉 Lv ${n} / ${cap}</div>
           <p class="fm-note">動物泡溫泉，產出變快：現在快 <b>${Math.round(n * sp.eff * 100)}%</b>（每級 +2%）。${lv < 85 ? "Lv 85 之後可以升到 15 級。" : ""}</p>
           <div class="fm-isl-steam">${"♨️".repeat(Math.max(1, n))}</div>
@@ -6394,19 +6396,19 @@ const FARM_JS_VERSION = "2026-10-28 v2";
           <p class="fm-note">你有 ${num(S.dew)} 星露</p></div>`;
       } else if (tab === "garden") {
         const g = D.island.garden;
-        const planted = g.flowers.map(f => (f[2] + " ").repeat(I.garden[f[0]] || 0)).join("");
-        body = lv < g.lv ? lockMsg(g.lv) : `<div class="fm-panel"><div class="fm-sec ol">🌷 花園</div>
+        const planted = g.flowers.map(f => Array.from({ length: I.garden[f[0]] || 0 }, () => fl(f[0], f[2])).join("")).join("");
+        body = lv < g.lv ? lockMsg(g.lv) : `<div class="fm-panel">${ban("garden")}<div class="fm-sec ol">🌷 花園</div>
           <div class="fm-isl-bed">${planted || `<span class="fm-note">還是一片空地，種點花吧</span>`}</div>
           <p class="fm-note">花不會枯，種越多島嶼評分越高。每種最多 ${g.max} 株。</p>
           <div class="fm-list">${g.flowers.map(f => {
             const c = I.garden[f[0]] || 0, lock = f[5] && lv < f[5];
-            return `<div class="fm-row"><div class="fm-row-art"><span class="fm-emo">${f[2]}</span></div><div><div class="fm-row-name">${f[1]}</div><div class="fm-row-sub">評分 +${f[4]}・已種 ${c}/${g.max}${lock ? `・Lv ${f[5]} 解鎖` : ""}</div></div>
+            return `<div class="fm-row"><div class="fm-row-art">${fl(f[0], f[2])}</div><div><div class="fm-row-name">${f[1]}</div><div class="fm-row-sub">評分 +${f[4]}・已種 ${c}/${g.max}${lock ? `・Lv ${f[5]} 解鎖` : ""}</div></div>
               <div class="fm-row-btns"><button type="button" class="fm-btn small ${lock || c >= g.max ? "" : "green"}" data-act="flowerbuy" data-k="${f[0]}" ${lock || c >= g.max ? "disabled" : ""}>${num(f[3])} 星露</button></div></div>`;
           }).join("")}</div><p class="fm-note">你有 ${num(S.dew)} 星露</p></div>`;
       } else if (tab === "dock") {
         const dk = D.island.dock;
         const bought = I.dockDay === todayKey() ? I.dockBought : {};
-        body = lv < dk.lv ? lockMsg(dk.lv) : `<div class="fm-panel"><div class="fm-sec ol">⚓ 碼頭市場・今天的船貨</div>
+        body = lv < dk.lv ? lockMsg(dk.lv) : `<div class="fm-panel">${ban("dock")}<div class="fm-sec ol">⚓ 碼頭市場・今天的船貨</div>
           <p class="fm-note">每天換 4 樣，用星露買，每樣每天 1 個。限定星願瓶偶爾才會出現。</p>
           <div class="fm-list">${dockOffers().map(o => `<div class="fm-row"><div class="fm-row-art"><span class="fm-emo">${o[1].split(" ")[0]}</span></div><div><div class="fm-row-name">${o[1].split(" ").slice(1).join(" ")}</div><div class="fm-row-sub">${bought[o[0]] ? "今天買過了" : "今天 1 個"}</div></div>
             <div class="fm-row-btns"><button type="button" class="fm-btn small ${bought[o[0]] ? "" : "green"}" data-act="dockbuy" data-k="${o[0]}" ${bought[o[0]] ? "disabled" : ""}>${num(o[2])} 星露</button></div></div>`).join("")}</div>
@@ -6415,11 +6417,11 @@ const FARM_JS_VERSION = "2026-10-28 v2";
         const sc = islandScore(), tiers = [[500, "C", "星屑 100"], [1000, "B", "稀有星願瓶 1"], [2000, "A", "稀有星願瓶 2＋扭蛋幣 2"], [3500, "S", "限定星願瓶 1＋星光寶箱"], [6000, "SS", "限定星願瓶 2＋限定召喚券"]];
         const cur = tiers.filter(x => sc.total >= x[0]).pop(), next = tiers.find(x => sc.total < x[0]);
         const claimed = UI.scoreClaimed || [];
-        body = `<div class="fm-panel"><div class="fm-isl-score"><b>${cur ? cur[1] : "—"}</b><span>${num(sc.total)} 分</span></div>
+        body = `<div class="fm-panel"><div class="fm-isl-score">${cur ? `<img src="${IMG}isl/grade_${cur[1]}.webp" alt="${cur[1]}" onerror="this.replaceWith(document.createTextNode('${cur[1]}'))">` : `<img src="${IMG}isl/grade_trophy.webp" alt="" style="opacity:.35" onerror="this.remove()">`}<b>${cur ? cur[1] : "—"}</b><span>${num(sc.total)} 分</span></div>
           ${next ? `<p class="fm-note" style="text-align:center">再 ${num(next[0] - sc.total)} 分到 ${next[1]}</p>` : `<p class="fm-note" style="text-align:center">最高評價 🎉</p>`}
           <div class="fm-list">${sc.parts.map(([label, v, how]) => `<div class="fm-row noart"><div><div class="fm-row-name">${label}</div><div class="fm-row-sub">${how}</div></div><div class="fm-row-btns"><b>${num(v)}</b></div></div>`).join("")}</div>
           <div class="fm-sec ol" style="margin-top:10px">每週獎勵（拿到幾級就領到那級為止，每級每週一次）</div>
-          <div class="fm-list">${tiers.map(x => `<div class="fm-row noart ${sc.total >= x[0] ? "" : "fm-locked"}"><div><div class="fm-row-name">${x[1]}・${num(x[0])} 分</div><div class="fm-row-sub">${x[2]}</div></div><div class="fm-row-btns">${claimed.includes(x[1]) ? "✅" : ""}</div></div>`).join("")}</div>
+          <div class="fm-list">${tiers.map(x => `<div class="fm-row ${sc.total >= x[0] ? "" : "fm-locked"}"><div class="fm-row-art"><img src="${IMG}isl/grade_${x[1]}.webp" alt=""></div><div><div class="fm-row-name">${x[1]}・${num(x[0])} 分</div><div class="fm-row-sub">${x[2]}</div></div><div class="fm-row-btns">${claimed.includes(x[1]) ? "✅" : ""}</div></div>`).join("")}</div>
           <button type="button" class="fm-btn green" data-act="scoreclaim" ${cur ? "" : "disabled"}>領這週的評分獎勵</button></div>`;
       }
       return sheetTop("🏝️ 島嶼擴建") + tabs([["spring", "♨️ 溫泉"], ["garden", "🌷 花園"], ["dock", "⚓ 碼頭市場"], ["score", "🏆 評分"]], tab) + body;
