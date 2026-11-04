@@ -1,6 +1,6 @@
 /* 序光計畫：⚔️ 冒險 → 🏟️ 競技場（資料在 sql/2026-11-01_冒險_競技場.sql） */
 (function () {
-  const ARENA_JS_VERSION = "20261102a";
+  const ARENA_JS_VERSION = "20261105a";
   const AR = { data: null, error: null, loading: false, busy: false, shown: false };
 
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -72,11 +72,17 @@
     }).join("");
 
     const bought = d.bought || {};
-    const shop = (d.shop || []).map(o => {
-      const n = bought[o.item] || 0, full = n >= o.limit;
-      return `<div class="ar-item"><span class="ar-ie">${o.emoji}</span><div><b>${esc(o.name)}</b><small>🪙 ${o.price}・本月 ${n}/${o.limit}</small></div>
-        <button type="button" class="btn btn-small ${full ? "" : "btn-primary"}" data-ar="buy" data-v="${o.item}" ${full || d.coins < o.price || AR.busy ? "disabled" : ""}>${full ? "已換" : "換"}</button></div>`;
-    }).join("");
+    const owned = d.owned || {};
+    const item = o => {
+      const n = bought[o.item] || 0, has = owned[o.item];
+      const perm = o.kind === "title" || o.kind === "frame";
+      const full = perm ? !!has : o.kind === "gear" ? (has >= 5 || n >= o.limit) : n >= o.limit;
+      const note = perm ? (has ? "已擁有" : "永久") : o.kind === "gear" ? (has ? `目前 +${has - 1}・重複買會升級・本月 ${n}/${o.limit}` : `競技限定・本月 ${n}/${o.limit}`) : `本月 ${n}/${o.limit}`;
+      return `<div class="ar-item ${o.sec ? "ar-" + o.sec : ""}"><span class="ar-ie">${o.emoji}</span><div><b>${esc(o.name)}</b><small>🪙 ${o.price}・${note}</small></div>
+        <button type="button" class="btn btn-small ${full ? "" : "btn-primary"}" data-ar="buy" data-v="${o.item}" ${full || d.coins < o.price || AR.busy ? "disabled" : ""}>${full ? (perm ? "已有" : "已換") : "換"}</button></div>`;
+    };
+    const sec = (k, title) => { const l = (d.shop || []).filter(o => (o.sec || "") === k); return l.length ? `<h4 class="ar-sh">${title}</h4>${l.map(item).join("")}` : ""; };
+    const shop = sec("", "🎁 道具（每月重置）") + sec("look", "✨ 外觀：稱號、頭像框（永久）") + sec("gear", "⚔️ 競技限定裝備");
 
     return `
     <div class="card rp-card ar-card">
@@ -116,16 +122,18 @@
 
     <div class="card rp-card">
       <h3>🪙 競技商店</h3>
-      <p class="rp-note">每個月重置可換數量。</p>
+      <p class="rp-note">稱號買了到「驚喜 → 稱號」換上；頭像框在個人頭像那邊換；裝備到「英雄」裝上。</p>
       <div class="ar-shop">${shop}</div>
     </div>`;
   }
 
   async function buy(item) {
     AR.busy = true; rerender();
-    const { error } = await db.rpc("arena_buy", { p_item: item });
+    const { data, error } = await db.rpc("arena_buy", { p_item: item });
     AR.busy = false;
-    if (error) toast(error.message); else toast("🪙 換好了，放進背包");
+    const kind = data && data.kind;
+    if (error) toast(error.message);
+    else toast("🪙 換好了" + ({ title: "，稱號已解鎖", frame: "，頭像框已解鎖", gear: "，裝備放進英雄的裝備欄" }[kind] || "，放進背包"));
     await load();
   }
 
@@ -156,6 +164,9 @@
     .ar-board li.me { background: rgba(232,163,23,.15); border-radius: 6px; font-weight: 600; }
     .ar-rk { width: 20px; text-align: right; opacity: .6; }
     .ar-shop { display: grid; gap: 8px; }
+    .ar-sh { margin: 10px 0 2px; font-size: 14px; }
+    .ar-look { background: linear-gradient(90deg, rgba(232,185,49,.12), transparent); border-radius: 10px; padding: 4px; }
+    .ar-gear { background: linear-gradient(90deg, rgba(180,140,255,.14), transparent); border-radius: 10px; padding: 4px; }
     .ar-item { display: flex; gap: 8px; align-items: center; }
     .ar-item > div { flex: 1; }
     @media (max-width: 520px) { .ar-opps { grid-template-columns: 1fr; } }
