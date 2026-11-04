@@ -1,6 +1,6 @@
 /* 序光計畫：⚔️ 冒險 → 🏟️ 競技場（資料在 sql/2026-11-01_冒險_競技場.sql） */
 (function () {
-  const ARENA_JS_VERSION = "20261105a";
+  const ARENA_JS_VERSION = "20261105b";
   const AR = { data: null, error: null, loading: false, busy: false, shown: false };
 
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -31,9 +31,10 @@
     if (error) AR.error = /arena_status|function/.test(error.message) ? "setup" : error.message;
     else {
       AR.data = data; AR.error = null;
-      if (!AR.shown && data.rewards && data.rewards.length) {
+      const rw = (data.rewards || []).concat((data.coop && data.coop.got) || []);
+      if (!AR.shown && rw.length) {
         AR.shown = true;
-        toast("🏟️ 競技獎勵：" + data.rewards.map(r => r.why + (Object.keys(r.reward || {}).length ? "（" + fmtReward(r.reward) + "）" : "")).join("；"));
+        toast("🏟️ 競技獎勵：" + rw.map(r => r.why + (Object.keys(r.reward || {}).length ? "（" + fmtReward(r.reward) + "）" : "")).join("；"));
       }
     }
     rerender();
@@ -42,6 +43,25 @@
   function boardHtml(rows, key, unit) {
     return `<ol class="ar-board">${(rows || []).map((r, i) =>
       `<li class="${r.me ? "me" : ""}"><span class="ar-rk">${i + 1}</span><span class="ar-nm">${r.emoji} ${esc(r.name)}</span><b>${r[key]}${unit}</b></li>`).join("")}</ol>`;
+  }
+
+  /* 🤝 兩人共同目標：這週兩個人的專注加起來 */
+  function coopHtml(c) {
+    if (!c || !(c.pairs || []).length) return "";
+    const tiers = c.tiers || [], max = tiers.length ? tiers[tiers.length - 1].h : 60;
+    const rw = r => fmtReward(r) + (r.stardust ? "" : "");
+    return `<div class="card rp-card"><h3>🤝 兩人共同目標</h3>
+      <p class="rp-note">這週兩個人的專注時間加起來（不算補記）。到 ${tiers.map(t => t.h + " 小時").join("／")} 兩個人都拿獎。</p>
+      ${c.pairs.map(p => {
+        const pct = Math.min(100, p.total / max * 100), mePct = Math.min(100, p.me / max * 100);
+        const next = tiers.find(t => p.total < t.h);
+        const bars = (p.daily || []).map(x => { const h = Math.max(+x.me, +x.them, 0.01); return `<div class="co-day"><i style="height:${Math.min(100, x.me / 6 * 100)}%"></i><i class="th" style="height:${Math.min(100, x.them / 6 * 100)}%"></i><small>${"一二三四五六日"[(new Date(x.d + "T12:00:00").getDay() + 6) % 7]}</small></div>`; }).join("");
+        return `<div class="co-pair"><div class="co-top"><b>你 ＋ ${esc(p.friend)}</b><span>${p.total} / ${max} 小時</span></div>
+          <div class="co-bar"><i class="me" style="width:${mePct}%"></i><i class="th" style="width:${pct - mePct}%"></i>${tiers.map(t => `<span class="co-mark ${p.total >= t.h ? "on" : ""}" style="left:${t.h / max * 100}%" title="${t.h} 小時：${esc(rw(t.reward))}">${t.name.split(" ")[0]}</span>`).join("")}</div>
+          <p class="rp-note">你 ${p.me}h・${esc(p.friend)} ${p.them}h・${next ? `再 ${Math.round((next.h - p.total) * 10) / 10} 小時到 ${next.name}（${esc(rw(next.reward))}）・剩 ${p.days_left} 天` : "🎉 三個獎全拿了！"}</p>
+          <div class="co-days">${bars}</div></div>`;
+      }).join("")}
+      <p class="rp-note" style="font-size:11px">🟦 你　🟪 ${esc((c.pairs[0] || {}).friend || "好友")}・長條是每天幾小時（滿格 6 小時）</p></div>`;
   }
 
   function html() {
@@ -100,6 +120,8 @@
       <h4>最近戰績（${d.record.win} 勝 ${d.record.lose} 敗）</h4>
       <ul class="ar-recent">${recent}</ul>
     </div>
+
+    ${coopHtml(d.coop)}
 
     <div class="card rp-card">
       <h3>🏆 每週聯賽</h3>
@@ -164,6 +186,16 @@
     .ar-board li.me { background: rgba(232,163,23,.15); border-radius: 6px; font-weight: 600; }
     .ar-rk { width: 20px; text-align: right; opacity: .6; }
     .ar-shop { display: grid; gap: 8px; }
+    .co-pair { margin: 8px 0 4px; }
+    .co-top { display: flex; justify-content: space-between; font-size: 14px; }
+    .co-bar { position: relative; display: flex; height: 14px; border-radius: 7px; background: rgba(127,127,127,.15); margin: 18px 0 6px; overflow: visible; }
+    .co-bar i { display: block; height: 100%; } .co-bar i.me { background: #4c8dff; border-radius: 7px 0 0 7px; } .co-bar i.th { background: #b07cff; }
+    .co-mark { position: absolute; top: -18px; transform: translateX(-100%); font-size: 13px; opacity: .45; }
+    .co-mark.on { opacity: 1; }
+    .co-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; height: 64px; align-items: end; }
+    .co-day { display: flex; gap: 2px; align-items: end; height: 100%; position: relative; padding-bottom: 14px; justify-content: center; }
+    .co-day i { width: 8px; background: #4c8dff; border-radius: 3px 3px 0 0; } .co-day i.th { background: #b07cff; }
+    .co-day small { position: absolute; bottom: 0; font-size: 10px; opacity: .6; }
     .ar-sh { margin: 10px 0 2px; font-size: 14px; }
     .ar-look { background: linear-gradient(90deg, rgba(232,185,49,.12), transparent); border-radius: 10px; padding: 4px; }
     .ar-gear { background: linear-gradient(90deg, rgba(180,140,255,.14), transparent); border-radius: 10px; padding: 4px; }
