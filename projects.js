@@ -98,6 +98,19 @@
     .lf-var small{display:block;font-weight:500;font-size:11px;margin-top:3px;opacity:.85}
     .lf-var.lux{background:linear-gradient(135deg,#3a2c0a,#6b4f12);color:#ffe9a8;border:2px solid #e8b931;box-shadow:0 0 12px #e8b93166}
     .lf-var.mir{color:#fff;background:linear-gradient(135deg,#ff6fa8,#ffb86b,#ffe66b,#7ee8a5,#6bc8ff,#b48cff);background-size:300% 300%;animation:lfrain 4s ease infinite;border:2px solid #fff;box-shadow:0 0 16px #b48cffaa;text-shadow:0 1px 3px rgba(0,0,0,.45)}
+    .lf-more{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+    .lf-heat,.lf-badges{margin-top:10px}
+    .lf-hrow{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px}
+    .lf-hn{width:86px;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .lf-hcells{display:grid;grid-template-columns:repeat(28,1fr);gap:2px;flex:1}
+    .lf-hcells.wk{grid-template-columns:repeat(8,1fr)}
+    .lf-hcells i{display:block;aspect-ratio:1;border-radius:3px;min-width:6px}
+    .lf-hrow b{width:38px;text-align:right;flex:none}
+    .lf-bdom{margin:8px 0}.lf-bdom b{font-size:13px}.lf-bdom small{margin-left:6px;font-size:12px;opacity:.75}
+    .lf-bdom div{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+    .lf-badge{font-size:11px;padding:3px 7px;border-radius:99px;border:1px dashed rgba(127,127,127,.4);opacity:.45}
+    .lf-badge.on{opacity:1;border:1px solid #3fb950;background:#3fb95022;font-weight:700}
+    .lf-badge.on.gold{border-color:#e8b931;background:linear-gradient(135deg,#6b4f12,#e8b931);color:#fff}
     @keyframes lfrain{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
     .pj-grid{overflow-x:auto;margin:10px 0 4px}
     .pj-grid table{border-collapse:collapse;font-size:12px;width:100%}
@@ -165,6 +178,7 @@
     ]);
     P.life = lf.error ? null : lf.data;
     if (P.life && (P.life.rewards || []).length) lifeToast(P.life.rewards);
+    if (P.life && (P.life.new_badges || []).length) P.life.new_badges.forEach((b, i) => setTimeout(() => pop("🏅 新徽章！", `${badgeName(b.badge)}<br>✨ 星屑 ×${b.stardust}`, "crit"), 2500 + i * 1500));
     if (pr.error) { render(pr.error); return; }
     P.list = pr.data || [];
     P.steps = {};
@@ -205,6 +219,41 @@
     return d ? (d.emoji ? d.emoji + " " : "") + d.name : key;
   }
 
+  function badgeName(key) {
+    const L = P.life || {}, defs = L.badge_defs || {};
+    const [dom, k] = key.split(":");
+    const dn = (defs.doms || {})[dom] || dom;
+    if (k.startsWith("lv")) return `${dn} Lv ${k.slice(2)}`;
+    const n = k.slice(1);
+    return `${dn}・${(defs.names || {})[n] || ""}（連續 ${n} ${dom === "weekly" ? "週" : "天"}）`;
+  }
+
+  /* 🟩 最近 28 天（每週：8 週），每格顏色 = 那天完成幾 % */
+  function heatHtml(L) {
+    const color = p => p == null ? "rgba(127,127,127,.12)" : p >= 100 ? "#3fb950" : p >= 67 ? "#2ea04399" : p >= 34 ? "#2ea04355" : p > 0 ? "#2ea04328" : "rgba(248,81,73,.25)";
+    const rows = DOM.map(([k, em, nm]) => {
+      const h = (L.heat || {})[k];
+      if (!h) return "";
+      const valid = h.filter(x => x.p != null), avg = valid.length ? Math.round(valid.reduce((t, x) => t + +x.p, 0) / valid.length) : null;
+      return `<div class="lf-hrow"><span class="lf-hn">${em} ${nm}</span><div class="lf-hcells ${k === "weekly" ? "wk" : ""}">${h.map(x =>
+        `<i title="${x.d}：${x.p == null ? "還沒開始" : x.p + "%"}" style="background:${color(x.p)}"></i>`).join("")}</div><b>${avg == null ? "—" : avg + "%"}</b></div>`;
+    }).join("");
+    const worst = DOM.map(([k, em, nm]) => { const h = ((L.heat || {})[k] || []).filter(x => x.p != null); return h.length ? [em + " " + nm, h.reduce((t, x) => t + +x.p, 0) / h.length] : null; })
+      .filter(Boolean).sort((a, b) => a[1] - b[1])[0];
+    return `<div class="lf-heat"><p class="lf-sum">最近 28 天（每週領域看 8 週）。越綠越完整，紅色是那天完全沒勾。${worst ? `最常漏的是 <b>${worst[0]}</b>（平均 ${Math.round(worst[1])}%）` : ""}</p>${rows}</div>`;
+  }
+
+  function badgesHtml(L) {
+    const defs = L.badge_defs || {}, have = new Set((L.badges || []).map(b => b.badge));
+    const doms = ["sleep", "care", "health", "food", "life", "weekly", "all"];
+    return `<div class="lf-badges">${doms.map(dom => {
+      const list = (dom === "weekly" ? defs.weekly : dom === "all" ? defs.all : defs.streak || []).map(n => dom + ":s" + n)
+        .concat(dom === "all" ? [] : (defs.level || []).map(n => dom + ":lv" + n));
+      return `<div class="lf-bdom"><b>${(defs.doms || {})[dom] || dom}</b>${(L.streaks || {})[dom] ? `<small>🔥 ${L.streaks[dom]}</small>` : ""}<div>${list.map(k =>
+        `<span class="lf-badge ${have.has(k) ? "on" : ""} ${/:s(30|60|100|12|26|52)$/.test(k) ? "gold" : ""}" title="${esc(badgeName(k))}">${k.includes(":lv") ? "Lv" + k.split(":lv")[1] : k.split(":s")[1] + (dom === "weekly" ? "週" : "天")}</span>`).join("")}</div></div>`;
+    }).join("")}</div>`;
+  }
+
   function lifeHtml() {
     const L = P.life;
     if (!L) return "";
@@ -223,7 +272,7 @@
         const clear = st.length && d === st.length;
         return `<div class="lf-dom ${clear ? "clear" : ""}" data-a="expand" data-id="${p.id}"><div class="lf-top"><b>${em} ${nm}</b><span>Lv ${p.level}</span></div>
           <div class="pj-bar"><i style="width:${st.length ? Math.round(d / st.length * 100) : 0}%"></i></div>
-          <small>${k === "weekly" ? "這週" : "今天"} ${d}/${st.length}${clear ? " 🌟" : ""}</small><small class="lf-perk">${esc(perk(L))}</small></div>`;
+          <small>${k === "weekly" ? "這週" : "今天"} ${d}/${st.length}${clear ? " 🌟" : ""}${(L.streaks || {})[k] ? `・🔥 連續 ${L.streaks[k]} ${k === "weekly" ? "週" : "天"}` : ""}</small><small class="lf-perk">${esc(perk(L))}</small></div>`;
       }).join("")}</div>`;
     } else {
       const rows = [];
@@ -247,6 +296,9 @@
         <div class="lf-tabs"><button data-a="lifeview" data-id="domain" class="${view === "domain" ? "on" : ""}">依領域</button><button data-a="lifeview" data-id="time" class="${view === "time" ? "on" : ""}">依時段</button></div></div>
       <p class="lf-sum">${L.all_clear ? "🌟 今天五個領域全勤，生活寶箱已開" : "五個每日領域今天都全勤 → 開生活寶箱"}・這週全勤 ${L.week_all}/5 天（滿 5 天送限定星願瓶）・☀️ 項目 10:30 前勾經驗 ×1.5</p>
       ${body}
+      <div class="lf-more"><button class="btn btn-small" data-a="lifeheat">🟩 熱力圖${P.lifeHeat ? " ▴" : " ▾"}</button>
+      <button class="btn btn-small" data-a="lifebadges">🏅 徽章（${(L.badges || []).length}）${P.lifeBadges ? " ▴" : " ▾"}</button></div>
+      ${P.lifeHeat ? heatHtml(L) : ""}${P.lifeBadges ? badgesHtml(L) : ""}
       <button class="btn btn-small" data-a="lifevars" style="margin-top:10px">🍽️ 品種圖鑑（${vars.length}）${P.lifeVars ? " ▴" : " ▾"}</button>${varHtml}</section>`;
   }
 
@@ -544,6 +596,8 @@
     }
     if (a === "lifeview") { P.lifeView = id; try { localStorage.setItem("lifeView", id); } catch (_) {} render(); return; }
     if (a === "lifevars") { P.lifeVars = !P.lifeVars; render(); return; }
+    if (a === "lifeheat") { P.lifeHeat = !P.lifeHeat; render(); return; }
+    if (a === "lifebadges") { P.lifeBadges = !P.lifeBadges; render(); return; }
     if (a === "lifeseed") {
       const { data, error } = await db.rpc("life_seed");
       if (error) { toast("❌ " + error.message); return; }
