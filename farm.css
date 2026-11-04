@@ -820,3 +820,15 @@ body.fm-page #idea-fab { display: none !important; }
 .fm-twinkle:nth-child(3n) { animation-delay: .9s; }
 .fm-twinkle:nth-child(3n+1) { animation-delay: 1.7s; }
 @keyframes fmTwinkle { 50% { opacity: .25; } }
+
+/* 🏝️ 島嶼擴建 */
+.fm-row.noart { grid-template-columns: minmax(0, 1fr) auto; }
+.fm-row.fm-locked { opacity: .5; }
+.fm-isl-spring { text-align: center; background: linear-gradient(#e9f7ff, #fff3e6); }
+.fm-isl-big { font-size: 56px; line-height: 1.1; }
+.fm-isl-steam { font-size: 22px; letter-spacing: 2px; margin: 6px 0 10px; animation: fmSteam 2.4s ease-in-out infinite; word-break: break-all; }
+@keyframes fmSteam { 0%, 100% { opacity: .55; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
+.fm-isl-bed { min-height: 54px; padding: 10px; border-radius: 14px; background: linear-gradient(#bfe8a1, #8fcf6b); font-size: 22px; line-height: 1.4; word-break: break-all; margin-bottom: 8px; }
+.fm-isl-score { display: flex; flex-direction: column; align-items: center; padding: 10px 0; }
+.fm-isl-score b { font-size: 54px; line-height: 1; color: #d99a12; text-shadow: 0 2px 0 #fff, 0 3px 6px rgba(217,154,18,.35); }
+.fm-isl-score span { font-size: 16px; color: #8b6a48; }

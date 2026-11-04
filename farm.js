@@ -16,7 +16,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
   "use strict";
 
   const D = window.FARM_DATA;
-  const MAX_LV = 70; // 星露島的滿級（50 之後還有 51–70）
+  const MAX_LV = 99; // 星露島的滿級（50 之後還有 51–70，farm-plus.js 再開到 99）
   const EXP_RATE = 0.3;     // 所有經驗 ×0.3（原本收一輪田就升一級，太快）
 
   if (!D) {
@@ -605,6 +605,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       if (info.wish || info.gift) pendingLevelClaim = true;
 
       if (S.lv === 70) S.title = "星露傳說";
+      if (S.lv === 99) S.title = "星露之神";
       if (S.lv === 50) {
         S.title = "星露島主";
         if (!S.ranch.animals.some(a => a.sp === "deer")) {
@@ -948,6 +949,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
 
   function cropAvailable(k) {
     const c = D.crops[k];
+    if (c.month && c.month !== new Date().getMonth() + 1) return false;   // 🗓️ 季節限定：只有那個月能種
     if (c.lv === 0) return have("seed_" + k) > 0 || cropUnlocked(k);
     return S.lv >= c.lv;
   }
@@ -1244,6 +1246,8 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     const d = D.dishes[k];
     if (!d) return false;
     if (d.fish) return !!(S.fish && S.fish.caught[d.fish]);     // 魚料理：釣到那種魚就會做
+    /* 🗓️ 季節料理：那個月才出現（手上還有食材、或做過的也會出現） */
+    if (d.month && d.month !== new Date().getMonth() + 1) return !!(S.known.dishes && S.known.dishes[k]) || Object.keys(d.need).some(x => D.crops[x] && D.crops[x].month && have(x) > 0);
     if (!d.gacha) return S.lv >= d.lv;
     if (S.known.recipes[k]) return true;
     if (d.learn) return !!(S.known.items[d.learn] || S.known.crops[d.learn] || have(d.learn) > 0);
@@ -1909,7 +1913,9 @@ const FARM_JS_VERSION = "2026-10-28 v2";
 
   /* 柴犬：產出時間 -10% */
   function everyH(info) {
-    return info.every * (own("p_shiba") ? 0.9 : 1);
+    /* ♨️ 溫泉：每級快 2% */
+    const sp = S.isl && S.isl.spring ? S.isl.spring * D.island.spring.eff : 0;
+    return info.every * (own("p_shiba") ? 0.9 : 1) * (1 - sp);
   }
 
   function animalState(a) {
@@ -3754,7 +3760,8 @@ const FARM_JS_VERSION = "2026-10-28 v2";
       <button type="button" data-act="kitchen"><span class="fm-dk-ic">${uiIcon("cook")}</span><span>料理</span>${kitchenDone ? `<i class="fm-dot">!</i>` : (cookable && freeStoves() > 0 ? `<i class="fm-dot"></i>` : "")}</button>
       <button type="button" data-act="harvestall"><span class="fm-dk-ic">${uiIcon("harvest")}</span><span>一鍵收成</span>${ripe ? `<i class="fm-dot">${ripe}</i>` : ""}</button>
       <button type="button" data-act="book"><span class="fm-dk-ic">${uiIcon("codex")}</span><span>圖鑑</span>${achClaimable() ? `<i class="fm-dot">${achClaimable()}</i>` : ""}</button>
-      <button type="button" data-act="auto"><span class="fm-dk-ic">⚡</span><span>自動</span>${autoBgOn() ? `<i class="fm-dot">ON</i>` : ""}</button>`;
+      <button type="button" data-act="auto"><span class="fm-dk-ic">⚡</span><span>自動</span>${autoBgOn() ? `<i class="fm-dot">ON</i>` : ""}</button>
+      ${S.lv >= D.island.spring.lv ? `<button type="button" data-act="island"><span class="fm-dk-ic">🏝️</span><span>擴建</span></button>` : ""}`;
 
   }
 
@@ -4933,6 +4940,46 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     water: () => openModal("water"),
     goals: () => openSheet("goals"),
     auto: () => openSheet("auto"),
+    island: () => openSheet("island"),
+    springup: () => {
+      const I = isl(), n = I.spring + 1, cap = S.lv >= 85 ? D.island.spring.max85 : D.island.spring.max;
+      if (n > cap) return toast(S.lv < 85 && cap === D.island.spring.max ? "Lv 85 之後溫泉可以再升" : "溫泉已經滿級了");
+      if (!spend(D.island.spring.cost(n))) return;
+      I.spring = n; saveSoon(true);
+      toast(`♨️ 溫泉升到 ${n} 級：動物產出快 ${Math.round(n * D.island.spring.eff * 100)}%`);
+      renderSheet();
+    },
+    flowerbuy: el => {
+      const f = D.island.garden.flowers.find(x => x[0] === el.dataset.k), I = isl();
+      if (!f) return;
+      if (f[5] && S.lv < f[5]) return toast(`Lv ${f[5]} 才能種`);
+      if ((I.garden[f[0]] || 0) >= D.island.garden.max) return toast("這種花已經種滿了");
+      if (!spend(f[3])) return;
+      I.garden[f[0]] = (I.garden[f[0]] || 0) + 1; saveSoon(true);
+      toast(`${f[2]} 種下一株${f[1]}，島嶼評分 +${f[4]}`);
+      renderSheet();
+    },
+    dockbuy: async el => {
+      const o = D.island.dock.offers.find(x => x[0] === el.dataset.k), I = isl();
+      if (!o || I.dockDay === todayKey() && I.dockBought[o[0]]) return toast("今天買過了");
+      if (net.mode !== "server") return toast("要登入才能用碼頭市場");
+      if (!spend(o[2])) return;
+      el.disabled = true;
+      const { data, error } = await db.rpc("farm_dock_buy", { p_item: o[0] });
+      if (error || !data || !data.ok) { addDew(o[2]); saveSoon(true); toast((error && error.message) || (data && data.msg) || "買不了"); renderSheet(); return; }
+      if (I.dockDay !== todayKey()) { I.dockDay = todayKey(); I.dockBought = {}; }
+      I.dockBought[o[0]] = 1; saveSoon(true);
+      toast(`⚓ 買到 ${o[1]}，放進背包`);
+      renderSheet();
+    },
+    scoreclaim: async () => {
+      if (net.mode !== "server") return;
+      const { data, error } = await db.rpc("farm_score_claim", { p_score: islandScore().total });
+      if (error) return toast(error.message.includes("farm_score_claim") ? "評分的資料庫還沒設定" : error.message);
+      UI.scoreClaimed = data.claimed || [];
+      toast(data.got && data.got.length ? `🏝️ 島嶼評分獎勵：${data.got.map(g => `${g.g} ${itemName(g.item)} ×${g.qty}`).join("、")}` : "這週的評分獎勵已經領過了");
+      renderSheet();
+    },
     autorun: () => runAuto(true),
     awaytoggle: () => { const on = !awayOn(); try { localStorage.setItem("farmAway", on ? "1" : "0"); } catch (e) {} if (on && S) S.away = { last: now() }; toast(on ? "🌙 不在時小幫手打開了" : "不在時小幫手關掉了"); renderSheet(); },
     autobg: () => { const on = !autoBgOn(); try { localStorage.setItem("farmAutoBg", on ? "1" : "0"); } catch (e) {} toast(on ? "⚡ 背景自動處理打開了" : "背景自動處理關掉了"); renderSheet(); renderDock(); },
@@ -5758,6 +5805,46 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     return `<span class="fm-tag gray">${d.tier}</span>`;
   }
 
+  /* ---------- 🏝️ 島嶼擴建：小工具 ---------- */
+  function isl() {
+    if (!S.isl) S.isl = { spring: 0, garden: {}, dockDay: null, dockBought: {} };
+    if (!S.isl.garden) S.isl.garden = {};
+    if (!S.isl.dockBought) S.isl.dockBought = {};
+    return S.isl;
+  }
+
+  /* 今天的船貨：照日期固定抽 4 樣（權重越小越少見） */
+  function dockOffers() {
+    const day = todayKey();
+    let h = 0; for (const ch of day) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    const rnd = () => { h = (h * 1103515245 + 12345) >>> 0; return (h >>> 8) / 16777216; };
+    const pool = D.island.dock.offers.slice(), out = [];
+    while (out.length < 4 && pool.length) {
+      const tot = pool.reduce((t, o) => t + o[3], 0);
+      let r = rnd() * tot, i = 0;
+      while (r > pool[i][3]) { r -= pool[i][3]; i++; }
+      out.push(pool.splice(i, 1)[0]);
+    }
+    return out;
+  }
+
+  function islandScore() {
+    const I = isl();
+    const deco = (S.deco && S.deco.slots || []).filter(Boolean).length;
+    const garden = D.island.garden.flowers.reduce((t, f) => t + (I.garden[f[0]] || 0) * f[4], 0);
+    const dishes = Object.keys(D.dishes).filter(k => S.known && S.known.dishes && S.known.dishes[k]).length;
+    const animals = (S.ranch && S.ranch.animals || []).length;
+    const parts = [
+      ["🆙 島嶼等級", S.lv * 10, `Lv ${S.lv} × 10`],
+      ["🪑 擺出來的家具", deco * 15, `${deco} 件 × 15`],
+      ["🌷 花園", garden, "每種花分數不同"],
+      ["♨️ 溫泉", I.spring * 60, `Lv ${I.spring} × 60`],
+      ["🍳 會做的料理", dishes * 3, `${dishes} 道 × 3`],
+      ["🐔 動物", animals * 2, `${animals} 隻 × 2`]
+    ];
+    return { parts, total: parts.reduce((t, p) => t + p[1], 0) };
+  }
+
   const SHEETS = {
 
     /* ---------- 選種子 ---------- */
@@ -5791,7 +5878,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
         let sub;
         if (zone === "orchard") sub = `${price}・明天長大，之後每 ${hoursText(c.hours)}結 ${c.qty} 個`;
         else if (zone === "logs") sub = `${price}・每 ${hoursText(c.hours)}採 ${c.qty} 朵，可採 4 次`;
-        else sub = `${hoursText(c.hours)}・${price}・收成 ${c.sell} 星露、${c.exp} EXP`;
+        else sub = `${c.month ? `🗓️ ${c.month} 月限定・` : ""}${hoursText(c.hours)}・${price}・收成 ${c.sell} 星露、${c.exp} EXP`;
         const byDew = !isFinite(cost) ? 0 : cost > 0 ? Math.floor(S.dew / cost) : emptyCount;
         const maxN = Math.min(emptyCount, seeds + byDew);
         let btns;
@@ -6290,6 +6377,52 @@ const FARM_JS_VERSION = "2026-10-28 v2";
 
       return head + tabs([["draw", "抽獎"], ["shop", "商店"], ["bag", "收藏"], ["rules", "機率"]], tab) + (WISH_TABS[tab] || WISH_TABS.draw)(st, t);
 
+    },
+
+    /* ---------- 🏝️ 島嶼擴建 ---------- */
+    island(t) {
+      const tab = t.tab || "spring", I = isl(), lv = S.lv;
+      const lockMsg = need => `<div class="fm-panel"><p class="fm-note">🔒 島嶼 Lv ${need} 解鎖。</p></div>`;
+      let body = "";
+      if (tab === "spring") {
+        const sp = D.island.spring, cap = lv >= 85 ? sp.max85 : sp.max, n = I.spring;
+        body = lv < sp.lv ? lockMsg(sp.lv) : `<div class="fm-panel fm-isl-spring"><div class="fm-isl-big">♨️</div>
+          <div class="fm-sec ol">溫泉 Lv ${n} / ${cap}</div>
+          <p class="fm-note">動物泡溫泉，產出變快：現在快 <b>${Math.round(n * sp.eff * 100)}%</b>（每級 +2%）。${lv < 85 ? "Lv 85 之後可以升到 15 級。" : ""}</p>
+          <div class="fm-isl-steam">${"♨️".repeat(Math.max(1, n))}</div>
+          ${n < cap ? `<button type="button" class="fm-btn green" data-act="springup">升到 Lv ${n + 1}（${num(sp.cost(n + 1))} 星露）</button>` : `<p class="fm-note">已經滿級 🎉</p>`}
+          <p class="fm-note">你有 ${num(S.dew)} 星露</p></div>`;
+      } else if (tab === "garden") {
+        const g = D.island.garden;
+        const planted = g.flowers.map(f => (f[2] + " ").repeat(I.garden[f[0]] || 0)).join("");
+        body = lv < g.lv ? lockMsg(g.lv) : `<div class="fm-panel"><div class="fm-sec ol">🌷 花園</div>
+          <div class="fm-isl-bed">${planted || `<span class="fm-note">還是一片空地，種點花吧</span>`}</div>
+          <p class="fm-note">花不會枯，種越多島嶼評分越高。每種最多 ${g.max} 株。</p>
+          <div class="fm-list">${g.flowers.map(f => {
+            const c = I.garden[f[0]] || 0, lock = f[5] && lv < f[5];
+            return `<div class="fm-row"><div class="fm-row-art"><span class="fm-emo">${f[2]}</span></div><div><div class="fm-row-name">${f[1]}</div><div class="fm-row-sub">評分 +${f[4]}・已種 ${c}/${g.max}${lock ? `・Lv ${f[5]} 解鎖` : ""}</div></div>
+              <div class="fm-row-btns"><button type="button" class="fm-btn small ${lock || c >= g.max ? "" : "green"}" data-act="flowerbuy" data-k="${f[0]}" ${lock || c >= g.max ? "disabled" : ""}>${num(f[3])} 星露</button></div></div>`;
+          }).join("")}</div><p class="fm-note">你有 ${num(S.dew)} 星露</p></div>`;
+      } else if (tab === "dock") {
+        const dk = D.island.dock;
+        const bought = I.dockDay === todayKey() ? I.dockBought : {};
+        body = lv < dk.lv ? lockMsg(dk.lv) : `<div class="fm-panel"><div class="fm-sec ol">⚓ 碼頭市場・今天的船貨</div>
+          <p class="fm-note">每天換 4 樣，用星露買，每樣每天 1 個。限定星願瓶偶爾才會出現。</p>
+          <div class="fm-list">${dockOffers().map(o => `<div class="fm-row"><div class="fm-row-art"><span class="fm-emo">${o[1].split(" ")[0]}</span></div><div><div class="fm-row-name">${o[1].split(" ").slice(1).join(" ")}</div><div class="fm-row-sub">${bought[o[0]] ? "今天買過了" : "今天 1 個"}</div></div>
+            <div class="fm-row-btns"><button type="button" class="fm-btn small ${bought[o[0]] ? "" : "green"}" data-act="dockbuy" data-k="${o[0]}" ${bought[o[0]] ? "disabled" : ""}>${num(o[2])} 星露</button></div></div>`).join("")}</div>
+          <p class="fm-note">你有 ${num(S.dew)} 星露・明天 3 點換新的船貨</p></div>`;
+      } else {
+        const sc = islandScore(), tiers = [[500, "C", "星屑 100"], [1000, "B", "稀有星願瓶 1"], [2000, "A", "稀有星願瓶 2＋扭蛋幣 2"], [3500, "S", "限定星願瓶 1＋星光寶箱"], [6000, "SS", "限定星願瓶 2＋限定召喚券"]];
+        const cur = tiers.filter(x => sc.total >= x[0]).pop(), next = tiers.find(x => sc.total < x[0]);
+        const claimed = UI.scoreClaimed || [];
+        body = `<div class="fm-panel"><div class="fm-isl-score"><b>${cur ? cur[1] : "—"}</b><span>${num(sc.total)} 分</span></div>
+          ${next ? `<p class="fm-note" style="text-align:center">再 ${num(next[0] - sc.total)} 分到 ${next[1]}</p>` : `<p class="fm-note" style="text-align:center">最高評價 🎉</p>`}
+          <div class="fm-list">${sc.parts.map(([label, v, how]) => `<div class="fm-row noart"><div><div class="fm-row-name">${label}</div><div class="fm-row-sub">${how}</div></div><div class="fm-row-btns"><b>${num(v)}</b></div></div>`).join("")}</div>
+          <div class="fm-sec ol" style="margin-top:10px">每週獎勵（拿到幾級就領到那級為止，每級每週一次）</div>
+          <div class="fm-list">${tiers.map(x => `<div class="fm-row noart ${sc.total >= x[0] ? "" : "fm-locked"}"><div><div class="fm-row-name">${x[1]}・${num(x[0])} 分</div><div class="fm-row-sub">${x[2]}</div></div><div class="fm-row-btns">${claimed.includes(x[1]) ? "✅" : ""}</div></div>`).join("")}</div>
+          <button type="button" class="fm-btn green" data-act="scoreclaim" ${cur ? "" : "disabled"}>領這週的評分獎勵</button></div>`;
+      }
+      return sheetTop("🏝️ 島嶼擴建") + tabs([["spring", "♨️ 溫泉"], ["garden", "🌷 花園"], ["dock", "⚓ 碼頭市場"], ["score", "🏆 評分"]], tab) + body;
     },
 
     /* ---------- 小目標 ---------- */
