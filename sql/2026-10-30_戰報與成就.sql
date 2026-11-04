@@ -10,8 +10,8 @@ create or replace function public.life_game_stats(u uuid, d1 date, d2 date)
 returns jsonb language plpgsql stable security definer set search_path to 'public'
 as $function$
 declare
-  t1 timestamptz := (d1::timestamp + interval '3 hours') at time zone 'Asia/Taipei';
-  t2 timestamptz := ((d2 + 1)::timestamp + interval '3 hours') at time zone 'Asia/Taipei';
+  t1 timestamptz := (d1::timestamp + interval '6 hours') at time zone 'Asia/Taipei';
+  t2 timestamptz := ((d2 + 1)::timestamp + interval '6 hours') at time zone 'Asia/Taipei';
   r jsonb := '{}'::jsonb;
 begin
   r := r || jsonb_build_object(

@@ -134,7 +134,7 @@ create or replace function public.fun_tasks_done_today(p_user uuid)
 returns integer language sql stable security definer set search_path to 'public' as $$
   select count(*)::int from public.tasks
   where user_id = p_user and completed
-    and ((completed_at at time zone 'Asia/Taipei') - interval '3 hours')::date = public.app_today()
+    and ((completed_at at time zone 'Asia/Taipei') - interval '6 hours')::date = public.app_today()
 $$;
 revoke all on function public.fun_tasks_done_today(uuid) from public, anon, authenticated;
 
@@ -634,7 +634,7 @@ begin
     where user_id = p_user and session_date = v_today;
   select count(*) into v_tasks from public.tasks
     where user_id = p_user and completed
-      and ((completed_at at time zone 'Asia/Taipei') - interval '3 hours')::date = v_today;
+      and ((completed_at at time zone 'Asia/Taipei') - interval '6 hours')::date = v_today;
   select exists (select 1 from public.exercise_logs where user_id = p_user and log_date = v_today) into v_ex;
   select count(*) into v_used from public.rpg_boss_hits where user_id = p_user and hit_day = v_today;
   v_luck := coalesce(public.fun_fortune_today(p_user) = 'chukichi', false);

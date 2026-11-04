@@ -403,7 +403,7 @@
     const remain = Math.max(0, (a.total || 0) - (a.used || 0));
     const weak = CLASSES[info.weak];
     const myWeak = RP.status && RP.status.class === info.weak;
-    const end = new Date(b.week_end + "T03:00:00+08:00");
+    const end = new Date(b.week_end + "T06:00:00+08:00");
     const days = Math.max(0, Math.ceil((end.getTime() - Date.now()) / 86400000));
     const pic = RPG_IMG.has("boss:" + run.boss_key)
       ? `<img class="rp-boss-img" src="${IMG}boss/${run.boss_key}.webp" alt="">`

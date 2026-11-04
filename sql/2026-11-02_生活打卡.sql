@@ -51,7 +51,7 @@ returns boolean language sql stable security definer set search_path to 'public'
     select pr.id, count(ps.id) > 0 and bool_and(coalesce(l.done, false)) ok
       from public.projects pr
       join public.project_steps ps on ps.project_id = pr.id
-        and ((ps.created_at at time zone 'Asia/Taipei') - interval '3 hours')::date <= case when dom = 'weekly' then public.life_week(d) + 6 else d end
+        and ((ps.created_at at time zone 'Asia/Taipei') - interval '6 hours')::date <= case when dom = 'weekly' then public.life_week(d) + 6 else d end
       left join public.project_step_logs l on l.step_id = ps.id and l.day = case when dom = 'weekly' then public.life_week(d) else d end
      where pr.user_id = u and pr.domain = dom and pr.status = 'active'
      group by pr.id) x
@@ -248,10 +248,10 @@ begin
     res := public.project_step_toggle_life(p_step)::jsonb;
   end if;
 
-  -- ☀️ 早上 10:30 前打勾：多 50% 經驗
+  -- ☀️ 早上 6:00～10:30 打勾：多 50% 經驗
   hr := (extract(hour from now() at time zone 'Asia/Taipei') * 60 + extract(minute from now() at time zone 'Asia/Taipei'))::int;
   if pr.domain is not null and coalesce((res->>'done')::boolean, false) and coalesce((res->>'xp')::int, 0) > 0
-     and s.title like '☀️%' and hr between 180 and 629 then
+     and s.title like '☀️%' and hr between 360 and 629 then
     bonus := ceil((res->>'xp')::int * 0.5);
     ups := public.project_add_xp(u, pr.id, bonus);
     res := res || jsonb_build_object('morning', bonus, 'levelUps', coalesce(res->'levelUps', '[]'::jsonb) || ups);

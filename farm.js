@@ -3075,8 +3075,8 @@ const FARM_JS_VERSION = "2026-10-28 v2";
     });
 
     await read("任務", async () => {
-      /* 今天（凌晨 3 點之後）完成的任務 */
-      const start = new Date(day + "T03:00:00");
+      /* 今天（早上 6 點之後）完成的任務 */
+      const start = new Date(day + "T06:00:00");
       const { data, error } = await db.from("tasks").select("id, completed_at")
         .eq("user_id", uid()).eq("completed", true).gte("completed_at", start.toISOString()).limit(300);
       if (error) throw error;
@@ -6412,7 +6412,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
           <p class="fm-note">每天換 4 樣，用星露買，每樣每天 1 個。限定星願瓶偶爾才會出現。</p>
           <div class="fm-list">${dockOffers().map(o => `<div class="fm-row"><div class="fm-row-art"><span class="fm-emo">${o[1].split(" ")[0]}</span></div><div><div class="fm-row-name">${o[1].split(" ").slice(1).join(" ")}</div><div class="fm-row-sub">${bought[o[0]] ? "今天買過了" : "今天 1 個"}</div></div>
             <div class="fm-row-btns"><button type="button" class="fm-btn small ${bought[o[0]] ? "" : "green"}" data-act="dockbuy" data-k="${o[0]}" ${bought[o[0]] ? "disabled" : ""}>${num(o[2])} 星露</button></div></div>`).join("")}</div>
-          <p class="fm-note">你有 ${num(S.dew)} 星露・明天 3 點換新的船貨</p></div>`;
+          <p class="fm-note">你有 ${num(S.dew)} 星露・明天早上 6 點換新的船貨</p></div>`;
       } else {
         const sc = islandScore(), tiers = [[500, "C", "星屑 100"], [1000, "B", "稀有星願瓶 1"], [2000, "A", "稀有星願瓶 2＋扭蛋幣 2"], [3500, "S", "限定星願瓶 1＋星光寶箱"], [6000, "SS", "限定星願瓶 2＋限定召喚券"]];
         const cur = tiers.filter(x => sc.total >= x[0]).pop(), next = tiers.find(x => sc.total < x[0]);
@@ -6456,7 +6456,7 @@ const FARM_JS_VERSION = "2026-10-28 v2";
           <div><div class="fm-row-name">${t.name} ${g.n} 次</div><div class="fm-bar" style="margin-top:4px"><i style="width:${(g.got / g.n) * 100}%"></i></div><div class="fm-row-sub">${g.got} / ${g.n}・獎勵 ${GOAL_EXP} EXP、${GOAL_DEW} 星露</div></div>
           <div class="fm-row-btns">${g.claimed ? "✅" : `<button type="button" class="fm-btn small green" data-act="claimgoal" data-i="${i}" ${done ? "" : "disabled"}>領取</button>`}</div></div>`;
       }).join("");
-      return sheetTop("今日小目標") + `<div class="fm-panel"><div class="fm-list">${rows}</div><p class="fm-note" style="margin-top:10px">每天凌晨 3 點換新的小目標。</p></div>`;
+      return sheetTop("今日小目標") + `<div class="fm-panel"><div class="fm-list">${rows}</div><p class="fm-note" style="margin-top:10px">每天早上 6 點換新的小目標。</p></div>`;
     }
 
   };

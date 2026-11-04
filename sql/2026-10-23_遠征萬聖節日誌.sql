@@ -170,7 +170,7 @@ begin
   -- 完成任務：40% 遇到
   for t in select id from public.tasks
            where user_id = p_user and completed
-             and ((completed_at at time zone 'Asia/Taipei') - interval '3 hours')::date between v_start and v_end loop
+             and ((completed_at at time zone 'Asia/Taipei') - interval '6 hours')::date between v_start and v_end loop
     if (abs(hashtext('task-ghost:' || t.id)) % 10000) / 10000.0 < 0.4 then
       insert into public.hw_ghosts (user_id, kind, source) values (p_user, public.hw_roll('task:' || t.id), 'task:' || t.id)
         on conflict do nothing;
@@ -306,7 +306,7 @@ begin
   select jsonb_agg(jsonb_build_object('day', d::date,
            'focus', (select coalesce(sum(duration_seconds), 0) / 60 from public.focus_sessions where user_id = v_user and session_date = d::date),
            'tasks', (select count(*) from public.tasks where user_id = v_user and completed
-                       and ((completed_at at time zone 'Asia/Taipei') - interval '3 hours')::date = d::date),
+                       and ((completed_at at time zone 'Asia/Taipei') - interval '6 hours')::date = d::date),
            'checkin', exists (select 1 from public.checkins where user_id = v_user and checkin_date = d::date)) order by d)
     into v_days from generate_series(v_week, v_end, interval '1 day') d;
 
@@ -327,14 +327,14 @@ begin
              join public.teams t on t.id = tr.team_id
              where h0.user_id = v_user and h0.week_start = v_week limit 1),
     'legends', (select coalesce(jsonb_agg(gear_key), '[]'::jsonb) from public.rpg_summon_log
-                where user_id = v_user and tier = 's' and ((created_at at time zone 'Asia/Taipei') - interval '3 hours')::date between v_week and v_end),
+                where user_id = v_user and tier = 's' and ((created_at at time zone 'Asia/Taipei') - interval '6 hours')::date between v_week and v_end),
     'summons', (select count(*) from public.rpg_summon_log
-                where user_id = v_user and ((created_at at time zone 'Asia/Taipei') - interval '3 hours')::date between v_week and v_end),
+                where user_id = v_user and ((created_at at time zone 'Asia/Taipei') - interval '6 hours')::date between v_week and v_end),
     'expeditions', (select jsonb_build_object('count', count(*), 'best', coalesce(max(place), -1))
                     from public.expeditions e join public.focus_sessions f on f.id = e.session_id
                     where e.user_id = v_user and f.session_date between v_week and v_end),
     'ghosts', (select count(*) from public.hw_ghosts where user_id = v_user and caught_at is not null
-               and ((caught_at at time zone 'Asia/Taipei') - interval '3 hours')::date between v_week and v_end),
+               and ((caught_at at time zone 'Asia/Taipei') - interval '6 hours')::date between v_week and v_end),
     'fortunes', (select coalesce(jsonb_object_agg(kind, n), '{}'::jsonb) from (
                    select kind, count(*) n from public.fun_fortunes where user_id = v_user and day between v_week and v_end group by kind) x),
     'first_week', (select min(checkin_date) from public.checkins where user_id = v_user));

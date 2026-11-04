@@ -396,7 +396,7 @@
     return t.toISOString().slice(0, 10);
   }
   function todayTaipei() {
-    const t = new Date(Date.now() - 3 * 3600000);   /* 凌晨 3 點換日 */
+    const t = new Date(Date.now() - 6 * 3600000);   /* 早上 6 點換日 */
     return t.toLocaleDateString("sv-SE", { timeZone: "Asia/Taipei" });
   }
   function addDays(d, n) { const t = new Date(d + "T12:00:00+08:00"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); }
@@ -457,7 +457,7 @@
       const bn = BOSS_NAME[j.boss.boss_key] || "每週王";
       if (j.boss.killed_at) {
         const d = new Date(j.boss.killed_at);
-        const dn = DAY[(new Date(d.getTime() - 3 * 3600000 + 8 * 3600000).getUTCDay() + 6) % 7];
+        const dn = DAY[(new Date(d.getTime() - 6 * 3600000 + 8 * 3600000).getUTCDay() + 6) % 7];
         lines.push(`<b>${dn}</b>，${name} 揮出最後一擊，擊敗了第 ${j.boss.tier} 階的「${bn}」！`);
       } else if (j.boss.dmg > 0) {
         lines.push(`「${bn}」被打掉了 ${Math.round(j.boss.dmg / j.boss.hp * 100)}% 的血，牠躲回巢穴，下週再決勝負。`);

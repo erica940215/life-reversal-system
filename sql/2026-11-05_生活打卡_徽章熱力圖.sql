@@ -27,7 +27,7 @@ returns numeric language sql stable security definer set search_path to 'public'
   select case when count(ps.id) = 0 then null else round(count(ps.id) filter (where l.done) * 100.0 / count(ps.id)) end
     from public.projects pr
     join public.project_steps ps on ps.project_id = pr.id
-      and ((ps.created_at at time zone 'Asia/Taipei') - interval '3 hours')::date <= case when dom = 'weekly' then public.life_week(d) + 6 else d end
+      and ((ps.created_at at time zone 'Asia/Taipei') - interval '6 hours')::date <= case when dom = 'weekly' then public.life_week(d) + 6 else d end
     left join public.project_step_logs l on l.step_id = ps.id and l.day = case when dom = 'weekly' then public.life_week(d) else d end
    where pr.user_id = u and pr.domain = dom and pr.status = 'active'
 $$;

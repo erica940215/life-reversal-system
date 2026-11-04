@@ -30,7 +30,7 @@ returns numeric language sql stable security definer set search_path to 'public'
   select case when count(ps.id) = 0 then null else round(count(ps.id) filter (where l.done) * 100.0 / count(ps.id)) end
     from public.projects pr
     join public.project_steps ps on ps.project_id = pr.id
-      and ((ps.created_at at time zone 'Asia/Taipei') - interval '3 hours')::date <= case when dom = 'weekly' then public.life_week(d) + 6 else d end
+      and ((ps.created_at at time zone 'Asia/Taipei') - interval '6 hours')::date <= case when dom = 'weekly' then public.life_week(d) + 6 else d end
     left join public.project_step_logs l on l.step_id = ps.id and l.day = case when dom = 'weekly' then public.life_week(d) else d end
    where pr.user_id = u and pr.domain = dom and pr.status = 'active'
 $$;
@@ -366,8 +366,8 @@ declare
   t0 timestamptz; t1 timestamptz; earn jsonb;
 begin
   if u is null then raise exception '尚未登入'; end if;
-  t0 := (m::timestamp + interval '3 hours') at time zone 'Asia/Taipei';
-  t1 := ((m + interval '1 month')::timestamp + interval '3 hours') at time zone 'Asia/Taipei';
+  t0 := (m::timestamp + interval '6 hours') at time zone 'Asia/Taipei';
+  t1 := ((m + interval '1 month')::timestamp + interval '6 hours') at time zone 'Asia/Taipei';
   -- 💱 這個月拿到的東西（只算增加的），依來源分類
   select coalesce(jsonb_object_agg(cat, items), '{}'::jsonb) into earn from (
     select cat, jsonb_object_agg(item_key, q) items from (

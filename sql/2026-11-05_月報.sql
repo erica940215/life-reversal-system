@@ -52,8 +52,8 @@ declare
   t0 timestamptz; t1 timestamptz; earn jsonb;
 begin
   if u is null then raise exception '尚未登入'; end if;
-  t0 := (m::timestamp + interval '3 hours') at time zone 'Asia/Taipei';
-  t1 := ((m + interval '1 month')::timestamp + interval '3 hours') at time zone 'Asia/Taipei';
+  t0 := (m::timestamp + interval '6 hours') at time zone 'Asia/Taipei';
+  t1 := ((m + interval '1 month')::timestamp + interval '6 hours') at time zone 'Asia/Taipei';
   -- 💱 這個月拿到的東西（只算增加的），依來源分類
   select coalesce(jsonb_object_agg(cat, items), '{}'::jsonb) into earn from (
     select cat, jsonb_object_agg(item_key, q) items from (

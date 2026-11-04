@@ -294,7 +294,7 @@
         : `<p style="font-size:13px;opacity:.7">還沒有。飲食升級之後，在農場或末世做料理就有機會做出豪華、奇蹟品種，第一次做出來送星屑。</p>`) : "";
     return `<section class="card lf-card"><div class="lf-head"><h2>🌱 生活打卡</h2>
         <div class="lf-tabs"><button data-a="lifeview" data-id="domain" class="${view === "domain" ? "on" : ""}">依領域</button><button data-a="lifeview" data-id="time" class="${view === "time" ? "on" : ""}">依時段</button></div></div>
-      <p class="lf-sum">${L.all_clear ? "🌟 今天五個領域全勤，生活寶箱已開" : "五個每日領域今天都全勤 → 開生活寶箱"}・這週全勤 ${L.week_all}/5 天（滿 5 天送限定星願瓶）・☀️ 項目 10:30 前勾經驗 ×1.5</p>
+      <p class="lf-sum">${L.all_clear ? "🌟 今天五個領域全勤，生活寶箱已開" : "五個每日領域今天都全勤 → 開生活寶箱"}・這週全勤 ${L.week_all}/5 天（滿 5 天送限定星願瓶）・☀️ 項目 6:00～10:30 勾經驗 ×1.5</p>
       ${body}
       <div class="lf-more"><button class="btn btn-small" data-a="lifeheat">🟩 熱力圖${P.lifeHeat ? " ▴" : " ▾"}</button>
       <button class="btn btn-small" data-a="lifebadges">🏅 徽章（${(L.badges || []).length}）${P.lifeBadges ? " ▴" : " ▾"}</button></div>

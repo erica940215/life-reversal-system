@@ -223,7 +223,7 @@ revoke all on public.buddies from anon, authenticated;
 create or replace function public.buddy_points(p_user uuid, p_since timestamptz)
 returns jsonb language plpgsql stable security definer set search_path to 'public'
 as $function$
-declare d date := ((p_since at time zone 'Asia/Taipei') - interval '3 hours')::date;
+declare d date := ((p_since at time zone 'Asia/Taipei') - interval '6 hours')::date;
   f integer; t integer; e integer; h integer; c integer;
 begin
   select coalesce(sum(duration_seconds), 0) / 600 into f from public.focus_sessions where user_id = p_user and session_date >= d;
@@ -272,7 +272,7 @@ begin
   end if;
 
   v_today_act := exists (select 1 from public.focus_sessions where user_id = v_user and session_date = v_today)
-              or exists (select 1 from public.tasks where user_id = v_user and completed and ((completed_at at time zone 'Asia/Taipei') - interval '3 hours')::date = v_today)
+              or exists (select 1 from public.tasks where user_id = v_user and completed and ((completed_at at time zone 'Asia/Taipei') - interval '6 hours')::date = v_today)
               or exists (select 1 from public.checkins where user_id = v_user and checkin_date = v_today);
   v_active := v_today_act
               or exists (select 1 from public.focus_sessions where user_id = v_user and session_date >= v_today - 1)
@@ -370,7 +370,7 @@ begin
   if exists (select 1 from public.focus_sessions where user_id = p_user and duration_seconds >= 10800) then got := array_append(got, 'marathon'); end if;
   if exists (select 1 from public.checkins where user_id = p_user and streak >= 30) then got := array_append(got, 'attendance'); end if;
   if exists (select 1 from public.tasks where user_id = p_user and completed
-             group by ((completed_at at time zone 'Asia/Taipei') - interval '3 hours')::date having count(*) >= 20) then got := array_append(got, 'harvester'); end if;
+             group by ((completed_at at time zone 'Asia/Taipei') - interval '6 hours')::date having count(*) >= 20) then got := array_append(got, 'harvester'); end if;
   if exists (select 1 from public.rpg_boss_runs where user_id = p_user and killed_at is not null and tier >= 3) then got := array_append(got, 'slayer'); end if;
   if (select count(*) from public.rpg_summon_log where user_id = p_user and tier = 's') >= 3 then got := array_append(got, 'lucky_king'); end if;
   if (select count(*) from public.rpg_summon_log where user_id = p_user) >= 50
@@ -461,7 +461,7 @@ returns integer language sql stable security definer set search_path to 'public'
     when 'focus' then (select coalesce(sum(duration_seconds), 0) / 60 from public.focus_sessions
                        where user_id = p_user and session_date between p_week and p_week + 6)::int
     when 'tasks' then (select count(*) from public.tasks where user_id = p_user and completed
-                       and ((completed_at at time zone 'Asia/Taipei') - interval '3 hours')::date between p_week and p_week + 6)::int
+                       and ((completed_at at time zone 'Asia/Taipei') - interval '6 hours')::date between p_week and p_week + 6)::int
     else (select count(*) from public.checkins where user_id = p_user and checkin_date between p_week and p_week + 6)::int end
 $$;
 revoke all on function public.bet_progress(uuid, date, text) from public, anon, authenticated;
@@ -619,7 +619,7 @@ begin
         'class', h.class, 'frame', fp.frame, 'title', fp.title,
         'focus_min', (select coalesce(sum(duration_seconds), 0) / 60 from public.focus_sessions where user_id = m.user_id and session_date = v_today),
         'tasks', (select count(*) from public.tasks where user_id = m.user_id and completed
-                    and ((completed_at at time zone 'Asia/Taipei') - interval '3 hours')::date = v_today),
+                    and ((completed_at at time zone 'Asia/Taipei') - interval '6 hours')::date = v_today),
         'attacks', (select count(*) from public.rpg_boss_hits where user_id = m.user_id and hit_day = v_today),
         'raid_dmg', (select coalesce(sum(dmg), 0) from public.team_raid_hits where team_id = v_team and week_start = v_week and user_id = m.user_id)
       ) order by m.joined_at), '[]'::jsonb)

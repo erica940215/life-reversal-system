@@ -703,13 +703,13 @@ begin
   select array_agg(t order by t) into ev from (
     select completed_at t from public.tasks
       where user_id = u and completed and completed_at is not null
-        and (completed_at at time zone 'Asia/Taipei' - interval '3 hours')::date = today
+        and (completed_at at time zone 'Asia/Taipei' - interval '6 hours')::date = today
     union all
     select created_at from public.project_step_logs where user_id = u and day = today and done
     union all
     select s.done_at from public.project_steps s join public.projects p on p.id = s.project_id
       where s.user_id = u and p.kind <> 'daily' and s.done and s.done_at is not null
-        and (s.done_at at time zone 'Asia/Taipei' - interval '3 hours')::date = today) x;
+        and (s.done_at at time zone 'Asia/Taipei' - interval '6 hours')::date = today) x;
   n_ev := coalesce(array_length(ev, 1), 0);
   select * into dd from public.doom_days where user_id = u and day = today for update;
   for i in 1..n_ev loop
@@ -1398,7 +1398,7 @@ begin
     select * into a from public.doom_activity(u, d);
     select coalesce(jsonb_agg(jsonb_build_object('zone', r.result->>'zone_name', 'emoji', r.result->>'zone_emoji',
         'min', r.minutes, 'n', jsonb_array_length(r.result->'drops'), 'rare', r.result->'rare')), '[]'::jsonb) into runs
-      from public.doom_runs r where r.user_id = u and (r.created_at at time zone 'Asia/Taipei' - interval '3 hours')::date = d;
+      from public.doom_runs r where r.user_id = u and (r.created_at at time zone 'Asia/Taipei' - interval '6 hours')::date = d;
     select coalesce(jsonb_agg(jsonb_build_object('kind', l.kind, 'tier', l.tier, 'body', l.body) order by l.id), '[]'::jsonb) into logs
       from public.doom_log l where l.user_id = u and l.day = d and l.kind in ('draw', 'event', 'visitor', 'choice', 'zone', 'signal', 'bond', 'build');
     out := out || jsonb_build_object('day', d, 'day_no', st.day_no - (today - d), 'tasks', a.tasks, 'steps', a.steps,

@@ -50,7 +50,7 @@ returns numeric language sql stable security definer set search_path to 'public'
     (case when exists (select 1 from public.checkins where user_id = u and checkin_date = d) then 5 else 0 end)
     + coalesce((select sum(duration_seconds) / 180.0 from public.focus_sessions where user_id = u and session_date = d and not coalesce(is_manual, false)), 0)
     + coalesce((select sum(case difficulty when 'easy' then 3 when 'hard' then 8 when 'epic' then 12 else 5 end) from public.tasks
-                where user_id = u and completed and ((completed_at at time zone 'Asia/Taipei') - interval '3 hours')::date = d), 0)
+                where user_id = u and completed and ((completed_at at time zone 'Asia/Taipei') - interval '6 hours')::date = d), 0)
     + coalesce((select count(*) * 4 from public.habit_logs where user_id = u and log_date = d and not is_makeup), 0)
 $$;
 
@@ -130,9 +130,9 @@ create or replace function public.arena_theme_score(u uuid, th text, ws date)
 returns numeric language sql stable security definer set search_path to 'public' as $$
   select case th
     when 'focus' then coalesce((select sum(duration_seconds) / 60.0 from public.focus_sessions where user_id = u and session_date between ws and ws + 6 and not coalesce(is_manual, false)), 0)
-    when 'task' then coalesce((select count(*) from public.tasks where user_id = u and completed and ((completed_at at time zone 'Asia/Taipei') - interval '3 hours')::date between ws and ws + 6), 0)
+    when 'task' then coalesce((select count(*) from public.tasks where user_id = u and completed and ((completed_at at time zone 'Asia/Taipei') - interval '6 hours')::date between ws and ws + 6), 0)
     when 'habit' then coalesce((select count(*) from public.habit_logs where user_id = u and log_date between ws and ws + 6 and not is_makeup), 0)
-    else coalesce((select count(*) from public.tasks where user_id = u and completed and ((completed_at at time zone 'Asia/Taipei') - interval '3 hours')::date between ws and ws + 6
+    else coalesce((select count(*) from public.tasks where user_id = u and completed and ((completed_at at time zone 'Asia/Taipei') - interval '6 hours')::date between ws and ws + 6
                    and extract(hour from completed_at at time zone 'Asia/Taipei') between 5 and 8), 0)
        + coalesce((select count(*) from public.focus_sessions where user_id = u and session_date between ws and ws + 6
                    and extract(hour from started_at at time zone 'Asia/Taipei') between 5 and 8), 0)

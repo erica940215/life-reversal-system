@@ -275,7 +275,7 @@ begin
 
   select count(*) into today_done from public.projects
     where user_id = u and status = 'done'
-      and (completed_at at time zone 'Asia/Taipei' - interval '3 hours')::date = today;
+      and (completed_at at time zone 'Asia/Taipei' - interval '6 hours')::date = today;
 
   update public.projects set status = 'done', completed_at = now() where id = p_project;
   insert into public.project_stats (user_id) values (u) on conflict do nothing;
@@ -377,7 +377,7 @@ begin
   if not found then raise exception '找不到這個項目'; end if;
   select * into pr from public.projects where id = s.project_id;
   if pr.kind <> 'daily' then raise exception '只有每日重複的專案可以補打卡'; end if;
-  if (s.created_at at time zone 'Asia/Taipei' - interval '3 hours')::date > y then
+  if (s.created_at at time zone 'Asia/Taipei' - interval '6 hours')::date > y then
     raise exception '這個項目是今天才加的，昨天不用補';
   end if;
 
