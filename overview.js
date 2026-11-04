@@ -24,7 +24,11 @@
   async function load() {
     OV.err = null;
     try {
-      if (OV.tab === "year") {
+      if (OV.tab === "month") {
+        const { data, error } = await db.rpc("life_month", { p_offset: OV.moffset || 0 });
+        if (error) throw error;
+        OV.mon = data;
+      } else if (OV.tab === "year") {
         const { data, error } = await db.rpc("life_year", { p_year: OV.year || null });
         if (error) throw error;
         OV.yr = data;
@@ -44,7 +48,7 @@
         OV.ach = a.error ? null : a.data;
       }
     } catch (e) {
-      OV.err = /life_year/.test(e.message || "") ? "setup2" : /life_week|life_collection|PGRST202|42883/.test(e.message || "") ? "setup" : (e.message || String(e));
+      OV.err = /life_month/.test(e.message || "") ? "setup3" : /life_year/.test(e.message || "") ? "setup2" : /life_week|life_collection|PGRST202|42883/.test(e.message || "") ? "setup" : (e.message || String(e));
     }
     render();
   }
@@ -116,6 +120,52 @@
   }
 
   /* 🗓️ 年度熱力圖：一年 365 格，專注越久越亮 */
+  /* 🗓️ 月報 ＋ 💱 現實 ↔ 遊戲換算 */
+  const ITEMN = { stardust: "✨ 星屑", ticket_normal: "🎫 普通召喚券", ticket_special: "🎟️ 特殊召喚券", ticket_limited: "🌟 限定召喚券",
+    wish_normal: "🫙 普通星願瓶", wish_rare: "💎 稀有星願瓶", wish_limited: "🌠 限定星願瓶", chest_wood: "📦 木寶箱", chest_gold: "🧰 金寶箱",
+    chest_star: "✨ 星光寶箱", chest_team: "🛡️ 團隊寶箱", gacha_coin: "🪙 扭蛋幣", scratch_card: "🎫 刮刮樂", farmpass10: "🎟️ 農場入場卷 10 分",
+    farmpass30: "🎟️ 農場入場卷 30 分", arena_coin: "🏟️ 競技幣", makeup_card: "📝 補簽卡", map_mark: "🗺️ 地圖印記", seal_mark: "🔒 封印印記" };
+  const CAT = [["focus", "⏱️ 專注"], ["task", "✅ 任務"], ["checkin", "📅 簽到"], ["life", "🌱 生活打卡"], ["arena", "🏟️ 競技場"], ["game", "🎲 遊戲內（寶箱、抽獎、農場、末世…）"]];
+  function monthHtml() {
+    const w = OV.mon;
+    if (!w) return `<div class="ov-empty">載入中…</div>`;
+    const n = w.now || {}, p = w.prev || {};
+    const mm = +String(w.month).slice(5, 7);
+    const dm = (a, b, unit = "") => { if (b == null) return ""; const d = Math.round((a - b) * 10) / 10; return d === 0 ? `<small class="ov-eq">跟上個月一樣</small>` : `<small class="${d > 0 ? "ov-up" : "ov-down"}">${d > 0 ? "▲" : "▼"} ${Math.abs(d)}${unit}</small>`; };
+    const card = (v, label, pv, unit = "", num = v) => `<div><b>${v}</b><span>${label}</span>${dm(+num || 0, pv, unit)}</div>`;
+    const rate = pct(n.tasks_done, n.tasks_total);
+    const subj = (n.subjects || []).slice(0, 8);
+    const top = subj.length ? subj[0].h : 1;
+    const earn = w.earn || {};
+    const total = {};
+    Object.values(earn).forEach(o => Object.entries(o).forEach(([k, v]) => total[k] = (total[k] || 0) + v));
+    const real = ["focus", "task", "checkin", "life", "arena"].reduce((t, c) => t + Object.values(earn[c] || {}).reduce((a, b) => a + b, 0), 0);
+    const all = Object.values(total).reduce((a, b) => a + b, 0);
+    const items = o => Object.entries(o || {}).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<span class="ov-chip">${ITEMN[k] || k} ×${v.toLocaleString()}</span>`).join("");
+    const per = (k) => n.focus_h ? Math.round((((earn.focus || {})[k]) || 0) / n.focus_h * 100) / 10 : 0;   // 每 10 小時
+    const hl = [];
+    if (n.focus_best) hl.push(`最拚的一天是 ${String(n.focus_best.d).slice(5).replace("-", "/")}，專注了 ${n.focus_best.h} 小時`);
+    if (subj[0]) hl.push(`花最多時間的是「${esc(subj[0].name)}」${subj[0].h} 小時，佔 ${pct(subj[0].h, n.focus_h)}%`);
+    if (n.life_all) hl.push(`生活打卡五領域全勤 ${n.life_all} 天`);
+    if (n.checkins >= n.days) hl.push(`簽到全勤 🎉`);
+    return `<div class="ov-nav"><button type="button" class="ov-btn ghost" data-ov="mprev">◀</button><b>${String(w.month).slice(0, 4)} 年 ${mm} 月${w.offset === 0 ? "（到今天）" : ""}</b><button type="button" class="ov-btn ghost" data-ov="mnext" ${w.offset >= 0 ? "disabled" : ""}>▶</button></div>
+      <div class="ov-cards">
+        ${card(n.focus_h + " h", "專注", p.focus_h, " h", n.focus_h)}
+        ${card(rate + "%", `任務完成（${n.tasks_done}/${n.tasks_total}）`, pct(p.tasks_done, p.tasks_total), "%", rate)}
+        ${card(n.checkins + " 天", "簽到", p.checkins, " 天", n.checkins)}
+        ${card(n.life_steps, "生活打卡勾了幾格", p.life_steps)}
+        ${card(`${n.arena_w} 勝 ${n.arena_l} 敗`, "競技場", null)}
+        ${card(n.boss_kills, "打倒每週王", p.boss_kills)}
+      </div>
+      ${hl.length ? `<div class="ov-box"><div class="ov-sec">✨ 這個月的亮點</div><ul class="ov-hl">${hl.map(t => `<li>${t}</li>`).join("")}</ul></div>` : ""}
+      ${subj.length ? `<div class="ov-box"><div class="ov-sec">📚 各科專注</div>${subj.map(r => `<div class="ov-subj"><span>${esc(r.name)}</span><div class="ov-hbar"><i style="width:${pct(r.h, top)}%"></i></div><b>${r.h}h</b></div>`).join("")}</div>` : ""}
+      <div class="ov-box"><div class="ov-sec">💱 現實 ↔ 遊戲換算</div>
+        <p class="ov-note" style="margin:0 0 8px">這個月拿到的遊戲資源，有 <b style="color:#ffd166">${pct(real, all)}%</b> 是靠真實行動換來的（專注、任務、簽到、生活打卡、競技）。${n.focus_h ? `平均每專注 10 小時，換到 ✨ 星屑 ${per("stardust")}、召喚券 ${Math.round(((+per("ticket_normal")) + (+per("ticket_special")) + (+per("ticket_limited"))) * 10) / 10} 張。` : ""}</p>
+        ${CAT.map(([k, label]) => earn[k] ? `<div class="ov-ex"><div class="ov-ex-h">${label}${k === "focus" ? `<small>${n.focus_h} 小時</small>` : k === "task" ? `<small>完成 ${n.tasks_done} 個</small>` : k === "checkin" ? `<small>${n.checkins} 天</small>` : k === "life" ? `<small>${n.life_steps} 格</small>` : ""}</div><div>${items(earn[k])}</div></div>` : "").join("")}
+        ${all ? "" : `<p class="ov-note">這個月還沒有拿到東西。</p>`}
+      </div>`;
+  }
+
   function yearHtml() {
     const y = OV.yr;
     if (!y) return `<div class="ov-empty">載入中…</div>`;
@@ -214,10 +264,11 @@
     let body;
     if (OV.err === "setup") body = `<p class="ov-note">⚠️ 回顧的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-10-30_通知與回顧.sql</b>。</p>`;
     else if (OV.err) body = `<p class="ov-note">載入失敗：${esc(OV.err)}</p>`;
+    else if (OV.err === "setup3") body = `<p class="ov-note">⚠️ 月報的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-11-05_月報.sql</b>。</p>`;
     else if (OV.err === "setup2") body = `<p class="ov-note">⚠️ 年度熱力圖的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-10-30_目標與作息.sql</b>。</p>`;
-    else body = OV.tab === "week" ? weekHtml() : OV.tab === "game" ? gameHtml() : OV.tab === "year" ? yearHtml() : collHtml();
+    else body = OV.tab === "month" ? monthHtml() : OV.tab === "week" ? weekHtml() : OV.tab === "game" ? gameHtml() : OV.tab === "year" ? yearHtml() : collHtml();
     ov.querySelector(".ov-panel").innerHTML = `<div class="ov-head"><h2>📊 回顧</h2><button type="button" class="ov-x" data-ov="close" aria-label="關閉">✕</button></div>
-      <div class="ov-tabs"><button type="button" class="${OV.tab === "week" ? "on" : ""}" data-ov="tab" data-v="week">📅 週回顧</button><button type="button" class="${OV.tab === "game" ? "on" : ""}" data-ov="tab" data-v="game">📰 戰報</button><button type="button" class="${OV.tab === "year" ? "on" : ""}" data-ov="tab" data-v="year">🗓️ 年度</button><button type="button" class="${OV.tab === "coll" ? "on" : ""}" data-ov="tab" data-v="coll">🏆 收藏與成就</button></div>${body}`;
+      <div class="ov-tabs"><button type="button" class="${OV.tab === "week" ? "on" : ""}" data-ov="tab" data-v="week">📅 週回顧</button><button type="button" class="${OV.tab === "month" ? "on" : ""}" data-ov="tab" data-v="month">🗓️ 月報</button><button type="button" class="${OV.tab === "game" ? "on" : ""}" data-ov="tab" data-v="game">📰 戰報</button><button type="button" class="${OV.tab === "year" ? "on" : ""}" data-ov="tab" data-v="year">📆 年度</button><button type="button" class="${OV.tab === "coll" ? "on" : ""}" data-ov="tab" data-v="coll">🏆 收藏與成就</button></div>${body}`;
   }
 
   function openPanel() {
@@ -234,6 +285,8 @@
     const a = el.dataset.ov;
     if (a === "close") { OV.open = false; document.getElementById("ov-overlay").hidden = true; return; }
     if (a === "tab") { OV.tab = el.dataset.v; render(); load(); return; }
+    if (a === "mprev") { OV.moffset = (OV.moffset || 0) - 1; OV.mon = null; render(); load(); return; }
+    if (a === "mnext") { OV.moffset = Math.min(0, (OV.moffset || 0) + 1); OV.mon = null; render(); load(); return; }
     if (a === "gprev") { OV.goffset = (OV.goffset || 0) - 1; OV.game = null; render(); load(); return; }
     if (a === "gnext") { OV.goffset = Math.min(0, (OV.goffset || 0) + 1); OV.game = null; render(); load(); return; }
     if (a === "yprev" || a === "ynext") { OV.year = (OV.yr ? OV.yr.year : new Date().getFullYear()) + (a === "yprev" ? -1 : 1); OV.yr = null; render(); load(); return; }
@@ -284,6 +337,9 @@
         .ov-hc.l1 { background: #5b3d1e; } .ov-hc.l2 { background: #8a5a20; } .ov-hc.l3 { background: #c9801f; } .ov-hc.l4 { background: #f2a33a; } .ov-hc.l5 { background: #ffd166; box-shadow: 0 0 4px #ffd166; }
         .ov-hc.td { outline: 1.5px solid #fff; }
         .ov-legend { display: flex; gap: 3px; align-items: center; font-size: 11px; color: #8f98b6; margin-top: 6px; flex-wrap: wrap; }
+        .ov-tabs { flex-wrap: wrap; } .ov-tabs button { min-width: 64px; font-size: 13px; }
+        .ov-chip { display: inline-block; font-size: 12px; background: #232a40; border-radius: 99px; padding: 3px 8px; margin: 2px 3px 2px 0; }
+        .ov-ex { padding: 8px 0; border-top: 1px solid #2c3350; } .ov-ex-h { font-weight: 700; font-size: 13px; margin-bottom: 4px; } .ov-ex-h small { font-weight: 400; color: #8f98b6; margin-left: 6px; }
         .ov-note { font-size: 12.5px; color: #8f98b6; margin: 8px 0 0; } .ov-empty { text-align: center; color: #8f98b6; padding: 20px; }
         @media (max-width: 480px) { .ov-open-btn .ov-open-txt { display: none; } }
       `;
@@ -311,6 +367,19 @@
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", setup);
   else setup();
+
+  /* 每月 1～3 號第一次打開網站：自動跳上個月的月報 */
+  function monthAuto() {
+    if (typeof currentUser === "undefined" || !currentUser || typeof getToday !== "function") return false;
+    const t = getToday(), key = "ovMonthSeen";
+    if (+t.slice(8) > 3) return true;
+    const mon = t.slice(0, 7);
+    try { if (localStorage.getItem(key) === mon) return true; localStorage.setItem(key, mon); } catch (_) { return true; }
+    OV.tab = "month"; OV.moffset = -1; OV.mon = null;
+    openPanel();
+    return true;
+  }
+  (function waitAuto(n) { if (!monthAuto() && n < 30) setTimeout(() => waitAuto(n + 1), 2000); })(0);
 
   window.OverviewGame = { open: openPanel, state: OV };
 
