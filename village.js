@@ -103,7 +103,7 @@
     box.hidden = !(v && gameOn());
     if (box.hidden) return;
     box.className = "card vg-today vg-vil";
-    box.innerHTML = `<div class="vg-h"><b>🏘️ 村民委託</b>${v.town ? `<small class="vg-lv">星光村 Lv${v.town.lv}</small>` : ""}<button type="button" class="btn btn-small" data-vg="town">村莊</button></div>
+    box.innerHTML = `<div class="vg-h"><b>🏘️ 村民委託</b>${v.town ? `<small class="vg-lv">星光村 Lv${v.town.lv}</small>` : ""}<button type="button" class="btn btn-small" data-vg="town">村莊</button></div>${seasonLine(S.season)}
       ${(v.quests || []).map(q => {
         const p = v.defs[q.villager], qd = p.quests.find(x => x.k === q.quest) || {};
         return `<div class="vg-q ${q.done ? "done" : ""}">${vimg(q.villager, p.emoji)}<div class="vg-qb"><b>${esc(p.name)}</b><p>「${esc(qd.text)}」</p>
@@ -126,7 +126,7 @@
     const v = S.vil;
     if (!v) return;
     const T = [3, 7, 15, 30], lv = v.town ? v.town.lv : 1;
-    modal(`<div class="vg-title">🏘️ 星光村</div>${townHtml(v)}<p class="vg-note">完成委託，村民好感 +1。好感 3／7／15／30 會告訴你他的故事，還會送你禮物。</p>
+    modal(`<div class="vg-title">🏘️ 星光村</div>${townHtml(v)}${seasonLine(S.season)}<p class="vg-note">完成委託，村民好感 +1。好感 3／7／15／30 會告訴你他的故事，還會送你禮物。</p>
       ${Object.entries(v.defs).map(([k, p]) => {
         if ((p.unlock || 1) > lv) return `<div class="vg-person locked"><span class="vg-face vg-emo">🔒</span><div class="vg-pb"><b>？？？</b><small>村莊 Lv${p.unlock} 會有新村民搬來</small></div></div>`;
         const a = v.aff[k] || 0, ch = T.filter(x => a >= x).length, next = T.find(x => a < x);
@@ -136,6 +136,47 @@
       }).join("")}
       <button type="button" class="btn btn-primary" data-vx="1" style="width:100%">關閉</button>`, "vg-town");
   }
+  /* 📜 季節劇情 */
+  async function loadSeason() {
+    const { data, error } = await db.rpc("season_status");
+    S.season = error ? null : data;
+    renderVil();
+  }
+  function seasonLine(z) {
+    if (!z || !z.def) return "";
+    const ch = z.def.chapters, n = ch.filter(c => z.mat >= c.need).length, next = ch.find(c => z.mat < c.need);
+    const ready = ch.some((c, i) => z.mat >= c.need && !z.claimed.includes(i + 1) && (i < 4 || z.festival_open));
+    return `<button type="button" class="vs-line" data-vg="season" style="--c:${z.def.color}"><span>${z.def.emoji}</span><span><b>本季主線：${esc(z.def.name)}</b>
+      <small>${z.def.mat_emoji} ${z.def.mat} ${z.mat}${next ? `／${next.need}` : ""}・第 ${n}/5 章・剩 ${z.days_left} 天</small></span>${ready ? `<i>🎁</i>` : ""}</button>`;
+  }
+  function openSeason() {
+    const z = S.season;
+    if (!z) return toast("季節劇情的資料庫還沒設定：到 Supabase 執行 sql/2026-11-05_季節劇情.sql");
+    const d = z.def, top = d.chapters[4].need, P = z.parts;
+    const m = modal(`<div class="vs-hero" style="--c:${d.color}"><div class="vs-emo">${d.emoji}</div><div class="vg-title">${esc(d.name)}</div>
+        <small>${z.season.start.slice(5).replace("-", "/")}～${z.season.end.slice(5).replace("-", "/")}・季末最後 7 天舉行祭典（剩 ${z.days_left} 天）</small>
+        <div class="eg-bar"><i style="width:${Math.min(100, z.mat / top * 100)}%;background:${d.color}"></i></div>
+        <b>${d.mat_emoji} ${d.mat} ${z.mat}／${top}</b></div>
+      <p class="vg-note">${d.mat}怎麼來：專注每 30 分鐘 1 個（${Math.floor(P.focus_min / 30)}）＋ 完成委託 2 個（${P.quests * 2}）＋ 每完成 3 個任務 1 個（${Math.floor(P.tasks / 3)}）</p>
+      ${d.chapters.map((c, i) => { const open = z.mat >= c.need, got = z.claimed.includes(i + 1), fest = i === 4;
+        return `<div class="vs-ch ${open ? "on" : ""}"><div class="vs-n">${open ? (fest ? d.emoji : i + 1) : "🔒"}</div><div style="flex:1"><b>${open ? esc(c.title) : `第 ${i + 1} 章・需要 ${c.need} 個${d.mat}`}</b>
+          ${open ? `<p>${esc(c.text)}</p>` : ""}
+          ${open ? (got ? `<small>✅ 已領獎</small>` : fest && !z.festival_open ? `<small>🎪 材料夠了！祭典會在季末最後 7 天舉行</small>`
+            : `<button type="button" class="btn btn-small btn-primary" data-vs="${i + 1}">${fest ? "參加祭典 🎉" : "領取獎勵"}</button>`) : ""}</div></div>`; }).join("")}
+      <button type="button" class="btn" data-vx="1" style="width:100%;margin-top:8px">關閉</button>`, "vs-modal");
+    m.addEventListener("click", async e => {
+      const b = e.target.closest("[data-vs]");
+      if (!b) return;
+      b.disabled = true;
+      const { data, error } = await db.rpc("season_claim", { p_ch: Number(b.dataset.vs) });
+      if (error) { b.disabled = false; return toast(error.message); }
+      S.season = data; m.remove(); renderVil();
+      const fest = b.dataset.vs === "5";
+      toast(fest ? "🎉 祭典獎勵：✨ 300、星光寶箱、限定星願瓶" : `📜 第 ${b.dataset.vs} 章獎勵：✨ +${40 + 40 * Number(b.dataset.vs)}`);
+      openSeason();
+    });
+  }
+
   async function claimTown() {
     const { data, error } = await db.rpc("village_levelup_claim");
     if (error || !data || !data.levels || !data.levels.length) return;
@@ -232,6 +273,7 @@
     const b = e.target.closest("[data-vg],[data-cp],[data-tp],[data-pc]");
     if (!b) return;
     if (b.dataset.vg === "town") return openTown();
+    if (b.dataset.vg === "season") { const md = b.closest(".vg-modal"); if (md) md.remove(); return openSeason(); }
     if (b.dataset.vg === "done") {
       b.disabled = true;
       const { data, error } = await db.rpc("village_done", { p_slot: Number(b.dataset.s) });
@@ -270,6 +312,13 @@
     .tp-card.done { background: linear-gradient(135deg, rgba(63,185,80,.2), rgba(255,213,74,.1)); }
     .tp-row { display: flex; gap: 12px; align-items: center; } .tp-row > div { flex: 1; } .tp-row small { display: block; font-size: 12px; opacity: .75; } .tp-row b { font-size: 16px; }
     .tp-star { font-size: 32px; } .tp-ok { font-weight: 800; color: #3fb950; } .tp-sub { max-width: 120px; text-align: right; }
+    .vs-line { display: flex; gap: 10px; align-items: center; width: 100%; margin: 6px 0; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--c) 55%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--c) 14%, transparent); color: inherit; text-align: left; cursor: pointer; font: inherit; }
+    .vs-line > span:first-child { font-size: 26px; } .vs-line b { display: block; font-size: 13px; } .vs-line small { font-size: 11.5px; opacity: .8; } .vs-line i { margin-left: auto; font-style: normal; font-size: 20px; animation: cpWig 1.4s ease-in-out infinite; }
+    .vs-hero { text-align: center; padding: 14px; border-radius: 16px; background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--c) 35%, transparent), transparent 75%); }
+    .vs-emo { font-size: 54px; } .vs-hero small { display: block; font-size: 12px; opacity: .75; } .vs-hero .eg-bar { margin: 10px 0 4px; height: 10px; }
+    .vs-ch { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid rgba(127,127,127,.2); opacity: .55; } .vs-ch.on { opacity: 1; }
+    .vs-ch p { font-size: 13px; margin: 4px 0 6px; line-height: 1.6; } .vs-ch small { font-size: 12px; opacity: .8; }
+    .vs-n { width: 34px; height: 34px; flex: none; border-radius: 50%; display: grid; place-items: center; font-weight: 800; background: rgba(255,255,255,.08); }
     .vg-lv { margin-left: 6px; margin-right: auto; font-size: 11.5px; padding: 1px 8px; border-radius: 99px; background: rgba(255,213,74,.2); }
     .vt-head { display: flex; gap: 12px; align-items: center; margin: 4px 0 6px; } .vt-head small { font-size: 12px; opacity: .75; }
     .vt-lv { width: 56px; height: 56px; border-radius: 14px; background: linear-gradient(135deg, #ffd54a, #ff8a65); color: #3a2010; display: grid; place-items: center; font-size: 11px; font-weight: 800; line-height: 1; }
@@ -311,7 +360,7 @@
 
   (function boot(n) {
     if (!hasDb() || !document.getElementById("fn-today") && !document.getElementById("de-today")) { if (n < 60) setTimeout(() => boot(n + 1), 1000); return; }
-    const all = () => { loadTop(); loadVil(); loadCap(); };
+    const all = () => { loadTop(); loadVil(); loadCap(); loadSeason(); };
     all();
     setInterval(() => { if (!document.hidden) all(); }, 3 * 60 * 1000);
     document.addEventListener("visibilitychange", () => { if (!document.hidden) all(); });
