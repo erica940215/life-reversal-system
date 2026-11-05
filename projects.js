@@ -297,6 +297,7 @@
       <p class="lf-sum">${L.all_clear ? "🌟 今天五個領域全勤，生活寶箱已開" : "五個每日領域今天都全勤 → 開生活寶箱"}・這週全勤 ${L.week_all}/5 天（滿 5 天送限定星願瓶）・☀️ 項目 6:00～10:30 勾經驗 ×1.5</p>
       ${body}
       <div class="lf-more"><button class="btn btn-small" data-a="lifeheat">🟩 熱力圖${P.lifeHeat ? " ▴" : " ▾"}</button>
+      <button class="btn btn-small" data-a="room">🏠 小房間</button>
       <button class="btn btn-small" data-a="lifebadges">🏅 徽章（${(L.badges || []).length}）${P.lifeBadges ? " ▴" : " ▾"}</button></div>
       ${P.lifeHeat ? heatHtml(L) : ""}${P.lifeBadges ? badgesHtml(L) : ""}
       <button class="btn btn-small" data-a="lifevars" style="margin-top:10px">🍽️ 品種圖鑑（${vars.length}）${P.lifeVars ? " ▴" : " ▾"}</button>${varHtml}</section>`;
@@ -600,6 +601,7 @@
     }
     if (a === "lifeview") { P.lifeView = id; try { localStorage.setItem("lifeView", id); } catch (_) {} render(); return; }
     if (a === "lifevars") { P.lifeVars = !P.lifeVars; render(); return; }
+    if (a === "room") { if (window.Room) window.Room.open(); return; }
     if (a === "lifeheat") { P.lifeHeat = !P.lifeHeat; render(); return; }
     if (a === "lifebadges") { P.lifeBadges = !P.lifeBadges; render(); return; }
     if (a === "lifeseed") {

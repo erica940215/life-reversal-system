@@ -1,6 +1,6 @@
 /* 序光計畫：🧬 專注 DNA ＋ 🏛️ 人生博物館（放在 📊 回顧的分頁裡） */
 (function () {
-  const INSIGHT_JS_VERSION = "20261105a";
+  const INSIGHT_JS_VERSION = "20261105c";
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const toast = m => (typeof showToast === "function" ? showToast(m) : console.log(m));
   const hm = m => m >= 60 ? `${Math.floor(m / 60)} 小時${m % 60 ? ` ${Math.round(m % 60)} 分` : ""}` : `${Math.round(m)} 分`;
@@ -59,9 +59,13 @@
         <div class="dna-stat"><b>${hm(d.total_min)}</b><span>總專注${d.prev.total_min ? `（${diff >= 0 ? "▲" : "▼"} ${hm(Math.abs(diff))}）` : ""}</span></div>
         <div class="dna-stat"><b>${d.median_min} 分</b><span>一次通常多久</span></div>
         <div class="dna-stat"><b>${hm(d.longest_min)}</b><span>最長的一次</span></div>
-        <div class="dna-stat"><b>${d.sessions} 次</b><span>專注次數</span></div></div></div>
+        <div class="dna-stat"><b>${d.sessions} 次</b><span>專注次數</span></div>
+        <div class="dna-stat"><b>${d.goal_rate == null ? "—" : d.goal_rate + "%"}</b><span>🎯 說到做到率${d.goal_n ? `（${d.goal_n} 次）` : ""}</span></div></div></div>
       <p class="ov-note" style="text-align:center;font-size:11.5px">每一條橫槓是一天中的一個小時，越粗越亮代表那個時段越常專注</p>
       <div class="ov-box"><div class="ov-sec">🧬 你的專注基因</div>${ts.map(([e, n, t]) => `<div class="dna-trait"><span>${e}</span><div><b>${esc(n)}</b><small>${esc(t)}</small></div></div>`).join("")}</div>
+      <div class="ov-box"><div class="ov-sec">🎯 說到做到</div>${d.goal_n ? `<p class="ov-note" style="margin:0 0 6px">這個月寫了目標的專注有 ${d.goal_n} 次：✅ ${d.goal_done}・🌗 ${d.goal_half}・❌ ${d.goal_n - d.goal_done - d.goal_half}。${d.goal_rate >= 80 ? "說到就做到，很可靠！" : d.goal_rate >= 50 ? "大部分都有做到，目標可以再訂具體一點。" : "目標可能訂太大了，試試切小一點。"}</p>
+        ${(d.goal_recent || []).map(g => `<div class="dna-sub"><b>${g.r === "done" ? "✅" : g.r === "half" ? "🌗" : g.r === "no" ? "❌" : "⏳"} ${esc(g.goal)}</b><small>${esc(g.subject)}</small></div>`).join("")}`
+        : `<p class="ov-note" style="margin:0">開始專注前在「🎯 這次要完成什麼」寫一句，結束時選有沒有做到，就會算出你的說到做到率。</p>`}</div>
       ${(d.subjects || []).length ? `<div class="ov-box"><div class="ov-sec">📚 各科目的專注習慣</div>${d.subjects.slice(0, 8).map(s => `<div class="dna-sub"><b>${esc(s.name)}</b><span>${hm(s.min)}・${s.n} 次・平均 ${s.avg} 分</span><small>${s.short}% 不到 15 分鐘${s.stop != null ? `・倒數提早結束 ${s.stop}%` : ""}</small></div>`).join("")}</div>` : ""}`
       : `<p class="ov-note">這個月還沒有專注紀錄，專注幾次之後就會長出你的 DNA。</p>`}`;
   }

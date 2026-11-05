@@ -1,6 +1,6 @@
 /* 序光計畫：⏱️ 專注加料：🍂 專注掉落物 ＋ 👻 幽靈陪讀（資料在 sql/2026-11-05_專注DNA_事件_掉落_陪讀_博物館.sql） */
 (function () {
-  const FP_JS_VERSION = "20261105b";
+  const FP_JS_VERSION = "20261105c";
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const toast = m => (typeof showToast === "function" ? showToast(m) : console.log(m));
   const hasDb = () => typeof db !== "undefined" && db && typeof currentUser !== "undefined" && currentUser;
@@ -83,7 +83,7 @@
     b.list.forEach(k => cnt[k] = (cnt[k] || 0) + 1);
     const next = 5 - (m % 5);
     const unlock = [["gem", 25], ["meteor", 60], ["rainbow", 90], ["crown", 150]].find(([, x]) => m < x);
-    box.innerHTML = `<span class="fp-b-t">🧺</span>${b.list.length ? ORDER.filter(k => cnt[k]).map(k => `<span class="fp-b-i">${pic(k, "fp-b-img")}×${cnt[k]}</span>`).join("") : `<span class="fp-b-none">還沒撿到東西</span>`}
+    box.innerHTML = `${t.goal ? `<div class="fp-goal">🎯 ${esc(t.goal)}</div>` : ""}<span class="fp-b-t">🧺</span>${b.list.length ? ORDER.filter(k => cnt[k]).map(k => `<span class="fp-b-i">${pic(k, "fp-b-img")}×${cnt[k]}</span>`).join("") : `<span class="fp-b-none">還沒撿到東西</span>`}
       <span class="fp-b-next">${Math.ceil(next)} 分鐘後掉下一個${unlock ? `・${unlock[1]} 分鐘後可能掉 ${DROPS[unlock[0]].emoji}` : ""}</span>`;
   }
 
@@ -168,7 +168,8 @@
     @keyframes fpFall { 0% { transform: translateY(0) rotate(-20deg); opacity: 0; } 10% { opacity: 1; } 100% { transform: translateY(380px) rotate(25deg); opacity: 0; } }
     @keyframes fpCatch { to { transform: scale(1.8); opacity: 0; } }
     .fp-basket { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 10px 0 4px; padding: 8px 10px; border-radius: 12px; background: rgba(127,127,127,.1); font-size: 13px; }
-    .fp-b-t { font-size: 18px; } .fp-b-i { display: inline-flex; align-items: center; gap: 2px; font-weight: 700; }
+    .fp-b-t { font-size: 18px; }
+    .fp-goal { width: 100%; font-weight: 700; font-size: 13.5px; padding-bottom: 4px; border-bottom: 1px dashed rgba(127,127,127,.3); margin-bottom: 2px; } .fp-b-i { display: inline-flex; align-items: center; gap: 2px; font-weight: 700; }
     .fp-b-img { width: 22px; height: 22px; object-fit: contain; font-size: 17px; line-height: 22px; }
     .fp-b-none { opacity: .6; } .fp-b-next { width: 100%; font-size: 11.5px; opacity: .65; }
     .fp-co { margin-top: 12px; }

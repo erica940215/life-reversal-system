@@ -6301,8 +6301,11 @@ function startFocus() {
     startedAt: new Date().toISOString(),
     segmentStart: Date.now(),
     accumulatedMs: 0,
-    status: "running"
+    status: "running",
+    goal: ((document.getElementById("focus-goal") || {}).value || "").trim() || null
   };
+
+  { const g = document.getElementById("focus-goal"); if (g) g.value = ""; }
 
   saveFocusTimer();
 
@@ -6448,6 +6451,12 @@ async function finishFocus(reason) {
 
     const inserted = insertedRows && insertedRows.length ? insertedRows[insertedRows.length - 1] : null;
 
+    /* 🎯 這次的目標（資料庫還沒有這個欄位就略過） */
+    if (timer.goal && inserted && inserted.id) {
+      db.from("focus_sessions").update({ goal: timer.goal }).eq("id", inserted.id).eq("user_id", currentUser.id)
+        .then(({ error: goalError }) => { if (goalError && !/goal/.test(goalError.message || "")) console.warn(goalError.message); });
+    }
+
 
     /*
       紀錄已經存好了；獎勵另外處理，
@@ -6494,7 +6503,7 @@ async function finishFocus(reason) {
 
     /* 📝 這次完成了什麼（選填）；離開期間自動結束的就不問 */
     if (reason !== "away" && inserted && inserted.id) {
-      askFocusNote(inserted.id, timer.subject);
+      askFocusNote(inserted.id, timer.subject, timer.goal);
     }
 
   } catch (error) {
@@ -6553,7 +6562,23 @@ async function recentFocusNotes(subject) {
 }
 
 
-async function askFocusNote(sessionId, subject) {
+let pickedFocusGoal = null;
+
+function pickFocusGoal(btn) {
+  pickedFocusGoal = btn.dataset.g;
+  document.querySelectorAll(".fg").forEach(b => b.classList.toggle("active", b === btn));
+}
+
+async function saveFocusGoal(sessionId) {
+  if (!pickedFocusGoal) return;
+  const g = pickedFocusGoal;
+  pickedFocusGoal = null;
+  const { error } = await db.from("focus_sessions").update({ goal_result: g }).eq("id", sessionId).eq("user_id", currentUser.id);
+  if (error && !/goal/.test(error.message || "")) console.warn("目標結果存不進去：", error.message);
+  else if (!error) showToast(g === "done" ? "🎯 說到做到！" : g === "half" ? "🌗 做了一半，下次再接再厲" : "🌱 沒關係，下次目標訂小一點試試");
+}
+
+async function askFocusNote(sessionId, subject, goal) {
 
   /* 還沒執行「累積」SQL 就不問（存不進去） */
   if (typeof accumSqlReady !== "undefined" && accumSqlReady === false) return;
@@ -6561,15 +6586,26 @@ async function askFocusNote(sessionId, subject) {
   const recent = await recentFocusNotes(subject);
 
   pickedFocusQuality = null;
+  pickedFocusGoal = null;
 
   openModal({
 
-    title: "📝 這次完成了什麼？",
+    title: goal ? "🎯 目標完成了嗎？" : "📝 這次完成了什麼？",
 
     bodyHtml: `
       <p class="small-note" style="margin-top:0;">
         ${escapeHtml(subject)}・可以不填。之後在「今日專注紀錄」按 ✏️ 也能補。
       </p>
+
+      ${goal ? `
+      <div style="padding:10px 12px;border-radius:12px;background:rgba(255,209,102,.12);margin-bottom:10px;">
+        <div class="small-note" style="margin:0 0 6px;">開始前你說要：<b>${escapeHtml(goal)}</b></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button type="button" class="chip fg" data-g="done" onclick="pickFocusGoal(this)">✅ 完成了</button>
+          <button type="button" class="chip fg" data-g="half" onclick="pickFocusGoal(this)">🌗 一半</button>
+          <button type="button" class="chip fg" data-g="no" onclick="pickFocusGoal(this)">❌ 沒有</button>
+        </div>
+      </div>` : ""}
 
       <div class="fq-row" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
         <span class="small-note">這次專心嗎？</span>
@@ -6591,7 +6627,7 @@ async function askFocusNote(sessionId, subject) {
     `,
 
     buttons: [
-      { label: "略過", className: "btn", onClick: () => { saveFocusQuality(sessionId); return true; } },
+      { label: "略過", className: "btn", onClick: () => { saveFocusQuality(sessionId); saveFocusGoal(sessionId); return true; } },
       { label: "記下", className: "btn btn-primary", onClick: () => saveFocusNote(sessionId) }
     ],
 
@@ -6630,6 +6666,7 @@ async function saveFocusNote(sessionId) {
   const note = document.getElementById("fn-note").value.trim();
 
   await saveFocusQuality(sessionId);
+  await saveFocusGoal(sessionId);
 
   if (!note) return true;
 
