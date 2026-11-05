@@ -38,6 +38,9 @@ grant execute on function public.focus_dna(integer) to authenticated;
 
 
 -- 🏠 小房間
+-- 舊版本叫 room_status(uuid)／room_place，會跟「讀書房」的 room_status() 撞名，先刪掉
+drop function if exists public.room_status(uuid);
+drop function if exists public.room_place(text, text);
 create table if not exists public.room_layout (
   user_id uuid primary key references auth.users(id) on delete cascade,
   slots jsonb not null default '{}'::jsonb,
@@ -48,7 +51,7 @@ drop policy if exists "own select" on public.room_layout;
 create policy "own select" on public.room_layout for select using (auth.uid() = user_id);
 revoke insert, update, delete on public.room_layout from authenticated, anon;
 
-create or replace function public.room_status(p_user uuid default null)
+create or replace function public.home_status(p_user uuid default null)
 returns json language plpgsql security definer set search_path to 'public' as $$
 declare
   me uuid := auth.uid(); u uuid := coalesce(p_user, auth.uid()); t date := public.app_today(); clean numeric; lastclean integer;
@@ -67,10 +70,10 @@ begin
     'catalog', public.dream_catalog(),
     'friends', case when u = me then coalesce((select jsonb_agg(jsonb_build_object('id', f, 'name', public.arena_name(f))) from public.arena_friends(me) f), '[]'::jsonb) end);
 end; $$;
-revoke all on function public.room_status(uuid) from public, anon;
-grant execute on function public.room_status(uuid) to authenticated;
+revoke all on function public.home_status(uuid) from public, anon;
+grant execute on function public.home_status(uuid) to authenticated;
 
-create or replace function public.room_place(p_slot text, p_item text)
+create or replace function public.home_place(p_slot text, p_item text)
 returns json language plpgsql security definer set search_path to 'public' as $$
 declare u uuid := auth.uid();
 begin
@@ -79,7 +82,7 @@ begin
   if p_item is not null and not exists (select 1 from public.dream_items where user_id = u and item = p_item) then raise exception '你還沒有這個收藏'; end if;
   insert into public.room_layout (user_id, slots) values (u, '{}'::jsonb) on conflict do nothing;
   update public.room_layout set slots = case when p_item is null then slots - p_slot else slots || jsonb_build_object(p_slot, p_item) end, updated_at = now() where user_id = u;
-  return public.room_status(null);
+  return public.home_status(null);
 end; $$;
-revoke all on function public.room_place(text, text) from public, anon;
-grant execute on function public.room_place(text, text) to authenticated;
+revoke all on function public.home_place(text, text) from public, anon;
+grant execute on function public.home_place(text, text) to authenticated;

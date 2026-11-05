@@ -7,12 +7,14 @@
 
   /* 地上的雜物（房間越亂出現越多） */
   const MESS = [["🧦", 18, 84, -20], ["📄", 46, 90, 15], ["👕", 70, 86, 8], ["🥤", 30, 78, 0], ["📦", 84, 80, 0], ["🧦", 58, 94, 30], ["📄", 12, 94, -35], ["🍜", 40, 86, 0]];
+  /* 扭蛋公仔架 */
+  (function(){const c=document.createElement('style');c.textContent='.rm-figs{position:absolute;left:8%;top:58%;display:flex;gap:2px;padding:2px 6px;background:#8a5a3a;border-radius:4px;font-size:16px;box-shadow:0 3px 0 #5a3a22;z-index:2}';document.head.appendChild(c)})();
   const SLOTS = { wall1: [24, 22, 15], wall2: [76, 22, 15], shelf1: [42, 44, 11], shelf2: [58, 44, 11], floor1: [50, 76, 16], floor2: [78, 70, 19] };
   const SLOTN = { wall1: "牆上（左）", wall2: "牆上（右）", shelf1: "架子（左）", shelf2: "架子（右）", floor1: "地上（左）", floor2: "地上（右）" };
 
   async function load(who) {
-    const { data, error } = await db.rpc("room_status", { p_user: who || null });
-    if (error) { toast(/room_status/.test(error.message) ? "小房間的資料庫還沒設定：到 Supabase 執行 sql/2026-11-05_專注目標和小房間.sql" : error.message); return false; }
+    const { data, error } = await db.rpc("home_status", { p_user: who || null });
+    if (error) { toast(/home_status/.test(error.message) ? "小房間的資料庫還沒設定：到 Supabase 執行 sql/2026-11-05_專注目標和小房間.sql" : error.message); return false; }
     RM.data = data; RM.who = who || null;
     return true;
   }
@@ -42,6 +44,7 @@
       <div class="rm-desk"><span class="rm-lamp">${night ? "💡" : "🪴"}</span>${n >= 2 ? `<span class="rm-pile">📚</span>` : ""}</div>
       ${d.last_room >= 7 ? `<span class="rm-web">🕸️</span>` : ""}
       ${n === 0 ? `<span class="rm-spark">✨</span><span class="rm-spark s2">✨</span>` : ""}
+      ${(d.figures || []).length ? `<div class="rm-figs">${d.figures.slice(-8).map(f => `<span title="${esc(f.name)}">${f.emoji}</span>`).join("")}</div>` : ""}
       ${deco}${mess}</div>`;
   }
 
@@ -93,7 +96,7 @@
     if (a === "visit") { await load(b.dataset.id); RM.pick = null; return draw(); }
     if (a === "home") { await load(null); return draw(); }
     if (a === "put" || a === "clear") {
-      const { data, error } = await db.rpc("room_place", { p_slot: RM.pick, p_item: a === "put" ? b.dataset.v : null });
+      const { data, error } = await db.rpc("home_place", { p_slot: RM.pick, p_item: a === "put" ? b.dataset.v : null });
       if (error) return toast(error.message);
       RM.data = data; RM.pick = null; draw();
     }

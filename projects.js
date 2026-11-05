@@ -566,7 +566,8 @@
     if (window.DreamGame) window.DreamGame.reload();
     /* 勾「回顧這週」→ 直接打開週回顧 */
     { const st = Object.values(P.steps).flat().find(x => x.id === id);
-      if (st && /回顧這週/.test(st.title) && data.done && window.OverviewGame && window.OverviewGame.openWeek) setTimeout(() => window.OverviewGame.openWeek(), 900); }
+      if (st && /回顧這週/.test(st.title) && data.done && window.OverviewGame && window.OverviewGame.openWeek) setTimeout(() => window.OverviewGame.openWeek(), 900);
+      if (st && /確認明天行程/.test(st.title) && data.done && window.Village) setTimeout(() => window.Village.openTomorrow(), 900); }
     load();
   }
 
