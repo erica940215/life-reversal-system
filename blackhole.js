@@ -28,11 +28,35 @@
 
   /* ========== 工具列：黑洞／拍賣會／寵物蛋 ========== */
   function renderBar() {
-    const box = slot("bh-bar");
-    if (!box) return;
-    box.className = "card bh-tools";
-    const sat = [6, 0].includes(new Date(Date.now() - 6 * 3600e3).getDay());
-    box.innerHTML = `<button type="button" data-bh="enter">🕳️<b>黑洞模式</b></button><button type="button" data-bh="auction" class="${sat ? "hot" : ""}">🔨<b>拍賣會${sat ? "・開放中" : ""}</b></button><button type="button" data-bh="eggs">🥚<b>寵物蛋</b></button>`;
+    /* 🕳️ 黑洞：今日頁最上面一條醒目的橫幅（可以長按拖去別的位置） */
+    const tp = document.querySelector('.page[data-page="today"]');
+    let bh = document.getElementById("bh-bar");
+    /* 第一次改版：把舊的位置忘掉，放到最上面 */
+    try { if (!localStorage.getItem("bhBanner1")) { const k = "todayOrder", o = JSON.parse(localStorage.getItem(k) || "[]"); localStorage.setItem(k, JSON.stringify(["bh-bar"].concat(o.filter(x => x !== "bh-bar")))); localStorage.setItem("bhBanner1", "1"); } } catch (_) {}
+    if (tp && !bh) {
+      bh = document.createElement("section");
+      bh.id = "bh-bar";
+      const title = tp.querySelector(":scope > .page-title");
+      title ? title.after(bh) : tp.prepend(bh);
+    }
+    if (bh) {
+      bh.className = "card bh-banner";
+      bh.innerHTML = `<button type="button" data-bh="enter" class="bh-go"><span class="bh-hole sm"></span><span><b>進入黑洞模式</b><small>其他東西全部藏起來，只剩今天最重要的事和專注</small></span><i>›</i></button>`;
+    }
+    /* 🔨🥚 拍賣會和寵物蛋：放進今日小抽屜 */
+    const ae = slot("ae-today");
+    if (ae) {
+      const sat = [6, 0].includes(new Date(Date.now() - 6 * 3600e3).getDay());
+      ae.className = "card bh-tools";
+      ae.innerHTML = `<button type="button" data-bh="auction" class="${sat ? "hot" : ""}">🔨<b>拍賣會${sat ? "・開放中" : ""}</b></button><button type="button" data-bh="eggs">🥚<b>寵物蛋</b></button>`;
+    }
+    /* 專注卡的按鈕旁邊也放一顆 */
+    const fb = document.getElementById("focus-buttons");
+    if (fb && !document.getElementById("bh-focus-btn")) {
+      const b = document.createElement("button");
+      b.type = "button"; b.id = "bh-focus-btn"; b.className = "btn btn-small"; b.dataset.bh = "enter"; b.textContent = "🕳️ 黑洞";
+      fb.appendChild(b);
+    }
   }
 
   /* ========== 🥚 習慣寵物蛋 ========== */
@@ -286,6 +310,11 @@
 
   const st = document.createElement("style");
   st.textContent = `
+    .bh-banner { padding: 0 !important; overflow: hidden; background: radial-gradient(circle at 12% 50%, #3a2a7a, #0b0820 70%) !important; color: #eef; border: 1px solid rgba(124,92,255,.5); }
+    .bh-go { display: flex; align-items: center; gap: 14px; width: 100%; border: 0; background: none; color: inherit; padding: 14px 16px; text-align: left; cursor: pointer; font: inherit; }
+    .bh-go b { display: block; font-size: 16px; } .bh-go small { display: block; font-size: 12px; opacity: .75; } .bh-go i { margin-left: auto; font-style: normal; font-size: 26px; opacity: .6; }
+    .bh-hole.sm { width: 40px; height: 40px; }
+    #bh-focus-btn { background: #1a1040; color: #eef; border-color: #7c5cff; }
     .bh-tools { display: flex; gap: 8px; padding: 10px !important; }
     .bh-tools button { flex: 1; border: 0; border-radius: 12px; padding: 10px 4px; background: rgba(127,127,160,.12); color: inherit; font-size: 22px; cursor: pointer; }
     .bh-tools button b { display: block; font-size: 12px; margin-top: 2px; } .bh-tools button.hot { background: linear-gradient(135deg, rgba(255,213,74,.35), rgba(255,138,101,.3)); }
