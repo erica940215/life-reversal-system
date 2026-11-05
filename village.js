@@ -153,7 +153,7 @@
     const z = S.season;
     if (!z) return toast("季節劇情的資料庫還沒設定：到 Supabase 執行 sql/2026-11-05_季節劇情.sql");
     const d = z.def, top = d.chapters[4].need, P = z.parts;
-    const m = modal(`<div class="vs-hero" style="--c:${d.color}"><div class="vs-emo">${d.emoji}</div><div class="vg-title">${esc(d.name)}</div>
+    const m = modal(`<div class="vs-hero" style="--c:${d.color}"><img class="vs-banner" src="img/season/${z.season.key}.webp" alt="" onerror="this.remove()"><div class="vs-emo">${d.emoji}</div><div class="vg-title">${esc(d.name)}</div>
         <small>${z.season.start.slice(5).replace("-", "/")}～${z.season.end.slice(5).replace("-", "/")}・季末最後 7 天舉行祭典（剩 ${z.days_left} 天）</small>
         <div class="eg-bar"><i style="width:${Math.min(100, z.mat / top * 100)}%;background:${d.color}"></i></div>
         <b>${d.mat_emoji} ${d.mat} ${z.mat}／${top}</b></div>
@@ -214,7 +214,7 @@
       <div class="cp-out"></div>
       <div class="vg-sec">🏆 全部里程碑（${Object.keys(caps).length}/${defs.length}）</div>
       <div class="cp-grid">${defs.map(d => { const got = caps[d.k], v = (c.stats || {})[d.stat] || 0;
-        return `<div class="cp-fig ${got && got.opened ? "on" : got ? "wait" : ""}" style="--c:${d.color}"><span>${got && got.opened ? d.emoji : got ? "🎁" : "❔"}</span><b>${got && got.opened ? esc(d.name) : "？？？"}</b><small>${got ? (got.opened ? esc(d.line) : "還沒轉") : `${Math.min(v, d.need)}/${d.need}`}</small></div>`; }).join("")}</div>
+        return `<div class="cp-fig ${got && got.opened ? "on" : got ? "wait" : ""}" style="--c:${d.color}"><span>${got && got.opened ? `<img class="cp-img" src="img/capsule/${d.k}.webp" alt="" onerror="this.replaceWith(document.createTextNode('${d.emoji}'))">` : got ? "🎁" : "❔"}</span><b>${got && got.opened ? esc(d.name) : "？？？"}</b><small>${got ? (got.opened ? esc(d.line) : "還沒轉") : `${Math.min(v, d.need)}/${d.need}`}</small></div>`; }).join("")}</div>
       <button type="button" class="btn btn-primary" data-vx="1" style="width:100%;margin-top:10px">關閉</button>`, "cp-modal");
     m.addEventListener("click", async e => {
       if (!e.target.closest("[data-cp=spin]")) return;
@@ -223,7 +223,7 @@
       if (error) { toast(error.message); return; }
       const d = data.def;
       setTimeout(() => {
-        m.querySelector(".cp-out").innerHTML = `<div class="cp-reveal" style="--c:${d.color}"><div class="cp-cap"><i></i><i></i></div><div class="cp-figbig">${d.emoji}</div>
+        m.querySelector(".cp-out").innerHTML = `<div class="cp-reveal" style="--c:${d.color}"><div class="cp-cap"><i></i><i></i></div><div class="cp-figbig"><img class="cp-img big" src="img/capsule/${d.k}.webp" alt="" onerror="this.replaceWith(document.createTextNode('${d.emoji}'))"></div>
           <b>${esc(d.name)}</b><p>${esc(d.line)}</p><small>✨ 星屑 +50・已經擺到小房間的架子上了</small></div>`;
         loadCap().then(() => { const k = m.querySelector(".cp-knob"); if (S.cap && S.cap.pending) { k.disabled = false; k.classList.remove("spin"); } });
       }, 900);
@@ -315,6 +315,8 @@
     .vs-line { display: flex; gap: 10px; align-items: center; width: 100%; margin: 6px 0; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--c) 55%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--c) 14%, transparent); color: inherit; text-align: left; cursor: pointer; font: inherit; }
     .vs-line > span:first-child { font-size: 26px; } .vs-line b { display: block; font-size: 13px; } .vs-line small { font-size: 11.5px; opacity: .8; } .vs-line i { margin-left: auto; font-style: normal; font-size: 20px; animation: cpWig 1.4s ease-in-out infinite; }
     .vs-hero { text-align: center; padding: 14px; border-radius: 16px; background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--c) 35%, transparent), transparent 75%); }
+    .vs-banner { display: block; width: calc(100% + 28px); margin: -14px -14px 8px; border-radius: 16px 16px 0 0; aspect-ratio: 2.2/1; object-fit: cover; } .vs-banner + .vs-emo { display: none; }
+    .cp-img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 6px; display: block; } .cp-img.big { width: 150px; margin: 0 auto; border-radius: 12px; box-shadow: 0 0 24px var(--c); }
     .vs-emo { font-size: 54px; } .vs-hero small { display: block; font-size: 12px; opacity: .75; } .vs-hero .eg-bar { margin: 10px 0 4px; height: 10px; }
     .vs-ch { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid rgba(127,127,127,.2); opacity: .55; } .vs-ch.on { opacity: 1; }
     .vs-ch p { font-size: 13px; margin: 4px 0 6px; line-height: 1.6; } .vs-ch small { font-size: 12px; opacity: .8; }

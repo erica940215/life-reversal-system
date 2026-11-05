@@ -68,7 +68,8 @@
   const eggPct = e => Math.min(100, Math.round(e.streak / 21 * 100));
   function eggIcon(e, pets) {
     if (e.pet) return (pets.find(p => p.k === e.pet) || {}).emoji || "🐣";
-    return e.cold ? "🧊" : e.streak >= 14 ? "🐣" : "🥚";
+    const f = e.cold ? "egg_cold" : e.done_today || e.streak >= 14 ? "egg_warm" : "egg", em = e.cold ? "🧊" : e.streak >= 14 ? "🐣" : "🥚";
+    return `<img class="egg-img" src="img/pet/${f}.webp" alt="" onerror="this.replaceWith(document.createTextNode('${em}'))">`;
   }
   function renderEggs() {
     const box = slot("eg-today");
@@ -186,7 +187,7 @@
     box.className = "card mo-card";
     box.innerHTML = `<div class="vg-h"><b>👹 頑固怪物出沒</b><small>已打倒 ${S.mon.slain} 隻</small></div><p class="vg-note">這些任務被拖了 3 天以上。完成它就打倒怪物：經驗和金幣雙倍，再加星屑和金寶箱。</p>
       ${ms.map(t => { const hp = Math.min(100, t.days * 10);
-        return `<div class="mo-row"><span class="mo-ic">${MON[t.id % MON.length]}</span><div class="eg-b"><b>${esc(t.title)}</b><div class="mo-hp"><i style="width:${hp}%"></i></div><small>拖了 ${t.days} 天・掉落 ✨ ${30 + 10 * Math.min(t.days, 14)}</small></div></div>`; }).join("")}`;
+        return `<div class="mo-row"><span class="mo-ic"><img class="mo-img" src="img/monster/m${t.id % 5}.webp" alt="" onerror="this.replaceWith(document.createTextNode('${MON[t.id % MON.length]}'))"></span><div class="eg-b"><b>${esc(t.title)}</b><div class="mo-hp"><i style="width:${hp}%"></i></div><small>拖了 ${t.days} 天・掉落 ✨ ${30 + 10 * Math.min(t.days, 14)}</small></div></div>`; }).join("")}`;
   }
   function wrapToggle() {
     if (typeof window.toggleTask !== "function" || window.toggleTask.__mon) return;
@@ -323,7 +324,7 @@
     .eg-ic { font-size: 30px; } .eg-ic.warm { filter: drop-shadow(0 0 8px #ffb347); } .eg-row.cold .eg-ic { filter: hue-rotate(160deg); }
     .eg-bar, .mo-hp { height: 7px; border-radius: 9px; background: rgba(127,127,127,.2); overflow: hidden; margin: 4px 0; }
     .eg-bar i { display: block; height: 100%; background: linear-gradient(90deg, #ffd54a, #ff8a65); } .mo-hp i { display: block; height: 100%; background: linear-gradient(90deg, #f85149, #a40e26); }
-    .eg-ok { font-size: 20px; } .pet-img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 8px; display: block; } .eg-hatch .pet-img { width: 160px; margin: 0 auto; border-radius: 14px; box-shadow: 0 0 30px #ffd54a; } .eg-hatch { animation: cpPop .8s cubic-bezier(.2,1.6,.4,1); }
+    .eg-ok { font-size: 20px; } .egg-img { width: 46px; height: 46px; object-fit: cover; border-radius: 10px; display: block; } .mo-img { width: 48px; height: 48px; object-fit: cover; border-radius: 10px; display: block; } .eg-row.cold .eg-ic .egg-img { filter: none; } .pet-img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 8px; display: block; } .eg-hatch .pet-img { width: 160px; margin: 0 auto; border-radius: 14px; box-shadow: 0 0 30px #ffd54a; } .eg-hatch { animation: cpPop .8s cubic-bezier(.2,1.6,.4,1); }
     .mo-card { border: 1px solid rgba(248,81,73,.45); background: linear-gradient(135deg, rgba(248,81,73,.13), transparent); }
     .mo-ic { font-size: 30px; animation: moBob 1.4s ease-in-out infinite; } @keyframes moBob { 50% { transform: translateY(-4px) rotate(-6deg); } }
     .mo-die { animation: moDie 1.2s forwards; } @keyframes moDie { 60% { transform: scale(1.3) rotate(20deg); } to { transform: scale(0) rotate(200deg); opacity: 0; } }

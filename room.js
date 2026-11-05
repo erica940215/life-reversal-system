@@ -44,7 +44,7 @@
       <div class="rm-desk"><span class="rm-lamp">${night ? "💡" : "🪴"}</span>${n >= 2 ? `<span class="rm-pile">📚</span>` : ""}</div>
       ${d.last_room >= 7 ? `<span class="rm-web">🕸️</span>` : ""}
       ${n === 0 ? `<span class="rm-spark">✨</span><span class="rm-spark s2">✨</span>` : ""}
-      ${(d.figures || []).length ? `<div class="rm-figs">${d.figures.slice(-8).map(f => `<span title="${esc(f.name)}">${f.emoji}</span>`).join("")}</div>` : ""}
+      ${(d.figures || []).length ? `<div class="rm-figs">${d.figures.slice(-8).map(f => `<span title="${esc(f.name)}"><img src="img/capsule/${f.k}.webp" alt="" style="width:20px;height:26px;object-fit:cover;border-radius:3px;display:block" onerror="this.replaceWith(document.createTextNode('${f.emoji}'))"></span>`).join("")}</div>` : ""}
       ${deco}${mess}</div>`;
   }
 

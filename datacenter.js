@@ -952,16 +952,18 @@ function timeSky(slot) {
   if (sky.dataset.slot === slot) return;
   sky.dataset.slot = slot;
   sky.className = "ts-" + slot;
-  sky.innerHTML = slot === "dawn" ? `<i class="ts-sun"></i><i class="ts-haze"></i>`
+  sky.innerHTML = `<i class="ts-img" style="background-image:url(img/theme/${slot}.webp)"></i>` + (slot === "dawn" ? `<i class="ts-sun"></i><i class="ts-haze"></i>`
     : slot === "noon" ? `<i class="ts-sun"></i><i class="ts-cloud c1"></i><i class="ts-cloud c2"></i>`
     : slot === "night" ? `<i class="ts-stars"></i><i class="ts-stars s2"></i><i class="ts-moon"></i>`
-    : `<i class="ts-stars"></i><i class="ts-aur a1"></i><i class="ts-aur a2"></i>`;
+    : `<i class="ts-stars"></i><i class="ts-aur a1"></i><i class="ts-aur a2"></i>`);
 }
 (function () {
   const st = document.createElement("style");
   st.textContent = `
     #time-sky { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
     #time-sky i { position: absolute; display: block; }
+    #time-sky .ts-img { inset: 0; background-size: cover; background-position: center bottom; opacity: .5; }
+    #time-sky .ts-img::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10,12,30,.35), rgba(10,12,30,.55)); }
     .ts-sun { width: 260px; height: 260px; border-radius: 50%; right: -60px; top: -60px; filter: blur(8px); }
     .ts-dawn .ts-sun { background: radial-gradient(circle, rgba(255,190,140,.55), rgba(255,140,120,.15) 55%, transparent 70%); top: auto; bottom: 8%; left: -40px; right: auto; }
     .ts-dawn .ts-haze { inset: auto 0 0 0; height: 40%; background: linear-gradient(0deg, rgba(255,170,140,.18), transparent); }
