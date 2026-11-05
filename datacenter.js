@@ -933,9 +933,73 @@ function themeCss(t) {
 
 }
 
+/* 🕰️ 時段主題：開關打開時，依台北時間自動換（早上晨光、下午暖陽、晚上星空、深夜極光） */
+const TIME_THEMES = {
+  dawn:   { label: "🌅 晨光", hours: "06–11", bg: "linear-gradient(170deg, #1d2a4a 0%, #4a3a5e 45%, #b0706a 100%)", card: "rgba(30, 30, 52, 0.72)", cardBorder: "rgba(255, 196, 150, 0.35)", nav: "rgba(29, 32, 60, 0.72)", field: "rgba(0,0,0,.28)", track: "rgba(255,255,255,.12)", text: "#fff6ee", sub: "#d9c3b8", accent: "linear-gradient(90deg, #ffb88c, #ff8a8a)", accentText: "#2a1a1a" },
+  noon:   { label: "☀️ 暖陽", hours: "11–17", bg: "linear-gradient(170deg, #233a5c 0%, #3e5c7c 50%, #c99a5b 100%)", card: "rgba(26, 38, 58, 0.72)", cardBorder: "rgba(255, 214, 120, 0.35)", nav: "rgba(24, 38, 60, 0.72)", field: "rgba(0,0,0,.28)", track: "rgba(255,255,255,.12)", text: "#fffaf0", sub: "#d8ccb0", accent: "linear-gradient(90deg, #ffd54a, #ffa94d)", accentText: "#2a2210" },
+  night:  { label: "🌌 星空", hours: "17–23", bg: "linear-gradient(170deg, #0a0f2c 0%, #1b1747 55%, #2c1d4f 100%)", card: "rgba(20, 20, 46, 0.75)", cardBorder: "rgba(160, 150, 255, 0.32)", nav: "rgba(10, 12, 36, 0.75)", field: "rgba(0,0,0,.3)", track: "rgba(255,255,255,.12)", text: "#eef0ff", sub: "#a9acd6", accent: "linear-gradient(90deg, #8f9bff, #c08bff)", accentText: "#0d0f2a" },
+  aurora: { label: "🌠 極光", hours: "23–06", bg: "linear-gradient(170deg, #03101a 0%, #071c26 50%, #0b1630 100%)", card: "rgba(8, 24, 32, 0.76)", cardBorder: "rgba(94, 240, 196, 0.3)", nav: "rgba(4, 16, 24, 0.78)", field: "rgba(0,0,0,.32)", track: "rgba(255,255,255,.1)", text: "#e8fff8", sub: "#94c9ba", accent: "linear-gradient(90deg, #5ef0c4, #6ab8ff)", accentText: "#03201a" }
+};
+function timeAutoOn() { try { return localStorage.getItem("themeTimeAuto") === "1"; } catch (_) { return false; } }
+function timeSlot() {
+  const h = Number(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei", hour: "numeric", hourCycle: "h23" }));
+  return h >= 6 && h < 11 ? "dawn" : h >= 11 && h < 17 ? "noon" : h >= 17 && h < 23 ? "night" : "aurora";
+}
+function timeSky(slot) {
+  let sky = document.getElementById("time-sky");
+  if (!slot) { if (sky) sky.remove(); return; }
+  if (!sky) { sky = document.createElement("div"); sky.id = "time-sky"; sky.setAttribute("aria-hidden", "true"); document.body.prepend(sky); }
+  if (sky.dataset.slot === slot) return;
+  sky.dataset.slot = slot;
+  sky.className = "ts-" + slot;
+  sky.innerHTML = slot === "dawn" ? `<i class="ts-sun"></i><i class="ts-haze"></i>`
+    : slot === "noon" ? `<i class="ts-sun"></i><i class="ts-cloud c1"></i><i class="ts-cloud c2"></i>`
+    : slot === "night" ? `<i class="ts-stars"></i><i class="ts-stars s2"></i><i class="ts-moon"></i>`
+    : `<i class="ts-stars"></i><i class="ts-aur a1"></i><i class="ts-aur a2"></i>`;
+}
+(function () {
+  const st = document.createElement("style");
+  st.textContent = `
+    #time-sky { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+    #time-sky i { position: absolute; display: block; }
+    .ts-sun { width: 260px; height: 260px; border-radius: 50%; right: -60px; top: -60px; filter: blur(8px); }
+    .ts-dawn .ts-sun { background: radial-gradient(circle, rgba(255,190,140,.55), rgba(255,140,120,.15) 55%, transparent 70%); top: auto; bottom: 8%; left: -40px; right: auto; }
+    .ts-dawn .ts-haze { inset: auto 0 0 0; height: 40%; background: linear-gradient(0deg, rgba(255,170,140,.18), transparent); }
+    .ts-noon .ts-sun { background: radial-gradient(circle, rgba(255,230,150,.55), rgba(255,200,90,.15) 55%, transparent 70%); animation: tsPulse 8s ease-in-out infinite; }
+    .ts-cloud { width: 220px; height: 60px; border-radius: 60px; background: rgba(255,255,255,.06); filter: blur(6px); animation: tsDrift 90s linear infinite; }
+    .ts-cloud.c1 { top: 18%; left: -240px; } .ts-cloud.c2 { top: 55%; left: -240px; animation-duration: 140s; animation-delay: -60s; transform: scale(1.4); }
+    .ts-stars { inset: 0; background-image: radial-gradient(1px 1px at 10% 20%, #fff, transparent), radial-gradient(1px 1px at 30% 70%, #fff, transparent), radial-gradient(1.5px 1.5px at 55% 35%, #dde, transparent), radial-gradient(1px 1px at 75% 15%, #fff, transparent), radial-gradient(1px 1px at 85% 60%, #fff, transparent), radial-gradient(1.5px 1.5px at 45% 88%, #ccd, transparent), radial-gradient(1px 1px at 20% 50%, #fff, transparent), radial-gradient(1px 1px at 92% 85%, #fff, transparent); opacity: .7; animation: tsTwinkle 5s ease-in-out infinite; }
+    .ts-stars.s2 { transform: translate(37px, 53px) scale(1.2); animation-delay: -2.5s; opacity: .5; }
+    .ts-moon { width: 70px; height: 70px; border-radius: 50%; right: 8%; top: 7%; box-shadow: inset -14px -6px 0 0 #f4f1d8; filter: drop-shadow(0 0 18px rgba(244,241,216,.45)); }
+    .ts-aur { width: 140%; height: 45%; left: -20%; top: -8%; border-radius: 50%; filter: blur(40px); opacity: .35; animation: tsWave 18s ease-in-out infinite alternate; }
+    .ts-aur.a1 { background: linear-gradient(90deg, transparent, #2fe6a8, #4aa8ff, transparent); }
+    .ts-aur.a2 { background: linear-gradient(90deg, transparent, #9b6cff, #2fe6a8, transparent); top: 6%; animation-duration: 26s; opacity: .25; }
+    @keyframes tsPulse { 50% { transform: scale(1.08); } }
+    @keyframes tsDrift { to { transform: translateX(calc(100vw + 480px)); } }
+    @keyframes tsTwinkle { 50% { opacity: .35; } }
+    @keyframes tsWave { from { transform: translateX(-6%) skewY(-4deg); } to { transform: translateX(6%) skewY(4deg); } }
+    @media (prefers-reduced-motion: reduce) { #time-sky i { animation: none !important; } }
+    .tt-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(127,127,127,.2); }
+    .tt-row div { flex: 1; } .tt-row small { display: block; font-size: 12px; opacity: .7; }
+    .tt-sw { position: relative; width: 46px; height: 26px; border-radius: 26px; border: 0; background: rgba(127,127,127,.35); cursor: pointer; flex: none; }
+    .tt-sw::after { content: ""; position: absolute; left: 3px; top: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: left .2s; }
+    .tt-sw.on { background: #7c5cff; } .tt-sw.on::after { left: 23px; }
+    .theme-grid.tt-off { opacity: .45; }
+  `;
+  document.head.appendChild(st);
+  setInterval(() => { if (timeAutoOn()) applyTheme(currentThemeKey()); }, 5 * 60 * 1000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && timeAutoOn()) applyTheme(currentThemeKey()); });
+})();
+function setTimeAuto(on) {
+  try { localStorage.setItem("themeTimeAuto", on ? "1" : "0"); } catch (_) {}
+  applyTheme(currentThemeKey());
+}
+
 function applyTheme(key) {
 
-  const theme = THEMES[key] || null;
+  const slot = timeAutoOn() ? timeSlot() : null;
+  const theme = slot ? TIME_THEMES[slot] : (THEMES[key] || null);
+  if (document.body) timeSky(slot); else document.addEventListener("DOMContentLoaded", () => timeSky(slot), { once: true });
 
   let style = document.getElementById("theme-style");
 
@@ -947,7 +1011,7 @@ function applyTheme(key) {
 
   style.textContent = theme ? themeCss(theme) : "";
 
-  document.documentElement.dataset.theme = theme ? key : "default";
+  document.documentElement.dataset.theme = slot ? "time-" + slot : theme ? key : "default";
 
   renderThemePicker();
 
@@ -984,14 +1048,15 @@ function renderThemePicker() {
 
   if (!box) return;
 
-  const current = document.documentElement.dataset.theme || "default";
+  const current = currentThemeKey();
+  const auto = timeAutoOn(), slot = timeSlot();
 
   box.innerHTML = `
     <section class="card theme-card">
       <div class="card-head">
         <h2>🎨 主題</h2>
       </div>
-      <div class="theme-grid">
+      <div class="theme-grid ${auto ? "tt-off" : ""}">
         ${THEME_OPTIONS.map(option => `
           <button
             class="theme-option ${option.key === current ? "active" : ""}"
@@ -1001,6 +1066,8 @@ function renderThemePicker() {
             <span>${option.name}</span>
           </button>`).join("")}
       </div>
+      <div class="tt-row"><div><b>🕰️ 時段主題</b><small>${auto ? `現在是 ${TIME_THEMES[slot].label}（${TIME_THEMES[slot].hours}）・打開時會蓋過上面選的主題` : "早上晨光、下午暖陽、晚上星空、深夜極光，跟著時間自動換"}</small></div>
+        <button type="button" class="tt-sw ${auto ? "on" : ""}" role="switch" aria-checked="${auto}" aria-label="時段主題" onclick="setTimeAuto(${!auto})"></button></div>
     </section>`;
 
 }
