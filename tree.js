@@ -1,6 +1,6 @@
 /* 序光計畫：🌳 人生之樹（資料在 sql/2026-11-05_人生之樹.sql）。放在 📊 回顧裡的「🌳 人生之樹」分頁 */
 (function () {
-  const TREE_JS_VERSION = "20261105a";
+  const TREE_JS_VERSION = "20261105b";
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const IMG = "img/tree/";
 
@@ -54,7 +54,7 @@
       <path d="M${gx - tw * 0.4} ${gy} q -20 10 -34 8 M${gx + tw * 0.4} ${gy} q 22 9 36 6" stroke="#6b4429" stroke-width="5" fill="none" stroke-linecap="round"/>`;
 
     const items = [];   // 葉、花、果，最後再畫才不會被樹枝蓋住
-    const ground = [];
+    const ground = [], petsSvg = [];
     months.forEach((mo, i) => {
       const L = layer(mo), r = rng(mo.month);
       const side = i % 2 ? 1 : -1;
@@ -76,6 +76,12 @@
       }
       for (let k = 0; k < L.fruit; k++) { const [x, yy] = at(); items.push(`<g class="tr-fruit"><circle cx="${x}" cy="${yy + 6}" r="5.5" fill="#e53935"/><circle cx="${x - 1.8}" cy="${yy + 4.2}" r="1.5" fill="#fff" opacity=".7"/><path d="M${x} ${yy} v2.5" stroke="#5d4037" stroke-width="1.4"/></g>`); }
       for (let k = 0; k < L.fallen; k++) ground.push(`<ellipse cx="${gx + (r() - 0.5) * 220}" cy="${gy + 10 + r() * 30}" rx="5" ry="3" transform="rotate(${r() * 180})" fill="${["#d4883a", "#b5651d", "#e0a95a"][k % 3]}" opacity=".85"/>`);
+      /* 🌙 連續入夢 7 晚以上：夢獸在樹枝上睡覺 */
+      (mo.dream_pets || []).forEach((pt, k) => {
+        const px = ex - side * (k * 34) - 20, py = ey - 40 - (k % 2) * 8;
+        petsSvg.push(`<g class="tr-pet"><image href="img/dream/item/${pt.key}.webp" x="${px}" y="${py}" width="42" height="42"/>
+          <text x="${px + 34}" y="${py + 6}" font-size="13" class="tr-zz">💤</text></g>`);
+      });
       /* 點這層 */
       items.push(`<circle cx="${cx}" cy="${cy}" r="${spread + 8}" fill="transparent" data-tree="${i}" style="cursor:pointer"/>`);
       items.push(`<text x="${gx + side * 16}" y="${y + 4}" font-size="10" fill="#5d4037" text-anchor="${side > 0 ? "start" : "end"}" opacity=".8">${+String(mo.month).slice(5, 7)}月</text>`);
@@ -89,7 +95,7 @@
     if (S === SEASON.spring) for (let k = 0; k < 14; k++) fx += `<ellipse class="tr-leaf" cx="${r() * W}" cy="${r() * H * 0.6}" rx="3" ry="2" fill="#f8bbd0" style="animation-delay:${-r() * 9}s"/>`;
     if (S === SEASON.summer) fx += `<circle cx="${W - 50}" cy="50" r="60" fill="url(#tr-glow)"/>`;
 
-    return `<svg class="tr-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="人生之樹">${g}${ground.join("")}${items.join("")}${fx}</svg>`;
+    return `<svg class="tr-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="人生之樹">${g}${ground.join("")}${items.join("")}${petsSvg.join("")}${fx}</svg>`;
   }
 
   function detail(mo) {
@@ -102,6 +108,8 @@
       ["🌸", "花", L.flower, `跟好友互動 ${mo.social} 次`],
       ["🍎", "果實", L.fruit, `打倒每週王 ${mo.boss_kills} 次・重要徽章 ${(mo.fruit_list || []).length} 個`]
     ];
+    if ((mo.dream_pets || []).length) rows.push(["🌙", "夢獸", mo.dream_pets.length, `連續入夢 ${mo.dream_streak} 晚：${mo.dream_pets.map(p => p.name).join("、")} 在樹上睡覺`]);
+    else if (mo.dream_streak) rows.push(["🌙", "夢獸", 0, `這個月最長連續入夢 ${mo.dream_streak} 晚，連續 7 晚會有夢獸來樹上睡覺`]);
     if (L.fallen) rows.push(["🍂", "落葉", L.fallen, "這個月比較低迷，沒關係，下個月再長回來"]);
     return `<div class="tr-detail"><b>${String(mo.month).slice(0, 4)} 年 ${m} 月${mo.current ? "（還在長）" : ""}</b>
       ${rows.map(([e, n, v, how]) => `<div class="tr-row"><span>${e} ${n}</span><b>${v}</b><small>${esc(how)}</small></div>`).join("")}</div>`;
@@ -116,7 +124,7 @@
       ${svg(data, sel)}
       <div class="tr-rings">${ms.map((m, i) => `<button type="button" class="${sel === i ? "on" : ""}" data-tree="${i}">${+String(m.month).slice(5, 7)}月</button>`).join("")}</div>
       ${detail(ms[sel])}
-      <p class="ov-note" style="font-size:11.5px">🔵 專注 🟢 生活規律 🌿 任務完成率 🌸 好友 🍎 大成就 🍂 低迷的月份</p></div>`;
+      <p class="ov-note" style="font-size:11.5px">🔵 專注 🟢 生活規律 🌿 任務完成率 🌸 好友 🍎 大成就 🌙 連續入夢 7 晚的夢獸 🍂 低迷的月份</p></div>`;
   }
 
   const st = document.createElement("style");
@@ -124,6 +132,9 @@
     .tr-svg { width: 100%; max-width: 420px; display: block; margin: 0 auto; border-radius: 16px; }
     .tr-svg .tr-fruit { animation: trBob 3s ease-in-out infinite; transform-box: fill-box; }
     @keyframes trBob { 50% { transform: translateY(-1.5px); } }
+    .tr-svg .tr-pet { animation: trBreath 3.5s ease-in-out infinite; transform-box: fill-box; transform-origin: bottom; }
+    @keyframes trBreath { 50% { transform: scaleY(.94); } }
+    .tr-svg .tr-zz { animation: trZz 2.5s ease-in-out infinite; } @keyframes trZz { 0% { opacity: 0; } 50% { opacity: 1; } 100% { opacity: 0; transform: translateY(-6px); } }
     .tr-svg .tr-snow { animation: trSnow 8s linear infinite; }
     @keyframes trSnow { from { transform: translateY(-440px); } to { transform: translateY(440px); } }
     .tr-svg .tr-leaf { animation: trLeaf 9s linear infinite; }

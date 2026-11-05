@@ -563,6 +563,9 @@
     if (data.dayClear) setTimeout(() => toast(`🌟 ${P.wk.has(id) ? "這週" : "今天"}全部完成！+${data.dayClear.xp} EXP、✨ 星屑 ×${data.dayClear.stardust}`), 1000);
     if (data.life && data.life.length) lifeToast(data.life);
     if (window.DreamGame) window.DreamGame.reload();
+    /* 勾「回顧這週」→ 直接打開週回顧 */
+    { const st = Object.values(P.steps).flat().find(x => x.id === id);
+      if (st && /回顧這週/.test(st.title) && data.done && window.OverviewGame && window.OverviewGame.openWeek) setTimeout(() => window.OverviewGame.openWeek(), 900); }
     load();
   }
 

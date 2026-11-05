@@ -45,6 +45,8 @@
         const { data, error } = await db.rpc("life_week", { p_offset: OV.offset });
         if (error) throw error;
         OV.week = data;
+        OV.recap = null;
+        if (!OV.offset) { const r = await db.rpc("week_recap_me"); if (!r.error) OV.recap = r.data; }
       } else {
         const { data, error } = await db.rpc("life_collection");
         if (error) throw error;
@@ -118,6 +120,8 @@
         <div><b>${td}/${tt}</b><span>任務完成（${pct(td, tt)}%）</span>${delta(td, w.prev.done, " 個")}</div>
         <div><b>${th}</b><span>習慣打卡</span></div>
         <div><b>${tc}/${past}</b><span>簽到天數</span></div>
+        ${OV.recap ? `<div><b>${OV.recap.life_pct == null ? "—" : OV.recap.life_pct + "%"}</b><span>生活打卡（全勤 ${OV.recap.life_all} 天）</span></div>
+        <div><b>${OV.recap.dream_total} 隻</b><span>夢境收集（這週 +${OV.recap.dream_new}・入夢 ${OV.recap.dream_nights} 晚）</span></div>` : ""}
       </div>
       <div class="ov-box"><div class="ov-sec">每天專注・任務完成率・簽到</div><div class="ov-chart">${bars}</div>
         <p class="ov-note">${best && best.focus ? `最認真的一天是週${DAY[days.indexOf(best)]}（${hm(best.focus)}）。` : ""}平均每天 ${hm(Math.round(tf / past))}。${words}</p></div>
@@ -389,6 +393,15 @@
   }
   (function waitAuto(n) { if (!monthAuto() && n < 30) setTimeout(() => waitAuto(n + 1), 2000); })(0);
 
-  window.OverviewGame = { open: openPanel, state: OV };
+  /* 點每週回顧的推播（./?review=week）→ 直接打開週回顧 */
+  (function reviewLink(n) {
+    if (!/[?&]review=week/.test(location.search)) return;
+    if (typeof currentUser === "undefined" || !currentUser || !document.getElementById("ov-overlay")) { if (n < 30) setTimeout(() => reviewLink(n + 1), 1000); return; }
+    try { history.replaceState(null, "", location.pathname + location.hash); } catch (_) {}
+    OV.tab = "week"; OV.offset = 0; OV.week = null;
+    openPanel();
+  })(0);
+
+  window.OverviewGame = { open: openPanel, openWeek: () => { OV.tab = "week"; OV.offset = 0; OV.week = null; openPanel(); }, state: OV };
 
 })();
