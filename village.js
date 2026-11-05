@@ -92,6 +92,7 @@
     const { data, error } = await db.rpc("village_status");
     S.vil = error ? null : data;
     renderVil();
+    if (S.vil && S.vil.town) claimTown();
   }
   const CHECKN = { focus25: "今天專注滿 25 分鐘", focus30: "今天專注滿 30 分鐘", focus60: "今天專注滿 1 小時", task3: "今天完成 3 個任務", life_room: "生活打卡勾「整理房間」", plan: "生活打卡勾「確認明天行程」" };
   const vimg = (k, e) => `<img class="vg-face" src="img/village/${k}.webp" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'vg-face vg-emo',textContent:'${e}'}))">`;
@@ -102,7 +103,7 @@
     box.hidden = !(v && gameOn());
     if (box.hidden) return;
     box.className = "card vg-today vg-vil";
-    box.innerHTML = `<div class="vg-h"><b>🏘️ 村民委託</b><button type="button" class="btn btn-small" data-vg="town">村莊</button></div>
+    box.innerHTML = `<div class="vg-h"><b>🏘️ 村民委託</b>${v.town ? `<small class="vg-lv">星光村 Lv${v.town.lv}</small>` : ""}<button type="button" class="btn btn-small" data-vg="town">村莊</button></div>
       ${(v.quests || []).map(q => {
         const p = v.defs[q.villager], qd = p.quests.find(x => x.k === q.quest) || {};
         return `<div class="vg-q ${q.done ? "done" : ""}">${vimg(q.villager, p.emoji)}<div class="vg-qb"><b>${esc(p.name)}</b><p>「${esc(qd.text)}」</p>
@@ -110,18 +111,41 @@
           : q.ready ? `<button type="button" class="btn btn-small btn-primary" data-vg="done" data-s="${q.slot}">✨ 交差</button>` : `<small>📌 ${CHECKN[q.check] || ""}之後就能交差</small>`}</div></div>`;
       }).join("")}`;
   }
+  function townHtml(v) {
+    const tw = v.town, bs = v.buildings || [];
+    if (!tw) return "";
+    const pct = tw.next ? Math.round((tw.xp - tw.cur) / (tw.next - tw.cur) * 100) : 100;
+    const P = tw.parts || {};
+    return `<div class="vt-head"><div class="vt-lv">Lv<b>${tw.lv}</b></div><div style="flex:1"><b>星光村</b><div class="eg-bar"><i style="width:${pct}%"></i></div>
+        <small>${tw.next ? `村莊經驗 ${tw.xp}／${tw.next}` : `村莊經驗 ${tw.xp}・已經是最大的小鎮了`}</small></div></div>
+      <p class="vg-note">村莊經驗 = 完成委託 ×10（${P.quests || 0}）＋ 專注小時 ×2（${P.focus_h || 0}）＋ 完成任務（${P.tasks || 0}）＋ 生活打卡（${P.life || 0}）</p>
+      <div class="vt-map">${bs.map(b => `<div class="vt-b ${b.lv <= tw.lv ? "on" : ""}" title="${esc(b.desc)}"><span>${b.lv <= tw.lv ? b.emoji : "🚧"}</span><small>${b.lv <= tw.lv ? esc(b.name) : `Lv${b.lv}`}</small></div>`).join("")}</div>
+      ${(() => { const nb = bs.find(b => b.lv > tw.lv); return nb ? `<p class="vg-note">🔨 下一個：Lv${nb.lv}「${esc(nb.name)}」— ${esc(nb.desc)}</p>` : ""; })()}`;
+  }
   function openTown() {
     const v = S.vil;
     if (!v) return;
-    const T = [3, 7, 15, 30];
-    modal(`<div class="vg-title">🏘️ 星光村</div><p class="vg-note">完成委託，村民好感 +1。好感 3／7／15／30 會告訴你他的故事，還會送你禮物。</p>
+    const T = [3, 7, 15, 30], lv = v.town ? v.town.lv : 1;
+    modal(`<div class="vg-title">🏘️ 星光村</div>${townHtml(v)}<p class="vg-note">完成委託，村民好感 +1。好感 3／7／15／30 會告訴你他的故事，還會送你禮物。</p>
       ${Object.entries(v.defs).map(([k, p]) => {
+        if ((p.unlock || 1) > lv) return `<div class="vg-person locked"><span class="vg-face vg-emo">🔒</span><div class="vg-pb"><b>？？？</b><small>村莊 Lv${p.unlock} 會有新村民搬來</small></div></div>`;
         const a = v.aff[k] || 0, ch = T.filter(x => a >= x).length, next = T.find(x => a < x);
         return `<div class="vg-person">${vimg(k, p.emoji)}<div class="vg-pb"><b>${esc(p.name)}</b><small>${esc(p.job)}・好感 ${a}${next ? `（${next} 解鎖第 ${ch + 1} 章）` : "・全部故事都解鎖了"}</small>
           <div class="vg-hearts">${T.map(x => a >= x ? "💗" : "🤍").join("")}</div>
           ${p.story.slice(0, ch).map((s, i) => `<p class="vg-story"><b>第 ${i + 1} 章</b>${esc(s)}</p>`).join("")}</div></div>`;
       }).join("")}
       <button type="button" class="btn btn-primary" data-vx="1" style="width:100%">關閉</button>`, "vg-town");
+  }
+  async function claimTown() {
+    const { data, error } = await db.rpc("village_levelup_claim");
+    if (error || !data || !data.levels || !data.levels.length) return;
+    const bs = (S.vil && S.vil.buildings) || [], defs = (S.vil && S.vil.defs) || {};
+    const lvls = data.levels, newB = bs.filter(b => lvls.includes(b.lv)), newP = Object.values(defs).filter(p => lvls.includes(p.unlock || 1));
+    modal(`<div class="bh-loot"><div class="bh-big">🏘️</div><div class="vg-title">星光村升到 Lv${Math.max(...lvls)}！</div>
+      ${newB.map(b => `<p>${b.emoji} 蓋好了「<b>${esc(b.name)}</b>」<br><small>${esc(b.desc)}</small></p>`).join("")}
+      ${newP.map(p => `<p>${p.emoji} 新村民 <b>${esc(p.name)}</b> 搬來了！明天起可能會找你幫忙</p>`).join("")}
+      <p class="bh-items">✨ 星屑 ×${lvls.reduce((a, l) => a + 50 * l, 0)}${lvls.some(l => l % 3 === 0) ? "、✨ 星光寶箱 ×1" : ""}</p></div>
+      <button type="button" class="btn btn-primary" data-vx="1" style="width:100%">去村莊看看</button>`);
   }
 
   /* ================= 🎰 成就扭蛋機台 ================= */
@@ -246,6 +270,13 @@
     .tp-card.done { background: linear-gradient(135deg, rgba(63,185,80,.2), rgba(255,213,74,.1)); }
     .tp-row { display: flex; gap: 12px; align-items: center; } .tp-row > div { flex: 1; } .tp-row small { display: block; font-size: 12px; opacity: .75; } .tp-row b { font-size: 16px; }
     .tp-star { font-size: 32px; } .tp-ok { font-weight: 800; color: #3fb950; } .tp-sub { max-width: 120px; text-align: right; }
+    .vg-lv { margin-left: 6px; margin-right: auto; font-size: 11.5px; padding: 1px 8px; border-radius: 99px; background: rgba(255,213,74,.2); }
+    .vt-head { display: flex; gap: 12px; align-items: center; margin: 4px 0 6px; } .vt-head small { font-size: 12px; opacity: .75; }
+    .vt-lv { width: 56px; height: 56px; border-radius: 14px; background: linear-gradient(135deg, #ffd54a, #ff8a65); color: #3a2010; display: grid; place-items: center; font-size: 11px; font-weight: 800; line-height: 1; }
+    .vt-lv b { font-size: 24px; display: block; }
+    .vt-map { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin: 8px 0; padding: 10px; border-radius: 14px; background: linear-gradient(180deg, rgba(120,200,255,.12), rgba(120,200,120,.15)); }
+    .vt-b { text-align: center; opacity: .4; } .vt-b.on { opacity: 1; } .vt-b span { font-size: 28px; display: block; } .vt-b small { font-size: 10px; display: block; line-height: 1.2; }
+    .vg-person.locked { opacity: .5; }
     .vg-h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
     .vg-q { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid rgba(127,127,127,.18); } .vg-q.done { opacity: .6; }
     .vg-face { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; flex: none; background: rgba(255,213,74,.15); display: grid; place-items: center; font-size: 30px; }
