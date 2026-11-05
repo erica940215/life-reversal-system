@@ -67,7 +67,7 @@
       ${d.eggs.filter(e => !e.pet).map(e => `<div class="eg-row"><span class="eg-ic">${eggIcon(e, d.pets)}</span><div class="eg-b"><b>${esc(e.habit)}</b><small>連續 ${e.streak} 天・最佳 ${e.best}・總共 ${e.total} 天・變冷過 ${e.colds} 次</small></div><button type="button" class="btn btn-small" data-eg="drop" data-id="${e.id}">放棄</button></div>`).join("")}
       <div class="vg-sec">🐾 孵出來的寵物（${pets.length}/${d.pets.length}）</div>
       <div class="cp-grid">${d.pets.map(p => { const e = pets.find(x => x.pet === p.k);
-        return `<div class="cp-fig ${e ? "on" : ""}" style="--c:#ffd54a"><span>${e ? p.emoji : "❔"}</span><b>${e ? esc(p.name) : "？？？"}</b><small>${e ? esc(e.habit) : ""}</small></div>`; }).join("")}</div>
+        return `<div class="cp-fig ${e ? "on" : ""}" style="--c:#ffd54a"><span>${e ? `<img class="pet-img" src="img/pet/${p.k}.webp" alt="" onerror="this.replaceWith(document.createTextNode('${p.emoji}'))">` : "❔"}</span><b>${e ? esc(p.name) : "？？？"}</b><small>${e ? esc(e.habit) : ""}</small></div>`; }).join("")}</div>
       <button type="button" class="btn btn-primary" data-vx="1" style="width:100%;margin-top:10px">關閉</button>`);
     m.dataset.eggs = "1";
   }
@@ -278,7 +278,7 @@
       S.eggs = r.data; renderEggs();
       if (md) { md.remove(); openEggs(); }
       if (r.data.hatched) { const p = r.data.hatched;
-        modal(`<div class="bh-loot"><div class="bh-big eg-hatch">${p.emoji}</div><div class="vg-title">🎉 蛋孵出來了！</div><p>連續 21 天，你養成了一個習慣，也得到了「${esc(p.name)}」</p><p class="bh-items">✨ 星屑 ×200、✨ 星光寶箱 ×1</p></div><button type="button" class="btn btn-primary" data-vx="1" style="width:100%">歡迎回家</button>`);
+        modal(`<div class="bh-loot"><div class="bh-big eg-hatch"><img class="pet-img" src="img/pet/${p.k}.webp" alt="" onerror="this.replaceWith(document.createTextNode('${p.emoji}'))"></div><div class="vg-title">🎉 蛋孵出來了！</div><p>連續 21 天，你養成了一個習慣，也得到了「${esc(p.name)}」</p><p class="bh-items">✨ 星屑 ×200、✨ 星光寶箱 ×1</p></div><button type="button" class="btn btn-primary" data-vx="1" style="width:100%">歡迎回家</button>`);
       } else if (b.dataset.eg === "check") toast("🥚 蛋暖了一點 ✨ +5");
     }
   });
@@ -294,7 +294,7 @@
     .eg-ic { font-size: 30px; } .eg-ic.warm { filter: drop-shadow(0 0 8px #ffb347); } .eg-row.cold .eg-ic { filter: hue-rotate(160deg); }
     .eg-bar, .mo-hp { height: 7px; border-radius: 9px; background: rgba(127,127,127,.2); overflow: hidden; margin: 4px 0; }
     .eg-bar i { display: block; height: 100%; background: linear-gradient(90deg, #ffd54a, #ff8a65); } .mo-hp i { display: block; height: 100%; background: linear-gradient(90deg, #f85149, #a40e26); }
-    .eg-ok { font-size: 20px; } .eg-hatch { animation: cpPop .8s cubic-bezier(.2,1.6,.4,1); }
+    .eg-ok { font-size: 20px; } .pet-img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 8px; display: block; } .eg-hatch .pet-img { width: 160px; margin: 0 auto; border-radius: 14px; box-shadow: 0 0 30px #ffd54a; } .eg-hatch { animation: cpPop .8s cubic-bezier(.2,1.6,.4,1); }
     .mo-card { border: 1px solid rgba(248,81,73,.45); background: linear-gradient(135deg, rgba(248,81,73,.13), transparent); }
     .mo-ic { font-size: 30px; animation: moBob 1.4s ease-in-out infinite; } @keyframes moBob { 50% { transform: translateY(-4px) rotate(-6deg); } }
     .mo-die { animation: moDie 1.2s forwards; } @keyframes moDie { 60% { transform: scale(1.3) rotate(20deg); } to { transform: scale(0) rotate(200deg); opacity: 0; } }
