@@ -31,7 +31,7 @@
     card.dataset.foldKey = k;
     return k;
   }
-  const topCards = page => [...page.querySelectorAll(".card")].filter(c => c.parentElement.closest(".card, .page") === page && !c.closest(".vg-modal, .modal, [role=dialog]"));
+  const topCards = page => [...page.querySelectorAll(".card")].filter(c => (c.parentElement.closest(".card, .page") === page || c.parentElement.classList.contains("drawer-body")) && !c.closest(".vg-modal, .modal, [role=dialog]"));
 
   function apply(card, on) {
     card.classList.toggle("folded", on);
