@@ -486,6 +486,28 @@
       ${active.length ? groupHtml(active.slice().sort((a, b) => order(a) - order(b))) : `<section class="card"><div class="empty-state">還沒有進行中的專案</div></section>`}
       ${done.length ? `<button class="btn btn-small" data-a="showdone" style="margin:4px 0 12px">${P.showDone ? "收起" : "顯示"}已完成（${done.length}）</button>
         ${P.showDone ? done.map(projectHtml).join("") : ""}` : ""}`;
+    renderTodayLife();
+  }
+
+  /* 今日頁「✅ 打卡」裡也放一份生活打卡（專案頁的照樣保留） */
+  function renderTodayLife() {
+    const tp = document.querySelector('.page[data-page="today"]');
+    if (!tp) return;
+    let host = document.getElementById("today-life");
+    if (!host) {
+      host = document.createElement("section");
+      host.id = "today-life";
+      host.addEventListener("click", onClick);
+      tp.appendChild(host);
+    }
+    const tmp = document.createElement("div");
+    tmp.innerHTML = lifeHtml();
+    const sec = tmp.firstElementChild;
+    host.hidden = !sec;
+    if (!sec) return;
+    const keep = ["folded", "can-fold", "fold-nohead", "reorder-pressing"].filter(c => host.classList.contains(c));
+    host.className = sec.className + " " + keep.join(" ");
+    host.innerHTML = sec.innerHTML;
   }
 
   async function addProject() {

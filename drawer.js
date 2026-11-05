@@ -3,8 +3,9 @@
    - 夾層裡面：長按卡片拖曳排順序；每張也可以點標題收起（📂 收起卡片選單也有）
    - 順序記在這台裝置 */
 (function () {
-  const MEMBERS = ["fn-today", "vg-today", "de-today", "dr-today"];
-  const KEY = "drawerOrder";
+function makeDrawer(CFG) {
+  const MEMBERS = CFG.members;
+  const KEY = CFG.key;
   const HOLD_MS = 450, NO_GRAB = "button, a, input, select, textarea, label, [contenteditable]";
   const load = () => { try { const v = JSON.parse(localStorage.getItem(KEY) || "[]"); return Array.isArray(v) ? v : []; } catch (_) { return []; } };
   const save = v => { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (_) {} };
@@ -15,12 +16,12 @@
     const p = page();
     if (!p) return null;
     if (!drawer || !drawer.isConnected) {
-      drawer = document.getElementById("today-drawer");
+      drawer = document.getElementById(CFG.id);
       if (!drawer) {
         drawer = document.createElement("section");
-        drawer.id = "today-drawer";
-        drawer.className = "card";
-        drawer.innerHTML = `<h2>🗂️ 今日小抽屜</h2><div class="drawer-body"></div><p class="drawer-empty">裡面的卡片還在載入…</p>`;
+        drawer.id = CFG.id;
+        drawer.className = "card today-drawer";
+        drawer.innerHTML = `<h2>${CFG.title}</h2><div class="drawer-body"></div><p class="drawer-empty">裡面的卡片還在載入…</p>`;
         const first = MEMBERS.map(id => document.getElementById(id)).find(el => el && el.parentElement === p);
         first ? first.before(drawer) : p.appendChild(drawer);
       }
@@ -88,23 +89,25 @@
     it.classList.remove("drawer-lift"); it.style.transform = ""; document.body.classList.remove("reorder-on");
     drag = null; suppress = true; setTimeout(() => { suppress = false; }, 350);
     save([...body.children].map(el => el.id));
-    if (typeof showToast === "function") showToast("↕️ 抽屜裡的順序記住了");
+    if (typeof showToast === "function") showToast("↕️ " + CFG.name + "裡的順序記住了");
   }
   document.addEventListener("pointerup", up);
   document.addEventListener("pointercancel", up);
   document.addEventListener("touchmove", e => { if (drag) e.preventDefault(); }, { passive: false });
   document.addEventListener("click", e => { if (suppress) { e.stopPropagation(); e.preventDefault(); } }, true);
 
-  const st = document.createElement("style");
+  if (!document.getElementById("drawer-style")) {
+  const st = document.createElement("style"); st.id = "drawer-style";
   st.textContent = `
-    #today-drawer { background: linear-gradient(160deg, rgba(124,92,255,.10), rgba(255,213,74,.06)); }
-    #today-drawer .drawer-body { display: flex; flex-direction: column; gap: 10px; }
-    #today-drawer .drawer-body > .card { margin: 0 !important; box-shadow: none; border: 1px solid rgba(127,127,127,.2); -webkit-touch-callout: none; }
-    #today-drawer .drawer-empty { font-size: 12.5px; opacity: .6; margin: 4px 0 0; }
-    #today-drawer .drawer-body > .drawer-lift { position: relative; z-index: 50; box-shadow: 0 14px 34px rgba(0,0,0,.45); }
-    #today-drawer .drawer-body > .drawer-lift * { pointer-events: none; }
+    .today-drawer { background: linear-gradient(160deg, rgba(124,92,255,.10), rgba(255,213,74,.06)); }
+    .today-drawer .drawer-body { display: flex; flex-direction: column; gap: 10px; }
+    .today-drawer .drawer-body > .card { margin: 0 !important; box-shadow: none; border: 1px solid rgba(127,127,127,.2); -webkit-touch-callout: none; }
+    .today-drawer .drawer-empty { font-size: 12.5px; opacity: .6; margin: 4px 0 0; }
+    .today-drawer .drawer-body > .drawer-lift { position: relative; z-index: 50; box-shadow: 0 14px 34px rgba(0,0,0,.45); }
+    .today-drawer .drawer-body > .drawer-lift * { pointer-events: none; }
   `;
   document.head.appendChild(st);
+  }
 
   function startAll() {
     if (!ensure()) return;
@@ -113,4 +116,7 @@
     new MutationObserver(() => { if (!busy && !drag) { clearTimeout(startAll.t); startAll.t = setTimeout(tidy, 100); } }).observe(page(), { childList: true });
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", startAll); else startAll();
+}
+makeDrawer({ id: "today-drawer", key: "drawerOrder", title: "🗂️ 今日小抽屜", name: "抽屜", members: ["fn-today", "vg-today", "de-today", "dr-today"] });
+makeDrawer({ id: "today-checkin", key: "checkinOrder", title: "✅ 打卡", name: "打卡", members: ["morning-card", "today-life"] });
 })();
