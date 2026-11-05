@@ -24,7 +24,13 @@
   async function load() {
     OV.err = null;
     try {
-      if (OV.tab === "tree") {
+      if (OV.tab === "museum") {
+        /* 博物館自己讀資料 */
+      } else if (OV.tab === "dna") {
+        const { data, error } = await db.rpc("focus_dna", { p_offset: OV.doffset || 0 });
+        if (error) throw error;
+        OV.dna = data;
+      } else if (OV.tab === "tree") {
         const { data, error } = await db.rpc("life_tree");
         if (error) throw error;
         OV.tree = data;
@@ -55,7 +61,7 @@
         OV.ach = a.error ? null : a.data;
       }
     } catch (e) {
-      OV.err = /life_tree/.test(e.message || "") ? "setup4" : /life_month/.test(e.message || "") ? "setup3" : /life_year/.test(e.message || "") ? "setup2" : /life_week|life_collection|PGRST202|42883/.test(e.message || "") ? "setup" : (e.message || String(e));
+      OV.err = /focus_dna/.test(e.message || "") ? "setup5" : /life_tree/.test(e.message || "") ? "setup4" : /life_month/.test(e.message || "") ? "setup3" : /life_year/.test(e.message || "") ? "setup2" : /life_week|life_collection|PGRST202|42883/.test(e.message || "") ? "setup" : (e.message || String(e));
     }
     render();
   }
@@ -273,12 +279,13 @@
     let body;
     if (OV.err === "setup") body = `<p class="ov-note">⚠️ 回顧的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-10-30_通知與回顧.sql</b>。</p>`;
     else if (OV.err) body = `<p class="ov-note">載入失敗：${esc(OV.err)}</p>`;
+    else if (OV.err === "setup5") body = `<p class="ov-note">⚠️ 專注 DNA 的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-11-05_專注DNA_事件_掉落_陪讀_博物館.sql</b>。</p>`;
     else if (OV.err === "setup4") body = `<p class="ov-note">⚠️ 人生之樹的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-11-05_人生之樹.sql</b>。</p>`;
     else if (OV.err === "setup3") body = `<p class="ov-note">⚠️ 月報的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-11-05_月報.sql</b>。</p>`;
     else if (OV.err === "setup2") body = `<p class="ov-note">⚠️ 年度熱力圖的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-10-30_目標與作息.sql</b>。</p>`;
-    else body = OV.tab === "tree" ? (window.LifeTree ? window.LifeTree.html(OV.tree, OV.treeSel) : "") : OV.tab === "month" ? monthHtml() : OV.tab === "week" ? weekHtml() : OV.tab === "game" ? gameHtml() : OV.tab === "year" ? yearHtml() : collHtml();
+    else body = OV.tab === "dna" ? (window.Insight ? window.Insight.dnaHtml(OV.dna) : "") : OV.tab === "museum" ? (window.Insight ? window.Insight.museumHtml(render) : "") : OV.tab === "tree" ? (window.LifeTree ? window.LifeTree.html(OV.tree, OV.treeSel) : "") : OV.tab === "month" ? monthHtml() : OV.tab === "week" ? weekHtml() : OV.tab === "game" ? gameHtml() : OV.tab === "year" ? yearHtml() : collHtml();
     ov.querySelector(".ov-panel").innerHTML = `<div class="ov-head"><h2>📊 回顧</h2><button type="button" class="ov-x" data-ov="close" aria-label="關閉">✕</button></div>
-      <div class="ov-tabs"><button type="button" class="${OV.tab === "week" ? "on" : ""}" data-ov="tab" data-v="week">📅 週回顧</button><button type="button" class="${OV.tab === "month" ? "on" : ""}" data-ov="tab" data-v="month">🗓️ 月報</button><button type="button" class="${OV.tab === "tree" ? "on" : ""}" data-ov="tab" data-v="tree">🌳 人生之樹</button><button type="button" class="${OV.tab === "game" ? "on" : ""}" data-ov="tab" data-v="game">📰 戰報</button><button type="button" class="${OV.tab === "year" ? "on" : ""}" data-ov="tab" data-v="year">📆 年度</button><button type="button" class="${OV.tab === "coll" ? "on" : ""}" data-ov="tab" data-v="coll">🏆 收藏與成就</button></div>${body}`;
+      <div class="ov-tabs"><button type="button" class="${OV.tab === "week" ? "on" : ""}" data-ov="tab" data-v="week">📅 週回顧</button><button type="button" class="${OV.tab === "month" ? "on" : ""}" data-ov="tab" data-v="month">🗓️ 月報</button><button type="button" class="${OV.tab === "tree" ? "on" : ""}" data-ov="tab" data-v="tree">🌳 人生之樹</button><button type="button" class="${OV.tab === "dna" ? "on" : ""}" data-ov="tab" data-v="dna">🧬 專注 DNA</button><button type="button" class="${OV.tab === "museum" ? "on" : ""}" data-ov="tab" data-v="museum">🏛️ 博物館</button><button type="button" class="${OV.tab === "game" ? "on" : ""}" data-ov="tab" data-v="game">📰 戰報</button><button type="button" class="${OV.tab === "year" ? "on" : ""}" data-ov="tab" data-v="year">📆 年度</button><button type="button" class="${OV.tab === "coll" ? "on" : ""}" data-ov="tab" data-v="coll">🏆 收藏與成就</button></div>${body}`;
   }
 
   function openPanel() {
@@ -297,6 +304,8 @@
     const a = el.dataset.ov;
     if (a === "close") { OV.open = false; document.getElementById("ov-overlay").hidden = true; return; }
     if (a === "tab") { OV.tab = el.dataset.v; render(); load(); return; }
+    if (a === "dprev") { OV.doffset = (OV.doffset || 0) - 1; OV.dna = null; render(); load(); return; }
+    if (a === "dnext") { OV.doffset = Math.min(0, (OV.doffset || 0) + 1); OV.dna = null; render(); load(); return; }
     if (a === "mprev") { OV.moffset = (OV.moffset || 0) - 1; OV.mon = null; render(); load(); return; }
     if (a === "mnext") { OV.moffset = Math.min(0, (OV.moffset || 0) + 1); OV.mon = null; render(); load(); return; }
     if (a === "gprev") { OV.goffset = (OV.goffset || 0) - 1; OV.game = null; render(); load(); return; }
@@ -402,6 +411,6 @@
     openPanel();
   })(0);
 
-  window.OverviewGame = { open: openPanel, openWeek: () => { OV.tab = "week"; OV.offset = 0; OV.week = null; openPanel(); }, state: OV };
+  window.OverviewGame = { open: openPanel, rerender: () => render(), openWeek: () => { OV.tab = "week"; OV.offset = 0; OV.week = null; openPanel(); }, state: OV };
 
 })();
