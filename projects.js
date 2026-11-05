@@ -562,6 +562,7 @@
     if (data.morning) setTimeout(() => toast(`☀️ 早上 10:30 前完成：多 +${data.morning} EXP`), 700);
     if (data.dayClear) setTimeout(() => toast(`🌟 ${P.wk.has(id) ? "這週" : "今天"}全部完成！+${data.dayClear.xp} EXP、✨ 星屑 ×${data.dayClear.stardust}`), 1000);
     if (data.life && data.life.length) lifeToast(data.life);
+    if (window.DreamGame) window.DreamGame.reload();
     load();
   }
 
