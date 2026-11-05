@@ -24,7 +24,12 @@
   async function load() {
     OV.err = null;
     try {
-      if (OV.tab === "month") {
+      if (OV.tab === "tree") {
+        const { data, error } = await db.rpc("life_tree");
+        if (error) throw error;
+        OV.tree = data;
+        if (OV.treeSel == null) OV.treeSel = (data.months || []).length - 1;
+      } else if (OV.tab === "month") {
         const { data, error } = await db.rpc("life_month", { p_offset: OV.moffset || 0 });
         if (error) throw error;
         OV.mon = data;
@@ -48,7 +53,7 @@
         OV.ach = a.error ? null : a.data;
       }
     } catch (e) {
-      OV.err = /life_month/.test(e.message || "") ? "setup3" : /life_year/.test(e.message || "") ? "setup2" : /life_week|life_collection|PGRST202|42883/.test(e.message || "") ? "setup" : (e.message || String(e));
+      OV.err = /life_tree/.test(e.message || "") ? "setup4" : /life_month/.test(e.message || "") ? "setup3" : /life_year/.test(e.message || "") ? "setup2" : /life_week|life_collection|PGRST202|42883/.test(e.message || "") ? "setup" : (e.message || String(e));
     }
     render();
   }
@@ -264,11 +269,12 @@
     let body;
     if (OV.err === "setup") body = `<p class="ov-note">⚠️ 回顧的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-10-30_通知與回顧.sql</b>。</p>`;
     else if (OV.err) body = `<p class="ov-note">載入失敗：${esc(OV.err)}</p>`;
+    else if (OV.err === "setup4") body = `<p class="ov-note">⚠️ 人生之樹的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-11-05_人生之樹.sql</b>。</p>`;
     else if (OV.err === "setup3") body = `<p class="ov-note">⚠️ 月報的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-11-05_月報.sql</b>。</p>`;
     else if (OV.err === "setup2") body = `<p class="ov-note">⚠️ 年度熱力圖的資料庫還沒設定：到 Supabase 的 SQL Editor 執行 <b>sql/2026-10-30_目標與作息.sql</b>。</p>`;
-    else body = OV.tab === "month" ? monthHtml() : OV.tab === "week" ? weekHtml() : OV.tab === "game" ? gameHtml() : OV.tab === "year" ? yearHtml() : collHtml();
+    else body = OV.tab === "tree" ? (window.LifeTree ? window.LifeTree.html(OV.tree, OV.treeSel) : "") : OV.tab === "month" ? monthHtml() : OV.tab === "week" ? weekHtml() : OV.tab === "game" ? gameHtml() : OV.tab === "year" ? yearHtml() : collHtml();
     ov.querySelector(".ov-panel").innerHTML = `<div class="ov-head"><h2>📊 回顧</h2><button type="button" class="ov-x" data-ov="close" aria-label="關閉">✕</button></div>
-      <div class="ov-tabs"><button type="button" class="${OV.tab === "week" ? "on" : ""}" data-ov="tab" data-v="week">📅 週回顧</button><button type="button" class="${OV.tab === "month" ? "on" : ""}" data-ov="tab" data-v="month">🗓️ 月報</button><button type="button" class="${OV.tab === "game" ? "on" : ""}" data-ov="tab" data-v="game">📰 戰報</button><button type="button" class="${OV.tab === "year" ? "on" : ""}" data-ov="tab" data-v="year">📆 年度</button><button type="button" class="${OV.tab === "coll" ? "on" : ""}" data-ov="tab" data-v="coll">🏆 收藏與成就</button></div>${body}`;
+      <div class="ov-tabs"><button type="button" class="${OV.tab === "week" ? "on" : ""}" data-ov="tab" data-v="week">📅 週回顧</button><button type="button" class="${OV.tab === "month" ? "on" : ""}" data-ov="tab" data-v="month">🗓️ 月報</button><button type="button" class="${OV.tab === "tree" ? "on" : ""}" data-ov="tab" data-v="tree">🌳 人生之樹</button><button type="button" class="${OV.tab === "game" ? "on" : ""}" data-ov="tab" data-v="game">📰 戰報</button><button type="button" class="${OV.tab === "year" ? "on" : ""}" data-ov="tab" data-v="year">📆 年度</button><button type="button" class="${OV.tab === "coll" ? "on" : ""}" data-ov="tab" data-v="coll">🏆 收藏與成就</button></div>${body}`;
   }
 
   function openPanel() {
@@ -280,6 +286,8 @@
   }
 
   function onClick(e) {
+    const tr = e.target.closest("[data-tree]");
+    if (tr) { OV.treeSel = Number(tr.dataset.tree); render(); return; }
     const el = e.target.closest("[data-ov]");
     if (!el) { if (e.target.id === "ov-overlay") { OV.open = false; e.target.hidden = true; } return; }
     const a = el.dataset.ov;
