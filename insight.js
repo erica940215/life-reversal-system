@@ -192,7 +192,7 @@
     .mu-row { display: flex; gap: 6px; align-items: center; } .mu-row > * { flex: 1; }
     .mu-photo { display: inline-block; margin: 4px 0; padding: 6px 10px; border-radius: 10px; background: #232a40; cursor: pointer; font-size: 13px; }
     .mu-prev { display: block; max-width: 160px; border-radius: 8px; margin: 4px 0; }
-    .mu-hall { margin: 14px 0; border-radius: 16px; overflow: hidden; background: linear-gradient(#3a2f4f, #2a2238 70%, #5a4632 70%, #4a3826); padding: 0 0 14px; }
+    .mu-hall { margin: 14px 0; border-radius: 16px; overflow: hidden; background: linear-gradient(rgba(30,15,15,.25), rgba(30,15,15,.45)), url(img/museum/wall.webp) center / cover, #3a2f4f; padding: 0 0 14px; }
     .mu-hall-name { text-align: center; font-weight: 800; padding: 8px; background: linear-gradient(90deg, transparent, rgba(255,213,74,.25), transparent); color: #ffe6a0; letter-spacing: 2px; }
     .mu-wall { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 10px 12px 0; }
     .mu-frame { border: 0; padding: 6px; background: linear-gradient(135deg, #e8c46a, #a87a2a, #f0d690); border-radius: 6px; box-shadow: 0 6px 14px rgba(0,0,0,.45); cursor: pointer; transform: rotate(var(--tilt)); font: inherit; color: inherit; }

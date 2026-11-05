@@ -1,6 +1,6 @@
 /* 序光計畫：⏱️ 專注加料：🍂 專注掉落物 ＋ 👻 幽靈陪讀（資料在 sql/2026-11-05_專注DNA_事件_掉落_陪讀_博物館.sql） */
 (function () {
-  const FP_JS_VERSION = "20261105a";
+  const FP_JS_VERSION = "20261105b";
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const toast = m => (typeof showToast === "function" ? showToast(m) : console.log(m));
   const hasDb = () => typeof db !== "undefined" && db && typeof currentUser !== "undefined" && currentUser;
@@ -175,7 +175,8 @@
     .fp-co-h { font-weight: 800; font-size: 14px; display: flex; gap: 8px; align-items: center; }
     .fp-together { font-size: 12px; background: linear-gradient(90deg, #ffd54a, #ff9ec7); color: #3a2400; padding: 2px 8px; border-radius: 99px; animation: fpGlow 2s ease-in-out infinite; }
     @keyframes fpGlow { 50% { box-shadow: 0 0 12px #ffd54a; } }
-    .fp-desk { display: flex; gap: 10px; justify-content: center; padding: 14px 8px 10px; margin-top: 6px; border-radius: 14px; background: linear-gradient(#3b2b1f00 55%, #8a5a3a 55%, #6b4429); flex-wrap: wrap; }
+    .fp-desk { display: flex; gap: 10px; justify-content: center; align-items: flex-end; min-height: 120px; padding: 14px 8px 10px; margin-top: 6px; border-radius: 14px; background: linear-gradient(rgba(20,12,6,.15), rgba(20,12,6,.55)), url(img/focus/desk.webp) center / cover, #6b4429; flex-wrap: wrap; }
+    .fp-seat b, .fp-seat small { text-shadow: 0 1px 3px #000; color: #fff; }
     .fp-desk.on { box-shadow: inset 0 0 0 2px #ffd54a, 0 0 18px #ffd54a55; }
     .fp-seat { display: flex; flex-direction: column; align-items: center; width: 84px; text-align: center; }
     .fp-seat.idle { opacity: .45; filter: grayscale(.6); }

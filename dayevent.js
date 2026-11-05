@@ -1,6 +1,6 @@
 /* 序光計畫：🎴 每日隨機事件（資料在 sql/2026-11-05_專注DNA_事件_掉落_陪讀_博物館.sql） */
 (function () {
-  const DE_JS_VERSION = "20261105a";
+  const DE_JS_VERSION = "20261105b";
   const DE = { data: null, err: null };
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const toast = m => (typeof showToast === "function" ? showToast(m) : console.log(m));
@@ -29,13 +29,13 @@
     if (box.hidden) return;
     const def = d.def || {}, [a, b] = d.progress || [0, 1];
     if (!seen()) {
-      box.innerHTML = `<button type="button" class="de-back" data-de="flip"><span class="de-q">🎴</span><b>今天的事件卡</b><small>點一下翻開</small></button>`;
+      box.innerHTML = `<button type="button" class="de-back" data-de="flip"><img class="de-backimg" src="img/evcard/back.webp" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'de-q',textContent:'🎴'}))"><b>今天的事件卡</b><small>點一下翻開</small></button>`;
       return;
     }
     const pct = Math.min(100, Math.round(a / Math.max(1, b) * 100));
     const unit = { traveler: " 分鐘", thief: " 分鐘", together: " 分鐘", meteor: " 顆", marathon: " 個" }[d.ev] || "";
     box.innerHTML = `<div class="de-front ${def.good === false ? "bad" : ""} ${d.done ? "done" : ""}">
-      <div class="de-emo">${esc(def.emoji)}</div>
+      <img class="de-art" src="img/evcard/${d.ev}.webp" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'de-emo',textContent:'${esc(def.emoji)}'}))">
       <div class="de-body"><b>今日事件・${esc(def.name)}</b><p>${esc(def.text)}</p>
         ${d.ev === "quiet" ? "" : `<div class="de-bar"><i style="width:${pct}%"></i></div><small>${d.done ? (d.ev === "dreamy" ? "✅ 今晚入夢了，明早帶出來時多 2 片碎片" : d.ev === "thief" ? "✅ 小偷被趕跑了！" : "✅ 完成了！") : `${a}${unit} / ${b}${unit}`}</small>`}</div></div>`;
   }
@@ -62,6 +62,8 @@
     .de-front.bad { background: linear-gradient(135deg, rgba(248,81,73,.16), rgba(124,92,255,.08)); }
     .de-front.done { background: linear-gradient(135deg, rgba(63,185,80,.18), rgba(124,92,255,.08)); }
     .de-emo { font-size: 42px; line-height: 1; }
+    .de-art { width: 78px; height: 107px; object-fit: cover; border-radius: 10px; flex: none; box-shadow: 0 4px 12px rgba(0,0,0,.35); }
+    .de-backimg { width: 74px; height: 102px; border-radius: 10px; box-shadow: 0 6px 16px rgba(0,0,0,.4); animation: deWig 2.4s ease-in-out infinite; }
     .de-body { flex: 1; } .de-body p { font-size: 13px; margin: 4px 0 8px; opacity: .85; }
     .de-bar { height: 8px; border-radius: 4px; background: rgba(127,127,127,.2); overflow: hidden; } .de-bar i { display: block; height: 100%; background: linear-gradient(90deg, #ffd54a, #ff9ec7); }
     .de-body small { font-size: 12px; opacity: .8; }
