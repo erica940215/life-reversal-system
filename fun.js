@@ -32,7 +32,8 @@
     ["frame_couplet", "春聯框", "春節廟會商店兌換"],
     ["frame_arena", "競技冠軍框", "競技場錦標賽冠軍或競技商店"],
     ["frame_laurel", "月桂框", "競技商店"],
-    ["frame_flame", "烈焰框", "競技商店"]
+    ["frame_flame", "烈焰框", "競技商店"],
+    ["frame_dream", "夢境框", "夢境收藏：稀有全部收齊"]
   ];
   const CLASS_EMOJI = { scholar: "📚", warrior: "⚔️", guardian: "🛡️", ranger: "🏹" };
 
@@ -88,8 +89,8 @@
   ];
 
   /* 還沒給圖的頭像框 */
-  const FRAME_NOIMG = new Set([]);
-  const FRAME_EMO = { frame_pumpkin: "🎃", frame_maple: "🍁", frame_friends: "📸", frame_snowflake: "❄️", frame_firework: "🎆", frame_couplet: "🧧", frame_arena: "🏟️", frame_laurel: "🌿", frame_flame: "🔥" };
+  const FRAME_NOIMG = new Set(["frame_dream"]);
+  const FRAME_EMO = { frame_pumpkin: "🎃", frame_maple: "🍁", frame_friends: "📸", frame_snowflake: "❄️", frame_firework: "🎆", frame_couplet: "🧧", frame_arena: "🏟️", frame_laurel: "🌿", frame_flame: "🔥", frame_dream: "🌙" };
   const frameImg = (k, cls) => FRAME_NOIMG.has(k) ? `<span class="fn-frame-emo ${cls}">${FRAME_EMO[k] || "🌌"}</span>` : img(k, cls);
 
   /* 扭蛋系列二：星座寶寶（還沒給圖，先用星座符號） */
