@@ -109,9 +109,10 @@
     ov.id = "bh-ov";
     ov.innerHTML = `<div class="bh-stars"></div><div class="bh-in"><div class="bh-head"><span class="bh-hole"></span><div><b>黑洞模式</b><small>其他東西都被吸走了。待滿 30 分鐘（而且一半以上在專注）就能帶寶物回來。</small></div></div>
       <div class="bh-time">00:00</div>
-      ${top ? `<div class="bh-top">⭐ 今天最重要的事<b>${esc(top.title)}</b></div>` : `<div class="bh-top">⭐ 今天最重要的事<b>${esc((document.querySelector(".task-item:not(.completed) .task-title") || {}).textContent || "選一件事，專心做完它")}</b></div>`}
+      <div class="bh-top" id="bh-cur"></div>
       <div class="bh-slot"></div><button type="button" class="btn bh-out" data-bh="exit">🚀 離開黑洞</button></div>`;
     document.body.appendChild(ov);
+    renderCur(top);
     if (card) { BH.home = document.createComment("focus-card-home"); card.before(BH.home); ov.querySelector(".bh-slot").appendChild(card); }
     document.body.classList.add("bh-lock");
     BH.on = true; BH.start = new Date(data.started_at).getTime();
@@ -119,6 +120,54 @@
     tick(); BH.tick = setInterval(tick, 1000);
     try { localStorage.setItem("blackholeOn", "1"); } catch (_) {}
   }
+  /* 🎯 黑洞裡「正在專注的項目」：從今天的任務挑，完成後直接換下一個 */
+  const CUR_KEY = "bhCurrent";
+  const getCur = () => { try { return JSON.parse(localStorage.getItem(CUR_KEY) || "null"); } catch (_) { return null; } };
+  const setCur = v => { try { v ? localStorage.setItem(CUR_KEY, JSON.stringify(v)) : localStorage.removeItem(CUR_KEY); } catch (_) {} };
+  async function todayTasks() {
+    const day = typeof appDateOf === "function" ? appDateOf(Date.now()) : new Date(Date.now() - 6 * 3600e3).toLocaleDateString("sv-SE", { timeZone: "Asia/Taipei" });
+    const { data } = await db.from("tasks").select("id,title,completed,skipped,task_date").eq("user_id", currentUser.id).eq("task_date", day).order("id");
+    return (data || []).filter(t => !t.skipped);
+  }
+  async function renderCur(top) {
+    const box = document.getElementById("bh-cur");
+    if (!box) return;
+    let cur = getCur();
+    const tasks = await todayTasks(), open = tasks.filter(t => !t.completed);
+    if (cur && cur.id && !open.some(t => t.id === cur.id)) cur = null;
+    if (!cur && top && top.task_id && open.some(t => t.id === top.task_id)) cur = { id: top.task_id, title: top.title };
+    if (!cur && open.length) cur = { id: open[0].id, title: open[0].title };
+    setCur(cur);
+    const done = tasks.length - open.length;
+    box.innerHTML = cur
+      ? `🎯 正在專注<b>${esc(cur.title)}</b><div class="bh-cbtn"><button type="button" class="btn btn-small btn-primary" data-bhc="done">✅ 完成，換下一個</button><button type="button" class="btn btn-small" data-bhc="pick">🔄 換一個</button></div><small>今天的任務 ${done}/${tasks.length} 完成</small>`
+      : `🎯 正在專注<b>${tasks.length ? "今天的任務全部完成了！🎉" : "今天還沒有任務"}</b><small>可以繼續留在黑洞專注，或到任務頁新增</small>`;
+  }
+  async function pickCur() {
+    const open = (await todayTasks()).filter(t => !t.completed), cur = getCur();
+    const box = document.getElementById("bh-cur");
+    if (!box) return;
+    box.innerHTML = `🎯 選下一個要專注的任務<div class="bh-pick">${open.map(t => `<button type="button" class="${cur && cur.id === t.id ? "on" : ""}" data-bhp="${t.id}">${esc(t.title)}</button>`).join("") || "<small>沒有未完成的任務</small>"}</div><button type="button" class="btn btn-small" data-bhc="back">取消</button>`;
+    box._open = open;
+  }
+  document.addEventListener("click", async e => {
+    const b = e.target.closest("[data-bhc],[data-bhp]");
+    if (!b || !document.getElementById("bh-cur")) return;
+    if (b.dataset.bhp) { const t = (document.getElementById("bh-cur")._open || []).find(x => x.id === Number(b.dataset.bhp)); if (t) setCur({ id: t.id, title: t.title }); return renderCur(); }
+    if (b.dataset.bhc === "pick") return pickCur();
+    if (b.dataset.bhc === "back") return renderCur();
+    if (b.dataset.bhc === "done") {
+      const cur = getCur();
+      if (!cur) return;
+      b.disabled = true;
+      try { await window.toggleTask(cur.id, true); } catch (err) { b.disabled = false; return toast(err.message || "完成失敗"); }
+      setCur(null);
+      toast(`✅ 完成「${cur.title}」`);
+      const open = (await todayTasks()).filter(t => !t.completed);
+      return open.length ? pickCur() : renderCur();
+    }
+  });
+
   async function exitHole() {
     const min = Math.floor((Date.now() - BH.start) / 60000);
     if (min < 30 && !confirm(`才待了 ${min} 分鐘，現在離開不會帶回寶物。確定要離開嗎？`)) return;
@@ -337,7 +386,9 @@
     .bh-hole { width: 46px; height: 46px; flex: none; border-radius: 50%; background: radial-gradient(circle, #000 45%, #7c5cff 62%, #ff9ec7 70%, transparent 74%); animation: bhSpin 6s linear infinite; transition: transform 2s; }
     @keyframes bhSpin { to { rotate: 360deg; } }
     .bh-time { font-size: 44px; font-weight: 900; text-align: center; margin: 14px 0 6px; font-variant-numeric: tabular-nums; letter-spacing: 2px; }
-    .bh-top { text-align: center; padding: 12px; border-radius: 14px; background: rgba(255,213,74,.12); border: 1px solid rgba(255,213,74,.35); margin-bottom: 14px; font-size: 12.5px; } .bh-top b { display: block; font-size: 18px; margin-top: 4px; }
+    .bh-top { text-align: center; padding: 12px; border-radius: 14px; background: rgba(255,213,74,.12); border: 1px solid rgba(255,213,74,.35); margin-bottom: 14px; font-size: 12.5px; } .bh-top b { display: block; font-size: 18px; margin-top: 4px; } .bh-top small { display: block; margin-top: 6px; opacity: .65; }
+    .bh-cbtn { display: flex; gap: 6px; justify-content: center; margin-top: 10px; }
+    .bh-pick { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; } .bh-pick button { border: 1px solid rgba(255,213,74,.35); background: rgba(255,255,255,.04); color: inherit; border-radius: 10px; padding: 9px; font: inherit; font-size: 14px; cursor: pointer; text-align: left; } .bh-pick button.on { border-color: #ffd54a; background: rgba(255,213,74,.15); }
     .bh-slot #focus-card { margin: 0; } .bh-out { display: block; margin: 18px auto 0; }
     .au-wallet { padding: 10px; border-radius: 12px; background: rgba(255,213,74,.12); font-size: 14px; } .au-wallet b { font-size: 20px; margin: 0 6px; } .au-wallet small { opacity: .7; float: right; }
     .au-emo { font-size: 26px; } .au-item.used { opacity: .45; } .au-del { border: 0; background: none; color: inherit; opacity: .5; cursor: pointer; }
