@@ -14,7 +14,7 @@
     "z_aries", "z_taurus", "z_gemini", "z_cancer", "z_leo", "z_virgo", "z_libra", "z_scorpio",
     "z_sagittarius", "z_capricorn", "z_aquarius", "z_pisces", "z_polaris",
     "s_macaron", "s_pudding", "s_donut", "s_mochi", "s_croissant", "s_taiyaki", "s_bubbletea", "s_cupcake", "s_icecream", "s_pancake", "s_dango", "s_cookie", "s_starcake",
-    "w_pencil", "w_eraser", "w_ruler", "w_highlighter", "w_stapler", "w_notebook", "w_clip", "w_sticky", "w_compass", "w_scissors", "w_glue", "w_calculator", "w_fountainpen"]);
+    "w_pencil", "w_eraser", "w_ruler", "w_highlighter", "w_stapler", "w_notebook", "w_clip", "w_sticky", "w_compass", "w_scissors", "w_glue", "w_calculator", "w_fountainpen", "t_scholar"]);
 
   const FRAMES = [
     ["frame_wood", "新手木框", "開木寶箱有機會拿到"],

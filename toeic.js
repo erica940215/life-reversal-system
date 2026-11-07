@@ -39,12 +39,12 @@
     const c = d.chest, w = d.wheel, e = d.envelope, ns = nextStop(d), ls = lastStop(d), m = d.mileage;
     const row = (ic, t, sub, btn) => `<div class="tph-row"><span>${ic}</span><div><b>${t}</b><small>${sub}</small></div>${btn || ""}</div>`;
     box.innerHTML = `<h2>🎁 每日獎勵站</h2>
-      ${row("🎁", "單字寶箱", c.claimed ? "今天開過了，明天再來" : `今天答 ${c.today.n}／10 題・秒懂 ${c.today.n ? Math.round(c.today.fast / c.today.n * 100) : 0}%／80%`, c.ok && !c.claimed ? `<button type="button" class="btn btn-small btn-primary" data-tp="chest">開箱</button>` : "")}
-      ${row("🎡", "複習輪盤", w.claimed ? "今天轉過了" : w.due_left ? `還有 ${w.due_left} 個到期單字沒複習` : `今天複習了 ${w.reviewed}／10 個`, w.ok && !w.claimed ? `<button type="button" class="btn btn-small btn-primary" data-tp="wheel">轉！</button>` : "")}
+      ${row(`<img class="tph-ic" src="img/fun/vocab_chest.webp" alt="" onerror="this.replaceWith(document.createTextNode('🎁'))">`, "單字寶箱", c.claimed ? "今天開過了，明天再來" : `今天答 ${c.today.n}／10 題・秒懂 ${c.today.n ? Math.round(c.today.fast / c.today.n * 100) : 0}%／80%`, c.ok && !c.claimed ? `<button type="button" class="btn btn-small btn-primary" data-tp="chest">開箱</button>` : "")}
+      ${row(`<img class="tph-ic" src="img/fun/vocab_wheel.webp" alt="" onerror="this.replaceWith(document.createTextNode('🎡'))">`, "複習輪盤", w.claimed ? "今天轉過了" : w.due_left ? `還有 ${w.due_left} 個到期單字沒複習` : `今天複習了 ${w.reviewed}／10 個`, w.ok && !w.claimed ? `<button type="button" class="btn btn-small btn-primary" data-tp="wheel">轉！</button>` : "")}
       ${row("🎟️", "專注刮刮樂", `每專注 2 小時送一張・再 ${d.scratch.next_min} 分鐘・手上有 ${d.scratch.have} 張`, "")}
-      ${!e.claimed_last ? row("✉️", "上週的神秘信封", "還沒拆，現在可以拆", `<button type="button" class="btn btn-small btn-primary" data-tp="env" data-last="1">拆信</button>`)
-        : e.open_now && !e.claimed_this ? row("✉️", "這週的神秘信封寄到了！", "表現越好，越容易抽到稀有", `<button type="button" class="btn btn-small btn-primary" data-tp="env">拆信</button>`)
-        : row("✉️", "神秘信封", e.claimed_this ? "這週已經拆了" : `週日晚上 6 點寄到・這週專注 ${e.this_week.focus_h} 小時`, "")}
+      ${!e.claimed_last ? row(`<img class="tph-ic" src="img/fun/env_normal.webp" alt="" onerror="this.replaceWith(document.createTextNode('✉️'))">`, "上週的神秘信封", "還沒拆，現在可以拆", `<button type="button" class="btn btn-small btn-primary" data-tp="env" data-last="1">拆信</button>`)
+        : e.open_now && !e.claimed_this ? row(`<img class="tph-ic" src="img/fun/env_normal.webp" alt="" onerror="this.replaceWith(document.createTextNode('✉️'))">`, "這週的神秘信封寄到了！", "表現越好，越容易抽到稀有", `<button type="button" class="btn btn-small btn-primary" data-tp="env">拆信</button>`)
+        : row(`<img class="tph-ic" src="img/fun/env_normal.webp" alt="" onerror="this.replaceWith(document.createTextNode('✉️'))">`, "神秘信封", e.claimed_this ? "這週已經拆了" : `週日晚上 6 點寄到・這週專注 ${e.this_week.focus_h} 小時`, "")}
       ${row("🛣️", `人生總里程 ${m.km} 公里`, ns ? `${ls.emoji} ${ls.name} → ${ns.emoji} ${ns.name}（再 ${(ns.km - m.km).toFixed(1)} 公里）` : "🏆 環島完成！", "")}
       <div class="tph-bar"><i style="width:${Math.min(100, m.km / 10)}%"></i></div>
       <button type="button" class="btn btn-small" data-tp="hub" style="width:100%;margin-top:8px">📖 多益收藏：卡冊・情境圖鑑・分數預測・里程・連續紀錄</button>`;
@@ -122,7 +122,7 @@
   async function chest() {
     const { data, error } = await db.rpc("vocab_chest_open");
     if (error) return toast(error.message);
-    modal(`<div class="bh-loot"><div class="bh-big">🎁</div><div class="vg-title">單字寶箱</div><p class="bh-items">${rw(data.got)}</p>${data.got.t_scholar ? `<p>🎓 抽到限定角色「多益學者」！已經放進扭蛋收藏</p>` : ""}</div><button type="button" class="btn btn-primary" data-vx="1" style="width:100%">收下</button>`);
+    modal(`<div class="bh-loot"><div class="bh-big"><img class="tp-bigimg" src="img/fun/vocab_chest.webp" alt="" onerror="this.replaceWith(document.createTextNode('🎁'))"></div><div class="vg-title">單字寶箱</div><p class="bh-items">${rw(data.got)}</p>${data.got.t_scholar ? `<p><img class="tp-bigimg" src="img/fun/t_scholar.webp" alt="" onerror="this.replaceWith(document.createTextNode('🎓'))"><br>抽到限定角色「多益學者」！已經放進扭蛋收藏</p>` : ""}</div><button type="button" class="btn btn-primary" data-vx="1" style="width:100%">收下</button>`);
     load(); if (window.FunGame && window.FunGame.reload) window.FunGame.reload();
   }
   async function env(last) {
@@ -130,7 +130,7 @@
     if (error) return toast(error.message);
     const T = { legend: ["🌠", "傳說信封"], rare: ["💎", "稀有信封"], good: ["💌", "好運信封"], normal: ["✉️", "普通信封"] }[data.tier];
     const s = data.stats;
-    modal(`<div class="bh-loot"><div class="bh-big tp-env">${T[0]}</div><div class="vg-title">${T[1]}</div>
+    modal(`<div class="bh-loot"><div class="bh-big tp-env"><img class="tp-bigimg" src="img/fun/env_${data.tier}.webp" alt="" onerror="this.replaceWith(document.createTextNode('${T[0]}'))"></div><div class="vg-title">${T[1]}</div>
       <p>${last ? "上週" : "這週"}表現分數 <b>${data.score}</b>／100：專注 ${s.focus_h} 小時、完成 ${s.tasks} 個任務、打卡 ${s.life_days} 天、複習單字 ${s.vocab} 次</p><p class="bh-items">${rw(data.got)}</p></div>
       <button type="button" class="btn btn-primary" data-vx="1" style="width:100%">收下</button>`);
     load();
@@ -170,6 +170,7 @@
     .tp-wheel { position: relative; width: 230px; height: 230px; margin: 10px auto; } .tp-pin { position: absolute; left: 50%; top: -6px; transform: translateX(-50%); font-style: normal; color: #ffd54a; font-size: 22px; z-index: 2; }
     .tp-wheel-in { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(#7c5cff 0 14.3%, #58a6ff 0 28.6%, #3fb950 0 42.9%, #e3b341 0 57.1%, #f0883e 0 71.4%, #ff9ec7 0 85.7%, #c08bff 0); transition: transform 3s cubic-bezier(.15,.8,.2,1); display: grid; place-items: center; }
     .tp-wheel-in span { position: absolute; font-size: 24px; } .tp-wout { text-align: center; font-size: 14px; }
+    .tph-ic { width: 34px; height: 34px; object-fit: contain; display: block; } .tp-bigimg { width: 150px; height: 150px; object-fit: contain; display: inline-block; }
     .tp-env { animation: cpPop .7s cubic-bezier(.2,1.6,.4,1); }
   `;
   document.head.appendChild(st);
