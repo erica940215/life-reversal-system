@@ -150,7 +150,8 @@
   const LIMITED = () => { const l = FN.meta && FN.meta.limited; return l ? l.chars.map(c => [c[0], c[1], c[2], `${l.name}限定・只有這個月抽得到`]) : []; };
   const limitedOn = () => !!(FN.meta && FN.meta.limited);
   const seriesList = k => (k === "z" ? ZODIAC : k === "s" ? SWEETS : k === "w" ? STATIONERY : k === "L" ? LIMITED() : MONSTERS);
-  const ALL_MONS = () => MONSTERS.concat(ZODIAC, SWEETS, STATIONERY, LIMITED());
+  const SPECIAL = [["t_scholar", "多益學者", "🎓", "單字寶箱限定。你背過的每個字，它都記得。"]];
+  const ALL_MONS = () => MONSTERS.concat(ZODIAC, SWEETS, STATIONERY, LIMITED(), SPECIAL);
   const seriesInfo = () => { const o = { ...SERIES }; if (limitedOn()) o.L = { name: `${FN.meta.limited.emoji} ${FN.meta.limited.name}（限定）`, secret: null, frame: "" }; return o; };
   const tierOf = n => (n >= 10 ? "rainbow" : n >= 5 ? "gold" : "");
 

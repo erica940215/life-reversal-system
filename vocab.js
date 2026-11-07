@@ -456,6 +456,11 @@ negotiate | v. | 協商；談判 | [nɪˋgoʃɪˏet] | The two companies negotia
   async function grade(g) {
     const s = V.session;
     const it = s.items[s.i];
+    if (!it.extra) {
+      const secs = it.secs != null ? it.secs : (Date.now() - (it.t0 || Date.now())) / 1000;
+      const ok = s.ok != null ? !!s.ok && g > 0 : g >= 2;
+      try { db.rpc("vocab_speed_log", { p_word: it.w.id, p_secs: Math.round(secs * 10) / 10, p_ok: ok, p_mode: it.mode }).then(() => {}, () => {}); } catch (_) {}
+    }
     if (it.extra) {   /* 頑固單字加強練習：不改排程 */
       s.done.push({ g });
     } else {
@@ -473,7 +478,7 @@ negotiate | v. | 協商；談判 | [nɪˋgoʃɪˏet] | The two companies negotia
     s.i += 1;
     prepareItem();
     renderSession();
-    if (s.i >= s.items.length) load();
+    if (s.i >= s.items.length) { load(); if (window.ToeicHub) setTimeout(() => window.ToeicHub.load(), 800); }
   }
 
 
