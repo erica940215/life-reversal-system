@@ -22,17 +22,27 @@
     forms: ["forms", "詞性變化", "變化"], mnemonic: ["mnemonic", "記憶法", "記憶"], tags: ["tags", "標籤", "tag", "分類"]
   };
 
-  const AI_PROMPT = `請幫我把下面的英文單字整理成固定格式。
-每個單字一行，欄位用「 | 」分隔，一共 11 欄，順序是：
-單字 | 詞性 | 中文意思 | KK音標 | 英文例句（多益情境）| 例句中文翻譯 | 常見搭配 | 同義字 | 詞性變化 | 記憶法（字根或聯想）| 標籤
+  const AI_PROMPT = `你是多益（TOEIC）單字老師。我的目標是從 400 分考到 650 分。
+請幫我把下面的英文單字整理成固定格式，每個單字一行，欄位用「 | 」分隔，一共 11 欄，順序是：
+單字 | 詞性 | 中文意思 | KK音標 | 英文例句 | 例句中文翻譯 | 常見搭配 | 同義字 | 詞性變化 | 記憶法 | 標籤
 
-規則：
+每一欄的要求：
+1. 詞性：用 n. / v. / adj. / adv. / prep. / conj.，有兩種以上用 / 分開（例如 n./v.）
+2. 中文意思：只寫多益最常考的 1～3 個意思，用；分開，最常考的放第一個
+3. 英文例句：多益職場或生活情境（辦公室、會議、出差、購物、餐廳、人事…），長度 8～16 字，像多益 Part 5、Part 7 的句子；例句裡一定要出現這個單字本身或它的變化形
+4. 常見搭配：多益最常出現的 2～3 個搭配詞或片語，用；分開（例如 meet a deadline; extend a deadline）
+5. 同義字：多益閱讀「同義替換」最常用的 1～3 個字，用；分開（例如 purchase → buy; acquire）
+6. 詞性變化：列出同字根的其他詞性，格式「字 (詞性)」，用；分開（例如 decision (n.); decisive (adj.); decisively (adv.)），沒有就留空
+7. 記憶法：字根拆解或好記的聯想，一句話；如果有很容易搞混的字，請在最後加上「易混：字（意思）」（例如 易混：adopt（採用）vs adapt（適應））
+8. 標籤：只能從這些選一個：辦公室、會議、人事、商務、財務、採購、行銷、製造、旅遊、交通、餐飲、購物、住宅、健康、活動、科技、一般
+
+格式規則：
 1. 不要表頭、不要編號、不要任何說明文字，只輸出單字那幾行
-2. 沒有的欄位留空，但 | 要保留，讓每行都是 11 欄
+2. 每行都要剛好 11 欄，沒有的欄位留空但 | 要保留
 3. 中文用繁體
 
 範例：
-negotiate | v. | 協商；談判 | [nɪˋgoʃɪˏet] | The two companies negotiated a new contract. | 兩家公司協商了新合約。 | negotiate a contract; negotiate with sb | bargain | negotiation (n.); negotiable (adj.) | neg 不 + oti 閒 → 不閒著一直談 | 商務
+negotiate | v. | 協商；談判 | [nɪˋgoʃɪˏet] | The two companies negotiated a new contract last week. | 兩家公司上週協商了新合約。 | negotiate a contract; negotiate with sb; negotiate a price | discuss; bargain | negotiation (n.); negotiable (adj.); negotiator (n.) | neg 不 + oti 閒 → 不閒著一直談 | 商務
 
 單字如下：
 `;
