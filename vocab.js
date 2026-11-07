@@ -235,14 +235,64 @@ negotiate | v. | 協商；談判 | [nɪˋgoʃɪˏet] | The two companies negotia
   /* =========================================================
      複習
   ========================================================= */
+  /* ---------- 題型 ---------- */
+  const MODES = { auto: "🧠 自動（推薦）", flip: "🃏 翻卡", e2c: "👀 看英文選中文", choose: "🔁 看中文選英文", listen: "🎧 聽音選意思",
+    syn: "🔄 同義替換", col: "🧩 搭配詞", part5: "📝 Part 5 詞性", cloze: "✏️ 例句填空", spell: "⌨️ 拼字" };
+  const getMode = () => { try { return localStorage.getItem("vocabMode") || "auto"; } catch (_) { return "auto"; } };
+  const first = s => String(s || "").split(/[;；,，]/).map(x => x.trim()).filter(Boolean)[0] || "";
+  const synOf = w => first(w.synonyms);
+  const formsOf = w => { const out = [w.word]; String(w.forms || "").split(/[;；,，]/).forEach(x => { const m = x.trim().match(/^([A-Za-z][A-Za-z\-]*)/); if (m && !out.some(o => o.toLowerCase() === m[1].toLowerCase())) out.push(m[1]); }); return out; };
+  function colOf(w) {
+    const stem = w.word.length > 5 ? w.word.slice(0, -2) : w.word;
+    for (const c of String(w.collocations || "").split(/[;；]/).map(x => x.trim()).filter(Boolean)) {
+      const re = new RegExp(`\\b(${stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\w*)`, "i"), m = c.match(re);
+      if (m && c.replace(re, "").trim()) return { answer: m[1], text: c.replace(re, "＿＿＿") };
+    }
+    return null;
+  }
+  function part5Of(w) {
+    const forms = formsOf(w);
+    if (forms.length < 2 || !w.example) return null;
+    for (const f of forms.slice().sort((a, b) => b.length - a.length)) {
+      const re = new RegExp(`\\b${f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i"), m = w.example.match(re);
+      if (m) return { answer: m[0], text: w.example.replace(re, "＿＿＿＿"), forms };
+    }
+    return null;
+  }
+  const can = (w, m, pool) => {
+    const enough = pool.length >= 3;
+    if (m === "flip" || m === "spell") return true;
+    if (!w.meaning) return false;
+    if (m === "e2c" || m === "choose") return enough;
+    if (m === "listen") return enough && canSpeak();
+    if (m === "syn") return !!synOf(w) && pool.filter(p => synOf(p)).length >= 3;
+    if (m === "col") return !!colOf(w) && enough;
+    if (m === "part5") { const p = part5Of(w); return !!p && p.forms.length >= 2; }
+    if (m === "cloze") return !!clozeOf(w);
+    return false;
+  };
+  /* 預設排程：新字翻卡 → 看英文選中文 → 聽音 → 同義替換 → 搭配詞／Part 5 → Part 5／例句填空 */
+  function autoMode(w, pool) {
+    const d = w.interval_days || 0, ok = m => can(w, m, pool);
+    if (!w.reps || !w.meaning) return "flip";
+    const plan = d < 4 ? ["e2c", "flip"] : d < 10 ? ["listen", "e2c"] : d < 20 ? ["syn", "col", "e2c"]
+      : d < 45 ? (Math.random() < 0.5 ? ["col", "part5", "syn"] : ["part5", "col", "syn"]) : ["part5", "cloze", "syn", "spell"];
+    return plan.find(ok) || "flip";
+  }
   function pickMode(w, pool) {
-    const hasMeaning = !!w.meaning;
-    const enough = pool.filter(p => p.meaning && p.word.toLowerCase() !== w.word.toLowerCase()).length >= 3;
-    if (!w.reps || !hasMeaning) return "flip";
-    if (w.interval_days < 4) return enough ? "choose" : "flip";
-    if (w.interval_days < 15) return enough && canSpeak() ? "listen" : (enough ? "choose" : "spell");
-    if (w.interval_days < 45) return "spell";
-    return clozeOf(w) ? "cloze" : "spell";
+    const m = getMode(), others = pool.filter(p => p.meaning && p.word.toLowerCase() !== w.word.toLowerCase());
+    if (m !== "auto" && can(w, m, others)) return m;
+    return autoMode(w, others);
+  }
+
+  /* 長得像的干擾選項：拼法接近、同詞性、同標籤優先 */
+  function lev(a, b) { a = a.toLowerCase(); b = b.toLowerCase(); const d = Array.from({ length: b.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= a.length; i++) { let p = d[0]; d[0] = i; for (let j = 1; j <= b.length; j++) { const t = d[j]; d[j] = Math.min(d[j] + 1, d[j - 1] + 1, p + (a[i - 1] === b[j - 1] ? 0 : 1)); p = t; } } return d[b.length]; }
+  function similar(w, pool, n, val) {
+    const seen = new Set([String(val(w)).toLowerCase()]);
+    return pool.map(p => ({ p, sc: lev(w.word, p.word) / Math.max(w.word.length, p.word.length) * 3 - (p.word.slice(0, 2).toLowerCase() === w.word.slice(0, 2).toLowerCase() ? 1 : 0)
+        - (p.pos && w.pos && p.pos === w.pos ? 0.6 : 0) - (p.tags && p.tags === w.tags ? 0.4 : 0) + Math.random() * 0.8 }))
+      .sort((a, b) => a.sc - b.sc).map(x => x.p).filter(p => { const v = String(val(p) || "").toLowerCase(); if (!v || seen.has(v)) return false; seen.add(v); return true; }).slice(0, n);
   }
 
   function clozeOf(w) {
@@ -254,9 +304,18 @@ negotiate | v. | 協商；談判 | [nɪˋgoʃɪˏet] | The two companies negotia
     return { answer: m[1], text: w.example.replace(re, "＿＿＿＿") };
   }
 
-  function startSession(onlyHard) {
+  function fastLog(fast) {
+    try { const k = "vocabFast", o = JSON.parse(localStorage.getItem(k) || "{}"), d = new Date(Date.now() - 6 * 3600e3).toISOString().slice(0, 10);
+      o[d] = o[d] || [0, 0]; o[d][1] += 1; if (fast) o[d][0] += 1;
+      Object.keys(o).sort().slice(0, -30).forEach(x => delete o[x]); localStorage.setItem(k, JSON.stringify(o)); } catch (_) {}
+  }
+  function fastRate() {
+    try { const o = JSON.parse(localStorage.getItem("vocabFast") || "{}"), keys = Object.keys(o).sort().slice(-7); let f = 0, t = 0; keys.forEach(k => { f += o[k][0]; t += o[k][1]; }); return t ? { pct: Math.round(f / t * 100), t } : null; } catch (_) { return null; }
+  }
+  async function startSession(onlyHard) {
     const q = V.queue;
     if (!q) return;
+    if (!V.full) { const { data } = await db.from("vocab_words").select("word,meaning,pos,synonyms,tags,forms").eq("user_id", currentUser.id); V.full = data || []; }
     let items;
     if (onlyHard) {
       items = (V.stats.hard || []).map(h => ({ w: { id: h.id, word: h.word, meaning: h.meaning, reps: 1, interval_days: 1, ease: 2.5 }, extra: true }));
@@ -282,10 +341,18 @@ negotiate | v. | 協商；談判 | [nɪˋgoʃɪˏet] | The two companies negotia
     const it = s.items[s.i];
     if (!it) return;
     s.state = "ask"; s.picked = null; s.typed = ""; s.ok = null;
-    const pool = (V.queue.pool || []).filter(p => p.meaning && p.word.toLowerCase() !== it.w.word.toLowerCase());
-    if (it.mode === "choose") it.options = shuffle([it.w.word, ...shuffle(pool).slice(0, 3).map(p => p.word)]);
-    if (it.mode === "listen") { it.options = shuffle([it.w.meaning, ...shuffle(pool).filter(p => p.meaning !== it.w.meaning).slice(0, 3).map(p => p.meaning)]); setTimeout(() => speak(it.w.word), 300); }
-    if (it.mode === "cloze") it.cloze = clozeOf(it.w);
+    const pool = (V.full || V.queue.pool || []).filter(p => p.meaning && p.word.toLowerCase() !== it.w.word.toLowerCase());
+    it.t0 = Date.now(); it.secs = null;
+    const w = it.w;
+    if (it.mode === "choose") { it.correct = w.word; it.options = shuffle([w.word, ...similar(w, pool, 3, p => p.word).map(p => p.word)]); }
+    if (it.mode === "e2c" || it.mode === "listen") { it.correct = w.meaning; it.options = shuffle([w.meaning, ...similar(w, pool, 3, p => p.meaning).map(p => p.meaning)]); }
+    if (it.mode === "listen") setTimeout(() => speak(w.word), 300);
+    if (it.mode === "syn") { it.correct = synOf(w); it.options = shuffle([it.correct, ...similar(w, pool.filter(p => synOf(p)), 3, synOf).map(synOf)]); }
+    if (it.mode === "col") { it.col = colOf(w); it.correct = it.col.answer; it.options = shuffle([it.col.answer, ...similar(w, pool, 3, p => p.word).map(p => p.word)]); }
+    if (it.mode === "part5") { it.p5 = part5Of(w); it.correct = it.p5.answer; const opts = it.p5.forms.filter(f => f.toLowerCase() !== it.p5.answer.toLowerCase()).slice(0, 3);
+      if (opts.length < 3) opts.push(...similar(w, pool, 3 - opts.length, p => p.word).map(p => p.word));
+      it.options = shuffle([it.p5.answer, ...opts]); }
+    if (it.mode === "cloze") it.cloze = clozeOf(w);
   }
 
   function detailHtml(w) {
@@ -301,9 +368,10 @@ negotiate | v. | 協商；談判 | [nɪˋgoʃɪˏet] | The two companies negotia
       ${showMeaning ? `<div class="vc-mean">${esc(w.meaning || "（還沒有中文）")}</div>` : ""}`;
   }
 
-  function gradeButtons(w, allowForget) {
+  function gradeButtons(w, allowForget, secs) {
     const g = [[0, "😵 忘了"], [1, "🤔 模糊"], [2, "😊 記得"], [3, "😎 很熟"]].filter(([n]) => allowForget || n > 0);
-    return `<div class="vc-grades">${g.map(([n, l]) => `<button type="button" class="vc-g g${n}" data-vc="grade" data-v="${n}">${l}<small>${fmtDays(nextInterval(w, n))}</small></button>`).join("")}</div>`;
+    const rec = secs == null ? -1 : secs <= 3 ? 3 : secs <= 8 ? 2 : 1;
+    return `<div class="vc-grades">${g.map(([n, l]) => `<button type="button" class="vc-g g${n} ${n === rec ? "rec" : ""}" data-vc="grade" data-v="${n}">${l}<small>${n === rec ? "⏱️ 建議・" : ""}${fmtDays(nextInterval(w, n))}</small></button>`).join("")}</div>`;
   }
 
   function sessionHtml() {
@@ -317,7 +385,8 @@ negotiate | v. | 協商；談判 | [nɪˋgoʃɪˏet] | The two companies negotia
     }
     const it = s.items[s.i];
     const w = it.w;
-    const modeName = { flip: "翻卡", choose: "看中文選英文", listen: "聽發音選意思", spell: "拼字", cloze: "例句填空" }[it.mode];
+    const modeName = (MODES[it.mode] || it.mode).replace(/^\S+ /, "");
+    const timeTag = it.secs != null ? `<div class="vc-time ${it.secs <= 3 ? "fast" : it.secs <= 8 ? "mid" : "slow"}">⏱️ ${it.secs.toFixed(1)} 秒・${it.secs <= 3 ? "秒懂！" : it.secs <= 8 ? "想得到但慢" : "要再熟一點"}</div>` : "";
     const prog = `<div class="vc-prog"><span>${s.i + 1} / ${s.items.length}${s.again.has(w.id) ? "・再考一次" : ""}</span><span>${modeName}${!w.reps ? "・新字" : ""}</span>
       <button type="button" class="vc-x" data-vc="quit">✕</button></div><div class="vc-bar"><i style="width:${Math.round(s.i / s.items.length * 100)}%"></i></div>`;
     let body = "";
@@ -325,21 +394,26 @@ negotiate | v. | 協商；談判 | [nɪˋgoʃɪˏet] | The two companies negotia
     if (it.mode === "flip") {
       body = s.state === "ask"
         ? `<div class="vc-face" data-vc="reveal">${headHtml(w, false)}<p class="vc-hint">想一想意思，再點卡片翻面</p></div>`
-        : `<div class="vc-face open">${headHtml(w, true)}${detailHtml(w)}</div>${gradeButtons(w, true)}`;
-    } else if (it.mode === "choose" || it.mode === "listen") {
-      const isListen = it.mode === "listen";
-      const correct = isListen ? w.meaning : w.word;
-      const prompt = isListen
+        : `<div class="vc-face open">${headHtml(w, true)}${timeTag}${detailHtml(w)}</div>${gradeButtons(w, true, it.secs)}`;
+    } else if (it.options) {
+      const correct = it.correct;
+      const prompt = it.mode === "listen"
         ? `<div class="vc-listen"><button type="button" class="vc-say huge" data-vc="say" data-v="${esc(w.word)}">🔊</button><p class="vc-hint">聽發音，選出意思</p></div>`
+        : it.mode === "e2c" ? `<div class="vc-word">${esc(w.word)}</div><div class="vc-sub">${esc(w.pos || "")}</div><p class="vc-hint">選出中文意思（越快越好）</p>`
+        : it.mode === "syn" ? `<div class="vc-word">${esc(w.word)}</div><div class="vc-sub">${esc(w.pos || "")}</div><p class="vc-hint">多益同義替換：選出意思最接近的字</p>`
+        : it.mode === "col" ? `<div class="vc-cloze">${esc(it.col.text)}</div><p class="vc-hint">選出正確的搭配詞</p>`
+        : it.mode === "part5" ? `<div class="vc-cloze">${esc(it.p5.text)}</div><p class="vc-hint">多益 Part 5：選出正確的詞性</p>`
         : `<div class="vc-mean big">${esc(w.meaning)}</div><div class="vc-sub">${esc(w.pos || "")}</div><p class="vc-hint">選出對應的英文</p>`;
+      const mean = o => { const p = (V.full || []).find(x => x.word.toLowerCase() === String(o).toLowerCase()); return p && p.meaning ? p.meaning : ""; };
       const opts = it.options.map(o => {
         let cls = "";
         if (s.state !== "ask") cls = o === correct ? "right" : o === s.picked ? "wrong" : "dim";
-        return `<button type="button" class="vc-opt ${cls}" data-vc="pick" data-v="${esc(o)}" ${s.state !== "ask" ? "disabled" : ""}>${esc(o)}</button>`;
+        const tip = s.state !== "ask" && o !== correct && ["choose", "col", "part5"].includes(it.mode) && mean(o) ? `<small>${esc(mean(o))}</small>` : "";
+        return `<button type="button" class="vc-opt ${cls}" data-vc="pick" data-v="${esc(o)}" ${s.state !== "ask" ? "disabled" : ""}>${esc(o)}${tip}</button>`;
       }).join("");
       body = `<div class="vc-face">${prompt}</div><div class="vc-opts">${opts}</div>
-        ${s.state !== "ask" ? `<div class="vc-face open small">${headHtml(w, true)}${detailHtml(w)}</div>
-          ${s.ok ? gradeButtons(w, false) : `<button type="button" class="btn btn-primary vc-wide" data-vc="grade" data-v="0">繼續（今天會再考一次）</button>`}` : ""}`;
+        ${s.state !== "ask" ? `${timeTag}<div class="vc-face open small">${headHtml(w, true)}${detailHtml(w)}</div>
+          ${s.ok ? gradeButtons(w, false, it.secs) : `<button type="button" class="btn btn-primary vc-wide" data-vc="grade" data-v="0">繼續（今天會再考一次）</button>`}` : ""}`;
     } else {
       const isCloze = it.mode === "cloze";
       const target = isCloze ? it.cloze.answer : w.word;
@@ -411,6 +485,9 @@ negotiate | v. | 協商；談判 | [nɪˋgoʃɪˏet] | The two companies negotia
     return `<div class="card vc-card vc-hero">
         <div class="vc-nums"><div><b>${nRev}</b><span>要複習</span></div><div><b>${nNew}</b><span>新字</span></div><div><b>${st.streak}</b><span>連續天數</span></div></div>
         <button type="button" class="btn btn-primary vc-start" data-vc="start" ${nRev + nNew ? "" : "disabled"}>${nRev + nNew ? `▶ 開始複習（${nRev + nNew}）` : "今天都複習完了 🎉"}</button>
+        <div class="vc-modes"><span>練習形式</span>${Object.entries(MODES).map(([k, n]) => `<button type="button" class="${getMode() === k ? "on" : ""}" data-vc="mode" data-v="${k}">${n}</button>`).join("")}</div>
+        <p class="vc-note">${getMode() === "auto" ? "自動：新字翻卡 → 看英文選中文 → 聽音 → 同義替換 → 搭配詞／Part 5 → Part 5／例句填空，越熟題目越像多益。" : `只練「${MODES[getMode()].replace(/^\S+ /, "")}」；某個字出不了這種題時，會自動換成推薦題型。`}</p>
+        ${(() => { const f = fastRate(); return f ? `<p class="vc-note">⚡ 最近 7 天秒懂率（3 秒內答對）：<b>${f.pct}%</b>（${f.t} 題）</p>` : ""; })()}
         ${st.hard.length ? `<button type="button" class="btn btn-small" data-vc="hard">🔥 加強頑固單字（${st.hard.length}）</button>` : ""}
         <p class="vc-note">今天已經複習 ${q.reviewed_today} 個字。到期的全部複習完（至少 10 個）星屑 +2。</p></div>
       ${st.total ? `<div class="card vc-card"><h3>📊 熟練度</h3>${bucketBar(b, st.total)}
@@ -557,14 +634,17 @@ negotiate | v. | 協商；談判 | [nɪˋgoʃɪˏet] | The two companies negotia
     if (a === "tab") { V.tab = v; V.listDeck = null; render(); return; }
     if (a === "gotoday") { V.tab = "today"; if (typeof showPage === "function") showPage("vocab"); return; }
     if (a === "start") { startSession(false); return; }
+    if (a === "mode") { try { localStorage.setItem("vocabMode", v); } catch (_) {} render(); return; }
     if (a === "hard") { startSession(true); return; }
     if (a === "quit") { if (!confirm("先停在這裡？已經複習的會保留。")) return; V.session = null; load(); return; }
     if (a === "endsession") { V.session = null; render(); return; }
-    if (a === "reveal") { V.session.state = "shown"; speak(V.session.items[V.session.i].w.word); renderSession(); return; }
+    if (a === "reveal") { const it = V.session.items[V.session.i]; it.secs = (Date.now() - it.t0) / 1000; fastLog(it.secs <= 3); V.session.state = "shown"; speak(it.w.word); renderSession(); return; }
     if (a === "pick") {
       const s = V.session, it = s.items[s.i];
-      s.picked = v; s.ok = v === (it.mode === "listen" ? it.w.meaning : it.w.word); s.state = "shown";
-      if (it.mode === "choose") speak(it.w.word);
+      it.secs = (Date.now() - it.t0) / 1000;
+      s.picked = v; s.ok = v === it.correct; s.state = "shown";
+      fastLog(s.ok && it.secs <= 3);
+      if (it.mode !== "listen") speak(it.w.word);
       renderSession(); return;
     }
     if (a === "check") { checkTyped(false); return; }
@@ -710,6 +790,12 @@ negotiate | v. | 協商；談判 | [nɪˋgoʃɪˏet] | The two companies negotia
       .vc-x { border: 0; background: transparent; color: inherit; font-size: 16px; cursor: pointer; }
       .vc-session .vc-bar { margin: 6px 0 14px; }
       .vc-face { padding: 22px 14px; border-radius: 16px; background: rgba(127,127,127,.07); text-align: center; cursor: default; }
+      .vc-modes { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 10px 0 2px; } .vc-modes span { font-size: 12px; opacity: .7; width: 100%; }
+      .vc-modes button { border: 1px solid rgba(127,127,127,.35); background: transparent; color: inherit; border-radius: 99px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+      .vc-modes button.on { background: #7c5cff; border-color: #7c5cff; color: #fff; }
+      .vc-time { text-align: center; font-size: 13px; font-weight: 700; margin: 6px 0; } .vc-time.fast { color: #3fb950; } .vc-time.mid { color: #e3b341; } .vc-time.slow { color: #f0883e; }
+      .vc-g.rec { outline: 2px solid #ffd54a; outline-offset: 1px; }
+      .vc-opt small { display: block; font-size: 11px; opacity: .75; font-weight: 400; }
       .vc-face[data-vc="reveal"] { cursor: pointer; min-height: 200px; display: flex; flex-direction: column; justify-content: center; }
       .vc-face.open { text-align: left; } .vc-face.small { margin-top: 12px; padding: 14px; }
       .vc-face.open .vc-word, .vc-face.open .vc-sub, .vc-face.open .vc-mean { text-align: center; }
