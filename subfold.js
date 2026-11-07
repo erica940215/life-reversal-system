@@ -5,12 +5,12 @@
   const KEY = "focusSubFold";
   const SUBS = [
     ["#ev-exp", "🧭 專注遠征"], [".st-combo", "⚡ 專注連擊"], [".st-prompt", "✍️ 寫知識卡提示"], [".st-kc", "🃏 知識卡"],
-    [".st-room", "👥 一起專注房間"], ["#fp-basket", "🍂 專注掉落物"], ["#fp-co", "👻 陪讀桌"], ["#ra-box", "📻 白噪音電台"],
+    [".st-room", "👥 一起專注房間"], ["#fp-basket", "🍂 專注掉落物"], ["#fp-co", "👻 陪讀桌"], ["#ra-box", "📻 白噪音電台"], ["#gp-party-box", "🐾 夥伴"],
     ["#focus-friends", "🧑‍🤝‍🧑 好友專注狀態"], ["#focus-log", "📝 今天的專注紀錄"], ["#focus-stats", "📊 專注統計"], ["#focus-presets", "⏱️ 時間快捷鍵"]];
   /* 可以調順序的區塊：專注卡第一層，和「連擊／知識卡／專注房間」那一包裡面 */
   const ORD = { top: [["> .card-head", "🏷️ 標題列"], ["#focus-setup", "⚙️ 科目、模式、時間設定"], ["#focus-now", "🎯 正在專注的科目"], ["#focus-clock", "⏱️ 計時器"],
       ["#focus-buttons", "▶️ 開始／暫停／結束按鈕"], ["#ev-exp", "🧭 專注遠征"], ["#st-focus", "⚡ 連擊・知識卡・專注房間"], ["#fp-basket", "🍂 專注掉落物"], ["#fp-co", "👻 陪讀桌"],
-      ["#ra-box", "📻 白噪音電台"], ["#focus-log", "📝 今天的專注紀錄"], ["#focus-friends", "🧑‍🤝‍🧑 好友專注狀態"], ["#dm-run", "☢️ 末世出征"]],
+      ["#ra-box", "📻 白噪音電台"], ["#gp-party-box", "🐾 夥伴"], ["#focus-log", "📝 今天的專注紀錄"], ["#focus-friends", "🧑‍🤝‍🧑 好友專注狀態"], ["#dm-run", "☢️ 末世出征"]],
     st: [[".st-combo", "⚡ 專注連擊"], [".st-prompt", "✍️ 寫知識卡提示"], [".st-kc", "🃏 知識卡"], [".st-room", "👥 一起專注房間"]] };
   const OKEY = "focusOrder";
   let O = {};

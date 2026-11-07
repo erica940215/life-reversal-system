@@ -146,8 +146,13 @@
   ];
   const SERIES = { m: { name: "序光小怪獸", secret: "m_secret", frame: "小怪獸框" }, z: { name: "星座寶寶", secret: "z_polaris", frame: "星座框" },
     s: { name: "甜點妖精", secret: "s_starcake", frame: "甜點框" }, w: { name: "文具小夥伴", secret: "w_fountainpen", frame: "文具框" } };
-  const seriesList = k => (k === "z" ? ZODIAC : k === "s" ? SWEETS : k === "w" ? STATIONERY : MONSTERS);
-  const ALL_MONS = () => MONSTERS.concat(ZODIAC, SWEETS, STATIONERY);
+  /* 📅 每月限定卡池：資料從 gacha_meta 來 */
+  const LIMITED = () => { const l = FN.meta && FN.meta.limited; return l ? l.chars.map(c => [c[0], c[1], c[2], `${l.name}限定・只有這個月抽得到`]) : []; };
+  const limitedOn = () => !!(FN.meta && FN.meta.limited);
+  const seriesList = k => (k === "z" ? ZODIAC : k === "s" ? SWEETS : k === "w" ? STATIONERY : k === "L" ? LIMITED() : MONSTERS);
+  const ALL_MONS = () => MONSTERS.concat(ZODIAC, SWEETS, STATIONERY, LIMITED());
+  const seriesInfo = () => { const o = { ...SERIES }; if (limitedOn()) o.L = { name: `${FN.meta.limited.emoji} ${FN.meta.limited.name}（限定）`, secret: null, frame: "" }; return o; };
+  const tierOf = n => (n >= 10 ? "rainbow" : n >= 5 ? "gold" : "");
 
   /* 還沒給圖的寶箱先用 emoji */
   const CHEST_NOIMG = new Set([]);
@@ -195,10 +200,11 @@
   const qty = key => ((FN.status && FN.status.items) || {})[key] || 0;
   const rewardText = r => Object.entries(r || {}).filter(([, v]) => v > 0).map(([k, v]) => `${ITEM_NAME[k] || k} ×${v}`).join("、");
 
-  function monsterIcon(key, big = false) {
+  function monsterIcon(key, big = false, n = 0, shiny = false) {
     const m = ALL_MONS().find(x => x[0] === key);
-    if (MONSTER_IMG.has(key)) return `<img class="fn-mon-img ${big ? "big" : ""}" src="${IMG}${key}.webp?v=2" alt="">`;
-    return `<span class="fn-mon-emo ${big ? "big" : ""}">${m ? m[2] : "❔"}</span>`;
+    const t = tierOf(n), cls = `${big ? "big" : ""} ${t ? "tier-" + t : ""} ${shiny ? "is-shiny" : ""}`;
+    const inner = MONSTER_IMG.has(key) ? `<img class="fn-mon-img ${cls}" src="${IMG}${key}.webp?v=2" alt="">` : `<span class="fn-mon-emo ${cls}">${m ? m[2] : "❔"}</span>`;
+    return t || shiny ? `<span class="fn-mon-wrap ${cls}">${inner}${shiny ? `<i class="fn-shiny-dot">✨</i>` : ""}</span>` : inner;
   }
 
 
@@ -221,6 +227,9 @@
       if (!data) throw new Error("沒有讀到資料");
       FN.status = data;
       FN.error = null;
+      const gm = await db.rpc("gacha_meta");
+      FN.meta = gm.error ? null : gm.data;
+      if (FN.meta && FN.meta.collector && (FN.meta.collector.new_levels || []).length) toast(`🏅 收藏家升到 Lv${FN.meta.collector.lv}！送你扭蛋幣`);
       const st = await db.rpc("rpg_store_status");
       FN.store = st.error ? null : st.data;
     } catch (error) {
@@ -491,23 +500,33 @@
   function gachaHtml() {
     const g = FN.gacha;
     const mons = (FN.status && FN.status.monsters) || {};
-    const ser = SERIES[FN.series] ? FN.series : "m";
+    const SER = seriesInfo(), M = FN.meta || {};
+    const ser = SER[FN.series] ? FN.series : "m";
     const LIST = seriesList(ser);
-    const info = SERIES[ser];
+    const info = SER[ser];
     const got = LIST.filter(m => mons[m[0]]).length;
+    const shinyOf = k => !!(M.shiny && M.shiny[k]);
+    const nameOf = k => (ALL_MONS().find(x => x[0] === k) || [k, k])[1];
+    const isSecret = k => Object.values(SER).some(v => v.secret === k);
 
     let stage = "";
-    if (g) {
+    if (g && g.multi && g.phase === "show") {
+      stage = `<div class="fn-multi">${g.results.map(r => `<div class="fn-multi-it ${r.new ? "new" : ""} ${r.shiny ? "shiny" : ""}">${monsterIcon(r.key, false, r.count, r.shiny)}
+          <span>${esc(nameOf(r.key))}</span><small>${r.shiny ? "✨閃亮" : r.evolve === "rainbow" ? "🌈進化" : r.evolve === "gold" ? "🥇進化" : r.new ? "NEW" : `+${r.dust}✨`}</small></div>`).join("")}</div>
+        ${g.set_done ? `<div class="fn-result big">🎊 這個系列全部到齊！送你限定召喚券、星屑${info.frame ? `、${info.frame}` : ""}</div>` : ""}
+        <button type="button" class="btn btn-small" data-fn="gacha-close">好</button>`;
+    } else if (g) {
       if (g.phase === "turn") stage = img("gacha_machine", "fn-machine shake");
       else if (g.phase === "drop") stage = img("capsule", "fn-capsule drop");
       else if (g.phase === "open") stage = img("capsule_open", "fn-capsule pop");
       else {
         const m = ALL_MONS().find(x => x[0] === g.key) || [g.key, g.key, "❔", ""];
-        const sec = Object.values(SERIES).some(v => v.secret === g.key);
-        stage = `<div class="fn-mon-reveal ${sec ? "secret" : ""}">${monsterIcon(g.key, true)}
+        const sec = isSecret(g.key);
+        const tag = g.shiny ? "✨ 閃亮版！圖鑑多一格" : g.evolve === "rainbow" ? "🌈 第 10 隻！進化成彩虹版" : g.evolve === "gold" ? "🥇 第 5 隻！進化成金色版" : g.count > 1 ? `重複了，換成星屑 ${g.dust}・再 ${g.count < 5 ? 5 - g.count : 10 - g.count} 隻進化` : "NEW！放上收藏架";
+        stage = `<div class="fn-mon-reveal ${sec ? "secret" : ""} ${g.shiny ? "shiny" : ""}">${monsterIcon(g.key, true, g.count, g.shiny || shinyOf(g.key))}
           <b>${sec ? "🌟 隱藏版！" : ""}${esc(m[1])}</b><span class="fn-note">${esc(m[3])}</span>
-          <span class="fn-tag">${g.count > 1 ? `重複了，換成星屑 ${g.dust}` : "NEW！放上收藏架"}</span>
-          ${g.set_done ? `<div class="fn-result big">🎊 13 隻全部到齊！送你限定召喚券 1 張、星屑 30、${(SERIES[(g.key || "m").slice(0, 1)] || SERIES.m).frame}</div>` : ""}
+          <span class="fn-tag">${tag}</span>
+          ${g.set_done ? `<div class="fn-result big">🎊 這個系列全部到齊！送你限定召喚券、星屑${info.frame ? `、${info.frame}` : ""}</div>` : ""}
           <button type="button" class="btn btn-small" data-fn="gacha-close">好</button></div>`;
       }
     } else {
@@ -515,20 +534,39 @@
     }
 
     const shelf = LIST.map(([k, name]) => {
-      const n = mons[k] || 0;
-      return `<div class="fn-shelf-item ${n ? "" : "locked"} ${k === info.secret ? "secret" : ""}">${n ? monsterIcon(k) : `<span class="fn-mon-emo">❔</span>`}
+      const n = mons[k] || 0, sh = shinyOf(k);
+      return `<div class="fn-shelf-item ${n ? "" : "locked"} ${k === info.secret ? "secret" : ""} ${tierOf(n) ? "t-" + tierOf(n) : ""}">${n ? monsterIcon(k, false, n, sh) : `<span class="fn-mon-emo">❔</span>`}
         <span>${n ? esc(name) : "？？？"}</span>${n > 1 ? `<i>×${n}</i>` : ""}</div>`;
     }).join("");
+    const pity = (M.pity && M.pity[ser]) || { since: 0 }, missing = LIST.length - got, left = Math.max(1, 10 - pity.since);
+    const coins = qty("gacha_coin");
+    const lim = M.limited;
 
     return `<div class="card rp-card fn-sec"><div class="fn-sec-top">${img("gacha_coin", "fn-ic")}
-        <div><h3>🥚 序光扭蛋機</h3><span class="rp-sub">${info.name}（${got} / 13）</span></div>
-        <div class="rp-power"><span class="rp-sub">扭蛋幣</span><b>${qty("gacha_coin")}</b></div></div>
-      <div class="fn-series">${Object.entries(SERIES).map(([k, v], i) => `<button type="button" class="fn-series-btn ${k === ser ? "on" : ""}" data-fn="series" data-v="${k}" ${g ? "disabled" : ""}>
-        系列${i + 1}：${v.name}</button>`).join("")}</div>
+        <div><h3>🥚 序光扭蛋機</h3><span class="rp-sub">${esc(info.name)}（${got} / ${LIST.length}）</span></div>
+        <div class="rp-power"><span class="rp-sub">扭蛋幣</span><b>${coins}</b></div></div>
+      ${M.lucky_hour != null ? `<div class="fn-lucky ${M.lucky_now ? "on" : ""}">${M.lucky_now ? `🍀 幸運時段進行中！現在抽隱藏版機率 ×2（到 ${M.lucky_hour + 1}:00）` : `🍀 今天的幸運時段：${M.lucky_hour}:00～${M.lucky_hour + 1}:00，隱藏版機率 ×2`}</div>` : ""}
+      <div class="fn-series">${Object.entries(SER).map(([k, v], i) => `<button type="button" class="fn-series-btn ${k === ser ? "on" : ""} ${k === "L" ? "lim" : ""}" data-fn="series" data-v="${k}" ${g ? "disabled" : ""}>
+        ${k === "L" ? "" : `系列${i + 1}：`}${esc(v.name)}</button>`).join("")}</div>
+      ${ser === "L" && lim ? `<p class="fn-note">📅 ${lim.month} 月限定，月底就換下一池${lim.next ? `（下個月是「${esc(lim.next)}」）` : ""}。集滿 6 隻送限定召喚券、星屑 50。</p>` : ""}
       <div class="fn-stage">${stage}</div>
-      ${g ? "" : `<button type="button" class="btn btn-primary fn-wide" data-fn="gacha" ${qty("gacha_coin") > 0 && !FN.busy ? "" : "disabled"}>🪙 投幣，轉一次</button>`}
+      ${g ? "" : `<div class="fn-pull-btns"><button type="button" class="btn btn-primary" data-fn="gacha" ${coins > 0 && !FN.busy ? "" : "disabled"}>🪙 轉一次</button>
+        <button type="button" class="btn btn-primary fn-ten" data-fn="gacha10" ${coins >= 10 && !FN.busy ? "" : "disabled"}>🔟 十連抽（10 枚）</button></div>
+        <p class="fn-pity">${missing > 0 ? `🎯 保底：再抽 <b>${left}</b> 次一定出沒有的角色（還缺 ${missing} 隻）` : "🎉 這個系列全部到齊了！繼續抽可以拿閃亮版和進化"}</p>`}
       <div class="fn-shelf">${shelf}</div>
-      <p class="rp-note">扭蛋幣從寶箱和週末商人拿。重複的換星屑（隱藏版換 10）。每個系列 13 隻集滿送限定召喚券、星屑 30 和${info.frame}。</p></div>`;
+      <button type="button" class="btn btn-small fn-wide" data-gp="open" style="margin-top:8px">📖 圖鑑套組・村民收藏品・夥伴・收藏家等級</button>
+      <p class="rp-note">同一隻抽到 5 隻進化成 🥇 金色版、10 隻變 🌈 彩虹版；每抽 3% 是 ✨ 閃亮版。十連抽保證至少一隻新角色或閃亮版。重複的換星屑（隱藏版換 10）。</p></div>`;
+  }
+
+  async function pullGacha10() {
+    FN.gacha = { phase: "turn" };
+    rerender();
+    const [data] = await Promise.all([rpc("fun_gacha_pull10", { p_series: FN.series }), new Promise(r => setTimeout(r, 1100))]);
+    if (!data) { FN.gacha = null; rerender(); return; }
+    FN.gacha = { ...data, multi: true, phase: "drop" };
+    rerender();
+    setTimeout(() => { if (FN.gacha) { FN.gacha.phase = "open"; rerender(); } }, 700);
+    setTimeout(() => { if (FN.gacha) { FN.gacha.phase = "show"; rerender(); load(); } }, 1300);
   }
 
   async function pullGacha() {
@@ -679,6 +717,7 @@
     else if (act === "chest-all") openAllChests();
     else if (act === "chest-close") { FN.chest = null; rerender(); }
     else if (act === "gacha") pullGacha();
+    else if (act === "gacha10") pullGacha10();
     else if (act === "gacha-close") { FN.gacha = null; rerender(); }
     else if (act === "buy") buy(el.dataset.v);
     else if (act === "store") storeBuy(el.dataset.v, Number(el.dataset.n) || 1);
@@ -759,6 +798,25 @@
       .fn-mon-img.big { width: 150px; height: 150px; }
       .fn-shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 6px; margin-top: 10px; padding: 10px; border-radius: 12px;
         background: linear-gradient(180deg, rgba(160,110,60,.10), rgba(160,110,60,.18)); }
+      .fn-lucky { font-size: 12px; padding: 6px 10px; border-radius: 10px; background: rgba(63,185,80,.12); margin: 4px 0; } .fn-lucky.on { background: linear-gradient(90deg, rgba(63,185,80,.35), rgba(255,213,74,.3)); font-weight: 700; animation: fnGlow 1.6s ease-in-out infinite; }
+      @keyframes fnGlow { 50% { box-shadow: 0 0 14px rgba(255,213,74,.6); } }
+      .fn-series-btn.lim { border-color: #e3b341; }
+      .fn-pull-btns { display: flex; gap: 6px; } .fn-pull-btns .btn { flex: 1; } .fn-ten { background: linear-gradient(90deg, #ff8a65, #e05cff) !important; }
+      .fn-pity { font-size: 12px; opacity: .8; text-align: center; margin: 6px 0; }
+      .fn-mon-wrap { position: relative; display: inline-block; border-radius: 50%; }
+      .fn-mon-wrap.tier-gold { filter: drop-shadow(0 0 6px #ffd54a) sepia(.35) saturate(1.6); }
+      .fn-mon-wrap.tier-rainbow { animation: fnRainbow 3s linear infinite; filter: drop-shadow(0 0 7px #ff9ec7); }
+      @keyframes fnRainbow { to { filter: drop-shadow(0 0 7px #8f9bff) hue-rotate(360deg); } }
+      .fn-mon-wrap.is-shiny::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; background: conic-gradient(from 0deg, transparent, rgba(255,255,255,.7), transparent 30%); animation: fnSpin 2.4s linear infinite; mix-blend-mode: screen; pointer-events: none; }
+      @keyframes fnSpin { to { transform: rotate(360deg); } }
+      .fn-shiny-dot { position: absolute; right: -4px; top: -4px; font-style: normal; font-size: 13px; }
+      .fn-shelf-item.t-gold { border-bottom-color: #ffd54a; } .fn-shelf-item.t-rainbow { border-bottom: 3px solid; border-image: linear-gradient(90deg, #ff6b6b, #ffd54a, #3fb950, #58a6ff, #c08bff) 1; }
+      .fn-multi { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin: 6px 0; }
+      .fn-multi-it { text-align: center; font-size: 10.5px; padding: 4px 2px; border-radius: 10px; background: rgba(127,127,127,.1); animation: cpPop .5s cubic-bezier(.2,1.6,.4,1) both; }
+      .fn-multi-it .fn-mon-img, .fn-multi-it .fn-mon-emo { width: 44px; height: 44px; font-size: 30px; }
+      .fn-multi-it span { display: block; line-height: 1.2; } .fn-multi-it small { display: block; font-size: 10px; opacity: .8; }
+      .fn-multi-it.new { background: rgba(63,185,80,.18); } .fn-multi-it.shiny { background: linear-gradient(135deg, rgba(255,213,74,.3), rgba(192,139,255,.3)); }
+      ${Array.from({ length: 10 }, (_, i) => `.fn-multi-it:nth-child(${i + 1}) { animation-delay: ${i * 0.08}s; }`).join(" ")}
       .fn-shelf-item { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; text-align: center; padding: 4px 2px; border-bottom: 3px solid rgba(140,90,40,.35); }
       .fn-shelf-item.locked { opacity: .45; }
       .fn-shelf-item.secret:not(.locked) { background: radial-gradient(circle, rgba(255,215,64,.35), transparent 70%); }
@@ -841,6 +899,6 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();
 
-  window.FunGame = { version: FUN_JS_VERSION, html, reload: load, state: FN, avatar, totals: { monsters: MONSTERS.length + ZODIAC.length, frames: FRAMES.length } };
+  window.FunGame = { version: FUN_JS_VERSION, html, reload: load, state: FN, avatar, allMons: ALL_MONS, monsterIcon, rerender: () => rerender(), totals: { monsters: MONSTERS.length + ZODIAC.length, frames: FRAMES.length } };
 
 })();
