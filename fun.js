@@ -201,10 +201,14 @@
   const qty = key => ((FN.status && FN.status.items) || {})[key] || 0;
   const rewardText = r => Object.entries(r || {}).filter(([, v]) => v > 0).map(([k, v]) => `${ITEM_NAME[k] || k} ×${v}`).join("、");
 
+  /* 限定池借用活動角色的圖 */
+  const EXTRA_IMG = { L11_maple: "img/event/ev_harvest_leaf_sprite.webp", L11_squirrel: "img/event/ev_harvest_squirrel.webp", L11_potato: "img/event/ev_harvest_straw_imp.webp",
+    L11_pie: "img/event/ev_thanks_tree.webp", L11_turkey: "img/event/ev_thanks_turkey.webp",
+    L12_snowman: "img/event/ev_xmas_snow_sprite.webp", L12_deer: "img/event/ev_xmas_reindeer.webp", L12_gift: "img/event/ev_xmas_ginger_soldier.webp", L12_tree: "img/event/ev_xmas_king.webp" };
   function monsterIcon(key, big = false, n = 0, shiny = false) {
     const m = ALL_MONS().find(x => x[0] === key);
     const t = tierOf(n), cls = `${big ? "big" : ""} ${t ? "tier-" + t : ""} ${shiny ? "is-shiny" : ""}`;
-    const inner = MONSTER_IMG.has(key) ? `<img class="fn-mon-img ${cls}" src="${IMG}${key}.webp?v=2" alt="">` : `<span class="fn-mon-emo ${cls}">${m ? m[2] : "❔"}</span>`;
+    const inner = EXTRA_IMG[key] ? `<img class="fn-mon-img ${cls}" src="${EXTRA_IMG[key]}" alt="">` : MONSTER_IMG.has(key) ? `<img class="fn-mon-img ${cls}" src="${IMG}${key}.webp?v=2" alt="">` : `<span class="fn-mon-emo ${cls}">${m ? m[2] : "❔"}</span>`;
     return t || shiny ? `<span class="fn-mon-wrap ${cls}">${inner}${shiny ? `<i class="fn-shiny-dot">✨</i>` : ""}</span>` : inner;
   }
 

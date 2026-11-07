@@ -72,8 +72,8 @@ create or replace function public.gacha_limited_defs() returns jsonb language sq
  "08":{"name":"星際夏令營","emoji":"🚀","chars":[["L08_rocket","小火箭","🚀"],["L08_ufo","飛碟咻咻","🛸"],["L08_comet","彗星尾巴","☄️"],["L08_astro","太空人","🧑‍🚀"],["L08_planet","土星環環","🪐"],["L08_moon","月亮兔","🌙"]]},
  "09":{"name":"開學季","emoji":"🎒","chars":[["L09_bag","書包包","🎒"],["L09_apple","老師的蘋果","🍎"],["L09_globe","地球儀","🌍"],["L09_bell","上課鐘","🔔"],["L09_books","書堆疊疊","📚"],["L09_cap","學士帽","🎓"]]},
  "10":{"name":"萬聖夜","emoji":"🎃","chars":[["L10_pumpkin","南瓜燈","🎃"],["L10_ghost","小幽靈","👻"],["L10_bat","蝙蝠倒掛","🦇"],["L10_witch","小魔女","🧙"],["L10_candy","糖果怪","🍬"],["L10_cat","黑貓喵","🐈‍⬛"]]},
- "11":{"name":"秋日豐收","emoji":"🍁","chars":[["L11_maple","楓葉精靈","🍁"],["L11_squirrel","松鼠囤囤","🐿️"],["L11_chestnut","糖炒栗子","🌰"],["L11_potato","烤地瓜","🍠"],["L11_pie","南瓜派","🥧"],["L11_turkey","火雞咕咕","🦃"]]},
- "12":{"name":"星夜聖誕","emoji":"🎄","chars":[["L12_santa","聖誕老人","🎅"],["L12_snowman","雪人圓圓","⛄"],["L12_deer","麋鹿魯魯","🦌"],["L12_gift","禮物盒","🎁"],["L12_tree","聖誕樹","🎄"],["L12_star","樹頂星星","⭐"]]}
+ "11":{"name":"秋日豐收","emoji":"🍁","chars":[["L11_maple","楓葉精靈","🍁"],["L11_squirrel","松鼠囤囤","🐿️"],["L11_chestnut","糖炒栗子","🌰"],["L11_potato","稻草小妖","🌾"],["L11_pie","感恩之樹","🌳"],["L11_turkey","火雞咕咕","🦃"]]},
+ "12":{"name":"星夜聖誕","emoji":"🎄","chars":[["L12_santa","聖誕老人","🎅"],["L12_snowman","雪花精靈","❄️"],["L12_deer","麋鹿魯魯","🦌"],["L12_gift","薑餅士兵","🍪"],["L12_tree","聖誕國王","👑"],["L12_star","樹頂星星","⭐"]]}
 }$j$::jsonb $$;
 
 create or replace function public.gacha_series_keys(p_series text, out mons text[], out secret text)
