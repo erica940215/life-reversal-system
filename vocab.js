@@ -340,7 +340,7 @@ negotiate | v. | 協商；談判 | [nɪˋgoʃɪˏet] | The two companies negotia
     const s = V.session;
     const it = s.items[s.i];
     if (!it) return;
-    s.state = "ask"; s.picked = null; s.typed = ""; s.ok = null;
+    s.state = it.mode === "e2c" ? "think" : "ask"; s.picked = null; s.typed = ""; s.ok = null;
     const pool = (V.full || V.queue.pool || []).filter(p => p.meaning && p.word.toLowerCase() !== it.w.word.toLowerCase());
     it.t0 = Date.now(); it.secs = null;
     const w = it.w;
@@ -395,11 +395,13 @@ negotiate | v. | 協商；談判 | [nɪˋgoʃɪˏet] | The two companies negotia
       body = s.state === "ask"
         ? `<div class="vc-face" data-vc="reveal">${headHtml(w, false)}<p class="vc-hint">想一想意思，再點卡片翻面</p></div>`
         : `<div class="vc-face open">${headHtml(w, true)}${timeTag}${detailHtml(w)}</div>${gradeButtons(w, true, it.secs)}`;
+    } else if (it.mode === "e2c" && s.state === "think") {
+      body = `<div class="vc-face" data-vc="ready">${headHtml(w, false)}<p class="vc-hint">先在心裡想出中文意思，想好了點卡片，再從選項確認</p></div>`;
     } else if (it.options) {
       const correct = it.correct;
       const prompt = it.mode === "listen"
         ? `<div class="vc-listen"><button type="button" class="vc-say huge" data-vc="say" data-v="${esc(w.word)}">🔊</button><p class="vc-hint">聽發音，選出意思</p></div>`
-        : it.mode === "e2c" ? `<div class="vc-word">${esc(w.word)}</div><div class="vc-sub">${esc(w.pos || "")}</div><p class="vc-hint">選出中文意思（越快越好）</p>`
+        : it.mode === "e2c" ? `<div class="vc-word">${esc(w.word)}</div><div class="vc-sub">${esc(w.pos || "")}</div><p class="vc-hint">剛剛想到的是哪一個？</p>`
         : it.mode === "syn" ? `<div class="vc-word">${esc(w.word)}</div><div class="vc-sub">${esc(w.pos || "")}</div><p class="vc-hint">多益同義替換：選出意思最接近的字</p>`
         : it.mode === "col" ? `<div class="vc-cloze">${esc(it.col.text)}</div><p class="vc-hint">選出正確的搭配詞</p>`
         : it.mode === "part5" ? `<div class="vc-cloze">${esc(it.p5.text)}</div><p class="vc-hint">多益 Part 5：選出正確的詞性</p>`
@@ -638,10 +640,11 @@ negotiate | v. | 協商；談判 | [nɪˋgoʃɪˏet] | The two companies negotia
     if (a === "hard") { startSession(true); return; }
     if (a === "quit") { if (!confirm("先停在這裡？已經複習的會保留。")) return; V.session = null; load(); return; }
     if (a === "endsession") { V.session = null; render(); return; }
+    if (a === "ready") { const it = V.session.items[V.session.i]; it.secs = (Date.now() - it.t0) / 1000; V.session.state = "ask"; renderSession(); return; }
     if (a === "reveal") { const it = V.session.items[V.session.i]; it.secs = (Date.now() - it.t0) / 1000; fastLog(it.secs <= 3); V.session.state = "shown"; speak(it.w.word); renderSession(); return; }
     if (a === "pick") {
       const s = V.session, it = s.items[s.i];
-      it.secs = (Date.now() - it.t0) / 1000;
+      if (it.secs == null) it.secs = (Date.now() - it.t0) / 1000;
       s.picked = v; s.ok = v === it.correct; s.state = "shown";
       fastLog(s.ok && it.secs <= 3);
       if (it.mode !== "listen") speak(it.w.word);
@@ -796,6 +799,7 @@ negotiate | v. | 協商；談判 | [nɪˋgoʃɪˏet] | The two companies negotia
       .vc-time { text-align: center; font-size: 13px; font-weight: 700; margin: 6px 0; } .vc-time.fast { color: #3fb950; } .vc-time.mid { color: #e3b341; } .vc-time.slow { color: #f0883e; }
       .vc-g.rec { outline: 2px solid #ffd54a; outline-offset: 1px; }
       .vc-opt small { display: block; font-size: 11px; opacity: .75; font-weight: 400; }
+      .vc-face[data-vc="ready"] { cursor: pointer; min-height: 200px; display: flex; flex-direction: column; justify-content: center; }
       .vc-face[data-vc="reveal"] { cursor: pointer; min-height: 200px; display: flex; flex-direction: column; justify-content: center; }
       .vc-face.open { text-align: left; } .vc-face.small { margin-top: 12px; padding: 14px; }
       .vc-face.open .vc-word, .vc-face.open .vc-sub, .vc-face.open .vc-mean { text-align: center; }
