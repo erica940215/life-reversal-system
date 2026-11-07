@@ -197,7 +197,7 @@
 
   function monsterIcon(key, big = false) {
     const m = ALL_MONS().find(x => x[0] === key);
-    if (MONSTER_IMG.has(key)) return `<img class="fn-mon-img ${big ? "big" : ""}" src="${IMG}${key}.webp" alt="">`;
+    if (MONSTER_IMG.has(key)) return `<img class="fn-mon-img ${big ? "big" : ""}" src="${IMG}${key}.webp?v=2" alt="">`;
     return `<span class="fn-mon-emo ${big ? "big" : ""}">${m ? m[2] : "❔"}</span>`;
   }
 
