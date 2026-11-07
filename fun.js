@@ -12,7 +12,9 @@
   const MONSTER_IMG = new Set(["m_owl", "m_pillow", "m_kappa", "m_snail", "m_hamster", "m_fly", "m_drop",
     "m_rooster", "m_tomato", "m_chick", "m_bookworm", "m_hedgehog", "m_secret",
     "z_aries", "z_taurus", "z_gemini", "z_cancer", "z_leo", "z_virgo", "z_libra", "z_scorpio",
-    "z_sagittarius", "z_capricorn", "z_aquarius", "z_pisces", "z_polaris"]);
+    "z_sagittarius", "z_capricorn", "z_aquarius", "z_pisces", "z_polaris",
+    "s_macaron", "s_pudding", "s_donut", "s_mochi", "s_croissant", "s_taiyaki", "s_bubbletea", "s_cupcake", "s_icecream", "s_pancake", "s_dango", "s_cookie", "s_starcake",
+    "w_pencil", "w_eraser", "w_ruler", "w_highlighter", "w_stapler", "w_notebook", "w_clip", "w_sticky", "w_compass", "w_scissors", "w_glue", "w_calculator", "w_fountainpen"]);
 
   const FRAMES = [
     ["frame_wood", "新手木框", "開木寶箱有機會拿到"],
@@ -91,7 +93,7 @@
   ];
 
   /* 還沒給圖的頭像框 */
-  const FRAME_NOIMG = new Set(["frame_sweets", "frame_stationery"]);
+  const FRAME_NOIMG = new Set([]);
   const FRAME_EMO = { frame_sweets: "🍰", frame_stationery: "✏️", frame_pumpkin: "🎃", frame_maple: "🍁", frame_friends: "📸", frame_snowflake: "❄️", frame_firework: "🎆", frame_couplet: "🧧", frame_arena: "🏟️", frame_laurel: "🌿", frame_flame: "🔥", frame_dream: "🌙" };
   const frameImg = (k, cls) => FRAME_NOIMG.has(k) ? `<span class="fn-frame-emo ${cls}">${FRAME_EMO[k] || "🌌"}</span>` : img(k, cls);
 
