@@ -24,6 +24,8 @@
     ["frame_monster", "小怪獸框", "序光小怪獸 13 隻集滿"],
     ["frame_lucky", "大吉框", "累計抽到 10 次大吉"],
     ["frame_zodiac", "星座框", "星座寶寶 13 隻集滿"],
+    ["frame_sweets", "甜點框", "甜點妖精 13 隻集滿"],
+    ["frame_stationery", "文具框", "文具小夥伴 13 隻集滿"],
     ["frame_pumpkin", "南瓜框", "萬聖節糖果商店兌換"],
     ["frame_maple", "楓葉框", "秋收祭商店兌換"],
     ["frame_friends", "好友合照框", "感謝週商店兌換"],
@@ -89,8 +91,8 @@
   ];
 
   /* 還沒給圖的頭像框 */
-  const FRAME_NOIMG = new Set([]);
-  const FRAME_EMO = { frame_pumpkin: "🎃", frame_maple: "🍁", frame_friends: "📸", frame_snowflake: "❄️", frame_firework: "🎆", frame_couplet: "🧧", frame_arena: "🏟️", frame_laurel: "🌿", frame_flame: "🔥", frame_dream: "🌙" };
+  const FRAME_NOIMG = new Set(["frame_sweets", "frame_stationery"]);
+  const FRAME_EMO = { frame_sweets: "🍰", frame_stationery: "✏️", frame_pumpkin: "🎃", frame_maple: "🍁", frame_friends: "📸", frame_snowflake: "❄️", frame_firework: "🎆", frame_couplet: "🧧", frame_arena: "🏟️", frame_laurel: "🌿", frame_flame: "🔥", frame_dream: "🌙" };
   const frameImg = (k, cls) => FRAME_NOIMG.has(k) ? `<span class="fn-frame-emo ${cls}">${FRAME_EMO[k] || "🌌"}</span>` : img(k, cls);
 
   /* 扭蛋系列二：星座寶寶（還沒給圖，先用星座符號） */
@@ -109,8 +111,41 @@
     ["z_pisces", "雙魚寶寶", "♓", "兩條小魚繞著你游。"],
     ["z_polaris", "北極星寶寶", "🌟", "隱藏版。永遠在北方發光，迷路時看看它。"]
   ];
-  const SERIES = { m: { name: "序光小怪獸", secret: "m_secret", frame: "小怪獸框" }, z: { name: "星座寶寶", secret: "z_polaris", frame: "星座框" } };
-  const seriesList = k => (k === "z" ? ZODIAC : MONSTERS);
+  /* 扭蛋系列三：甜點妖精、系列四：文具小夥伴（還沒給圖，先用 emoji） */
+  const SWEETS = [
+    ["s_macaron", "馬卡龍妖精", "🍬", "三種顏色輪流當班，今天是粉紅色。"],
+    ["s_pudding", "布丁妖精", "🍮", "抖抖抖，但從來不會倒。"],
+    ["s_donut", "甜甜圈妖精", "🍩", "中間的洞是用來裝夢想的。"],
+    ["s_mochi", "麻糬妖精", "🍡", "被捏扁也會慢慢彈回來。"],
+    ["s_croissant", "可頌妖精", "🥐", "一層一層，跟複習一樣。"],
+    ["s_taiyaki", "鯛魚燒妖精", "🐟", "從頭吃還是從尾吃？它最怕這個問題。"],
+    ["s_bubbletea", "珍奶妖精", "🧋", "半糖少冰，珍珠會跳舞。"],
+    ["s_cupcake", "杯子蛋糕妖精", "🧁", "頭上的櫻桃是它的皇冠。"],
+    ["s_icecream", "冰淇淋妖精", "🍦", "專注太久會融化，記得休息。"],
+    ["s_pancake", "鬆餅妖精", "🥞", "疊越高越開心。"],
+    ["s_dango", "糰子三兄弟", "🍡", "老大最穩、老二最吵、老三最愛睡。"],
+    ["s_cookie", "餅乾妖精", "🍪", "碎掉了也很好吃。"],
+    ["s_starcake", "星光蛋糕", "🎂", "隱藏版。只在努力的日子裡出現的蛋糕。"]
+  ];
+  const STATIONERY = [
+    ["w_pencil", "鉛筆小隊長", "✏️", "寫錯了沒關係，它頭上有橡皮擦。"],
+    ["w_eraser", "橡皮擦阿擦", "🧽", "幫你把昨天的失誤擦乾淨。"],
+    ["w_ruler", "尺尺先生", "📏", "做事一板一眼，從不偷工。"],
+    ["w_highlighter", "螢光筆小亮", "🖍️", "專門幫重點穿上亮衣服。"],
+    ["w_stapler", "釘書機咬咬", "📎", "把散掉的筆記咬在一起。"],
+    ["w_notebook", "筆記本小冊", "📓", "肚子裡裝滿你的努力。"],
+    ["w_clip", "迴紋針彎彎", "🖇️", "什麼都能夾，什麼都能撐。"],
+    ["w_sticky", "便利貼黃黃", "🗒️", "最會提醒你：別忘了！"],
+    ["w_compass", "圓規小轉", "🧭", "原地轉一圈，畫出完美的圓。"],
+    ["w_scissors", "剪刀喀嚓", "✂️", "把大任務剪成小塊。"],
+    ["w_glue", "膠水黏黏", "🧴", "把零碎的時間黏成一大塊。"],
+    ["w_calculator", "計算機嗶嗶", "🧮", "算出你離目標還差幾小時。"],
+    ["w_fountainpen", "金色鋼筆", "🖋️", "隱藏版。考試那天，它會陪你寫下每個答案。"]
+  ];
+  const SERIES = { m: { name: "序光小怪獸", secret: "m_secret", frame: "小怪獸框" }, z: { name: "星座寶寶", secret: "z_polaris", frame: "星座框" },
+    s: { name: "甜點妖精", secret: "s_starcake", frame: "甜點框" }, w: { name: "文具小夥伴", secret: "w_fountainpen", frame: "文具框" } };
+  const seriesList = k => (k === "z" ? ZODIAC : k === "s" ? SWEETS : k === "w" ? STATIONERY : MONSTERS);
+  const ALL_MONS = () => MONSTERS.concat(ZODIAC, SWEETS, STATIONERY);
 
   /* 還沒給圖的寶箱先用 emoji */
   const CHEST_NOIMG = new Set([]);
@@ -159,7 +194,7 @@
   const rewardText = r => Object.entries(r || {}).filter(([, v]) => v > 0).map(([k, v]) => `${ITEM_NAME[k] || k} ×${v}`).join("、");
 
   function monsterIcon(key, big = false) {
-    const m = MONSTERS.concat(ZODIAC).find(x => x[0] === key);
+    const m = ALL_MONS().find(x => x[0] === key);
     if (MONSTER_IMG.has(key)) return `<img class="fn-mon-img ${big ? "big" : ""}" src="${IMG}${key}.webp" alt="">`;
     return `<span class="fn-mon-emo ${big ? "big" : ""}">${m ? m[2] : "❔"}</span>`;
   }
@@ -465,12 +500,12 @@
       else if (g.phase === "drop") stage = img("capsule", "fn-capsule drop");
       else if (g.phase === "open") stage = img("capsule_open", "fn-capsule pop");
       else {
-        const m = MONSTERS.concat(ZODIAC).find(x => x[0] === g.key) || [g.key, g.key, "❔", ""];
-        const sec = g.key === "m_secret" || g.key === "z_polaris";
+        const m = ALL_MONS().find(x => x[0] === g.key) || [g.key, g.key, "❔", ""];
+        const sec = Object.values(SERIES).some(v => v.secret === g.key);
         stage = `<div class="fn-mon-reveal ${sec ? "secret" : ""}">${monsterIcon(g.key, true)}
           <b>${sec ? "🌟 隱藏版！" : ""}${esc(m[1])}</b><span class="fn-note">${esc(m[3])}</span>
           <span class="fn-tag">${g.count > 1 ? `重複了，換成星屑 ${g.dust}` : "NEW！放上收藏架"}</span>
-          ${g.set_done ? `<div class="fn-result big">🎊 13 隻全部到齊！送你限定召喚券 1 張、星屑 30、${g.key && g.key.startsWith("z_") ? "星座框" : "小怪獸框"}</div>` : ""}
+          ${g.set_done ? `<div class="fn-result big">🎊 13 隻全部到齊！送你限定召喚券 1 張、星屑 30、${(SERIES[(g.key || "m").slice(0, 1)] || SERIES.m).frame}</div>` : ""}
           <button type="button" class="btn btn-small" data-fn="gacha-close">好</button></div>`;
       }
     } else {
@@ -745,7 +780,7 @@
       .fn-chest-emo { display: inline-flex; align-items: center; justify-content: center; font-size: 44px; }
       .fn-chest-emo.fn-chest-big { font-size: 110px; display: flex; margin: 0 auto; }
       .fn-frame-emo { display: inline-flex; align-items: center; justify-content: center; font-size: 30px; border-radius: 50%; border: 3px solid rgba(108,75,216,.5); }
-      .fn-series { display: flex; gap: 6px; margin: 4px 0 6px; }
+      .fn-series { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 4px 0 6px; }
       .fn-series-btn { flex: 1; padding: 7px 4px; border-radius: 10px; border: 1px solid rgba(127,127,127,.25); background: transparent; color: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
       .fn-series-btn.on { background: #6c4bd8; color: #fff; border-color: #6c4bd8; }
       .fn-got-frame { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; color: #e8a317; }
