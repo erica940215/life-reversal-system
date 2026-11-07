@@ -590,7 +590,7 @@
     { const st = Object.values(P.steps).flat().find(x => x.id === id);
       if (st && /回顧這週/.test(st.title) && data.done && window.OverviewGame && window.OverviewGame.openWeek) setTimeout(() => window.OverviewGame.openWeek(), 900);
       if (st && /確認明天行程/.test(st.title) && data.done && window.Village) setTimeout(() => window.Village.openTomorrow(), 900);
-      if (st && /每日反省|今日學到/.test(st.title) && data.done && window.ReflectBox) setTimeout(() => window.ReflectBox.open(/學到/.test(st.title) ? "learn" : "reflect"), 900); }
+      if (st && /每日反省|今日學到/.test(st.title) && data.done && window.ReflectBox) setTimeout(() => (/學到/.test(st.title) && window.LearnBox ? (typeof showPage === "function" && showPage("today"), window.LearnBox.focus()) : window.ReflectBox.open(/學到/.test(st.title) ? "learn" : "reflect")), 900); }
     load();
   }
 
