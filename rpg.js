@@ -504,12 +504,13 @@
     if (RP.error) { root.innerHTML = `<div class="card rp-card"><p class="rp-note">載入失敗：${esc(RP.error)}</p></div>`; return; }
     if (!RP.status) { root.innerHTML = `<div class="card rp-card"><p class="rp-note">冒險載入中…</p></div>`; return; }
 
-    const tabs = [["hero", "角色"], ["boss", "每週王"], ["team", "小隊"], ["journey", "旅程"], ["arena", "競技"], ["fun", "驚喜"], ["summon", "召喚"], ["book", "圖鑑"]];
+    const tabs = [["hero", "角色"], ["quest", "任務"], ["boss", "每週王"], ["team", "小隊"], ["journey", "旅程"], ["arena", "競技"], ["fun", "驚喜"], ["summon", "召喚"], ["book", "圖鑑"]];
     const body = RP.tab === "arena" ? (window.ArenaGame ? window.ArenaGame.html() : "") : RP.tab === "summon" ? summonHtml() : RP.tab === "book" ? bookHtml()
       : RP.tab === "boss" ? (window.StudyGame ? window.StudyGame.worldHtml() : "") + bossHtml()
       : RP.tab === "fun" ? (window.EventGame ? window.EventGame.seasonHtml() + window.EventGame.halloweenHtml() : "") + (window.FunGame ? window.FunGame.html() : "")
       : RP.tab === "team" ? (window.TeamGame ? window.TeamGame.html() : "") + (window.GrowthGame ? window.GrowthGame.betsHtml() : "")
       : RP.tab === "journey" ? (window.GrowthGame ? window.GrowthGame.html() : "")
+      : RP.tab === "quest" ? (window.RpgPlus ? window.RpgPlus.html() : "")
       : heroHtml() + (window.StudyGame && RP.status && RP.status.class ? window.StudyGame.skillHtml() : "")
         + (window.EventGame && RP.status && RP.status.class ? window.EventGame.journalHtml() : "");
     root.innerHTML = `<div class="rp-tabs">${tabs.map(([k, l]) =>
@@ -524,7 +525,7 @@
     const el = e.target.closest("[data-rp]");
     if (!el || el.tagName === "SELECT") return;
     const act = el.dataset.rp;
-    if (act === "tab") { RP.tab = el.dataset.v; render(); return; }
+    if (act === "tab") { RP.tab = el.dataset.v; if (RP.tab === "quest" && window.RpgPlus && el.dataset.auto !== "1") window.RpgPlus.load(); render(); return; }
     if (act === "bookview") { RP.bookView = el.dataset.v; render(); return; }
     if (act === "autoatk") { try { localStorage.setItem(AUTO_KEY, el.checked ? "1" : "0"); } catch (_) {} if (el.checked) autoAttack(true); return; }
     if (act === "class") {
