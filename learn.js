@@ -56,6 +56,41 @@
     if (inp) inp.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); add(); } });
   }
 
+  /* 🤖 給 AI 的提示詞 */
+  function aiOne(n, said) {
+    return `你是我的家教，我是資管系大四學生，正在準備研究所考試。我會用自己的話解釋一個知識點，請你判斷我說的對不對。
+
+科目：${n.subject}
+知識點：${n.title}${n.note ? `\n我當時寫的重點：${n.note}` : ""}
+我的解釋：${said || "（我會在下一則訊息說明）"}
+
+請依照這個格式回答，用繁體中文、簡短：
+1. 評分：0～10 分
+2. 說對的地方：
+3. 錯誤或不精確的地方：（沒有就寫「無」）
+4. 漏掉的重點：
+5. 一句話正確版本：用最好記的方式講一次
+6. 追問我一題：一個考試可能會問的延伸問題，等我回答後再幫我批改
+
+最後告訴我該按哪個：😵忘了（6 分以下）／🤔模糊（6～8 分）／😊記得（8 分以上）。`;
+  }
+  function aiBatch(items) {
+    return `你是我的家教，我是資管系大四學生，正在準備研究所考試。今天我要複習下面這些知識點，請你一次只考我一題：
+
+${items.map((n, i) => `${i + 1}.〔${n.subject}〕${n.title}${n.note ? `（我寫的重點：${n.note}）` : ""}`).join("\n")}
+
+規則：
+1. 從第 1 題開始，問我「請解釋：○○○」，然後等我回答
+2. 我回答後，給我 0～10 分，指出說對的、說錯的、漏掉的重點，再用一句話給我正確又好記的版本
+3. 6 分以下標「😵忘了」、6～8 分標「🤔模糊」、8 分以上標「😊記得」
+4. 接著問下一題，全部考完後列一張總表：題目｜分數｜😵／🤔／😊
+5. 用繁體中文，回答簡短`;
+  }
+  async function copy(text, okMsg) {
+    try { await navigator.clipboard.writeText(text); toast(okMsg || "📋 已複製，貼給 AI 就可以"); }
+    catch (_) { const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select(); try { document.execCommand("copy"); toast(okMsg || "📋 已複製"); } catch (__) { prompt("複製下面的文字", text); } t.remove(); }
+  }
+
   async function add() {
     const t = document.getElementById("ln-title"), n = document.getElementById("ln-note");
     if (!t || !t.value.trim()) return toast("先寫標題");
@@ -79,16 +114,22 @@
       }
       const n = items[S.i], ago = Math.round((Date.parse(L.d.today) - Date.parse(n.day)) / 864e5);
       m.innerHTML = `<div class="vg-card"><div class="ln-prog">${S.i + 1} / ${items.length}<button type="button" data-x="1">✕</button></div>
+        ${S.i === 0 && !S.shown ? `<button type="button" class="ln-ai batch" data-lnr="batch">🤖 想讓 AI 一題一題考你？複製今天 ${items.length} 則的提示詞</button>` : ""}
         <div class="ln-card ${S.shown ? "open" : ""}" data-lnr="flip">${n.lapses >= 3 ? `<span class="ln-cm">👹</span>` : n.lapses ? `<span class="ln-cm">👾</span>` : ""}<small>${esc(n.subject)}・${ago} 天前學的${n.lapses ? `・忘過 ${n.lapses} 次` : ""}</small><b>${esc(n.title)}</b>
           ${S.shown ? `<p>${n.note ? esc(n.note) : "（當時沒寫重點，憑你的記憶判斷）"}</p>` : `<p class="ln-hint">先在心裡說出這個主題的內容、怎麼運作、例子，想好了點卡片</p>`}</div>
-        ${S.shown && S.fey ? `<div class="ln-fey"><b>🧒 阿布：</b>「可以用一句話講給我聽嗎？要我聽得懂喔！」<textarea id="ln-fey" rows="2" maxlength="300" placeholder="用小學生聽得懂的話說一次（講不出來就代表還沒真的懂）"></textarea></div>` : ""}
+        ${!S.shown ? `<button type="button" class="ln-ai" data-lnr="ai">🤖 不確定自己說得對不對？先寫下你的解釋，複製給 AI 批改</button>` : ""}
+        ${S.ai || (S.shown && S.fey) ? `<div class="ln-fey"><b>${S.ai ? "🤖 你的解釋" : "🧒 阿布："}</b>${S.ai ? "" : "「可以用一句話講給我聽嗎？要我聽得懂喔！」"}<textarea id="ln-fey" rows="3" maxlength="300" placeholder="用自己的話解釋這個知識點">${esc(S.said || "")}</textarea>
+          <button type="button" class="btn btn-small" data-lnr="copyai">📋 複製提示詞給 AI 批改</button><small class="ln-aitip">貼到 ChatGPT／Claude，它會打分數、指出錯的地方，並告訴你該按 😵／🤔／😊</small></div>` : ""}
         ${S.shown ? `<div class="ln-grades">${[[0, "😵 忘了", 1], [1, "🤔 模糊", GAPS[n.stage]], [2, "😊 記得", GAPS[Math.min(n.stage + 1, GAPS.length - 1)]]].map(([g, l, dd]) => `<button type="button" class="g${g}" data-lnr="grade" data-v="${g}">${l}<small>${dd} 天後</small></button>`).join("")}</div>` : ""}</div>`;
     };
     m.addEventListener("click", async e => {
       if (e.target === m || e.target.closest("[data-x]")) { m.remove(); load(); return; }
       const b = e.target.closest("[data-lnr]");
       if (!b) return;
-      if (b.dataset.lnr === "flip" && !S.shown) { S.shown = true; S.fey = Math.random() < 0.3 || !items[S.i].note; return draw(); }
+      if (b.dataset.lnr === "batch") return copy(aiBatch(items), "📋 已複製！貼給 AI，它會一題一題考你，最後再回來照總表按");
+      if (b.dataset.lnr === "ai") { S.ai = true; draw(); const t = m.querySelector("#ln-fey"); if (t) t.focus(); return; }
+      if (b.dataset.lnr === "copyai") { const t = m.querySelector("#ln-fey"); S.said = t ? t.value : ""; return copy(aiOne(items[S.i], S.said), "📋 已複製！貼給 AI，看它的評分再回來按按鈕"); }
+      if (b.dataset.lnr === "flip" && !S.shown) { const t = m.querySelector("#ln-fey"); if (t) S.said = t.value; S.shown = true; S.fey = S.ai || Math.random() < 0.3 || !items[S.i].note; return draw(); }
       if (b.dataset.lnr === "grade") {
         const n = items[S.i], g = Number(b.dataset.v);
         const fe = m.querySelector("#ln-fey");
@@ -97,7 +138,7 @@
         if (error) return toast(error.message);
         if (rv && rv.slain) toast("⚔️ 打倒 Boss 了！✨50＋金寶箱");
         if (g === 0) items.push({ ...n, stage: 0, lapses: n.lapses + 1, again: true });
-        S.done += 1; S.i += 1; S.shown = false; draw();
+        S.done += 1; S.i += 1; S.shown = false; S.ai = false; S.said = ""; draw();
       }
     });
     draw();
@@ -180,6 +221,8 @@
     .ln-mon.boss span { font-size: 28px; animation: moBob 1.4s ease-in-out infinite; }
     .ln-cap { width: 100%; margin-top: 8px; border: 1px solid #ffd54a; background: rgba(255,213,74,.12); color: inherit; border-radius: 12px; padding: 9px; font: inherit; cursor: pointer; }
     .ln-cm { position: absolute; right: 12px; top: 10px; font-size: 24px; } .ln-card { position: relative; }
+    .ln-ai { display: block; width: 100%; margin-top: 8px; border: 1px dashed rgba(124,92,255,.6); background: rgba(124,92,255,.08); color: inherit; border-radius: 10px; padding: 8px; font: inherit; font-size: 12.5px; cursor: pointer; }
+    .ln-ai.batch { margin: 0 0 8px; } .ln-aitip { display: block; font-size: 11px; opacity: .65; margin-top: 4px; }
     .ln-fey { margin-top: 10px; font-size: 13px; padding: 10px; border-radius: 12px; background: rgba(255,213,74,.1); }
     .ln-timer { font-size: 40px; font-weight: 900; color: #ffd54a; margin: 4px 0; }
     .ln-month h3 { margin: 12px 0 4px; } .ln-month h3 small { font-size: 12px; opacity: .6; margin-left: 8px; } .ln-month ol { margin: 4px 0 6px; padding-left: 22px; font-size: 13.5px; }
