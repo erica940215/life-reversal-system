@@ -32,8 +32,8 @@
         <div class="rq-line">${st.map((s, i) => `<div class="rq-st ${i < q.stage ? "done" : i === q.stage ? "cur" : ""}"><span>${i < q.stage ? "✅" : i === q.stage ? "▶️" : "🔒"}</span>
           <div><b>第 ${i + 1} 關：${esc(s.goal)}</b>${i < q.stage ? `<small>${esc(s.story)}</small>` : ""}</div></div>`).join("")}</div>
         ${q.stage < 5 ? (q.ready ? `<button type="button" class="btn btn-primary" data-rq="adv" style="width:100%">⚔️ 完成第 ${q.stage + 1} 關</button>` : `<p class="rp-note">目前條件：${esc(st[q.stage].goal)}（之前做到過的也算）</p>`)
-          : `<p class="rp-note">🏆 全破！職業傳說裝已經放進背包。</p>`}
-        <p class="rp-note">每過一關送星屑，全破送 ${CLS[d.class]} 專屬傳說裝備（已經有的話升一級）。</p></div>`;
+          : `<p class="rp-note">🏆 全破！</p>`}
+        <p class="rp-note">每過一關送星屑＋🎫 普通召喚券 1 張；全破再送 🎟️ 特殊召喚券 2 張＋🌟 限定召喚券 1 張。</p></div>`;
     }
     /* 🏰 地下城 */
     const fl = d.dungeon.floors;
@@ -78,7 +78,7 @@
       const x = res.data, m = document.createElement("div");
       m.className = "vg-modal";
       m.innerHTML = `<div class="vg-card" style="text-align:center"><div class="bh-big">📜</div><div class="vg-title">第 ${x.stage} 關完成！</div><p class="vg-story big">${esc(x.story)}</p>
-        ${x.gear ? `<p class="bh-items">🏆 獲得職業傳說裝「${esc(x.gear_name || x.gear)}」</p>` : ""}<button type="button" class="btn btn-primary" style="width:100%">繼續冒險</button></div>`;
+<p class="bh-items">✨ 星屑＋🎫 普通召喚券 ×1${x.done ? "<br>🏆 全破獎勵：🎟️ 特殊召喚券 ×2、🌟 限定召喚券 ×1" : ""}</p><button type="button" class="btn btn-primary" style="width:100%">繼續冒險</button></div>`;
       m.addEventListener("click", () => m.remove()); document.body.appendChild(m);
       if (window.RpgGame && window.RpgGame.reload) window.RpgGame.reload();
       return load();

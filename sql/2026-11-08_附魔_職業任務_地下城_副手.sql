@@ -1,7 +1,7 @@
 -- =========================================================
 -- 序光計畫：⚔️ 冒險加強
 --   ✨ 裝備附魔：每週達成真實目標拿附魔卷軸，掛在指定裝備上（換裝也帶著走）
---   📜 職業專屬任務線：每個職業 5 關，全破送職業傳說裝
+--   📜 職業專屬任務線：每個職業 5 關，每關送星屑＋普通召喚券，全破再送特殊召喚券 2 張＋限定召喚券 1 張
 --   🏰 每日地下城：每天 3 層，每層一個真實小任務，底層有寶箱
 --   🐾 副手：孵出的寵物或扭蛋夥伴帶進冒險，戰力加成
 -- 可以重複執行。
@@ -244,13 +244,13 @@ begin
   if not public.rpg_quest_check(u, d->'stages'->q.stage->>'k') then raise exception '還沒達成：%', d->'stages'->q.stage->>'goal'; end if;
   update public.rpg_quests set stage = stage + 1, updated_at = now() where user_id = u and class = h.class;
   perform public.grant_item(u, 'stardust', 50 + 30 * q.stage, 'quest:' || h.class || ':' || (q.stage + 1));
+  -- 每關送 1 張普通召喚券；全破再送特殊召喚券 2 張＋限定召喚券 1 張
+  perform public.grant_item(u, 'ticket_normal', 1, 'quest:' || h.class || ':' || (q.stage + 1) || ':ticket');
   if q.stage + 1 = 5 then
-    select x into g from jsonb_array_elements_text(d->'reward') x where not exists (select 1 from public.rpg_gear where user_id = u and gear_key = x) limit 1;
-    g := coalesce(g, d->'reward'->>0);
-    insert into public.rpg_gear (user_id, gear_key, level) values (u, g, 1) on conflict (user_id, gear_key) do update set level = least(public.rpg_gear.level + 1, 5);
-    reward := g;
+    perform public.grant_item(u, 'ticket_special', 2, 'quest:' || h.class || ':done:special');
+    perform public.grant_item(u, 'ticket_limited', 1, 'quest:' || h.class || ':done:limited');
   end if;
-  return json_build_object('stage', q.stage + 1, 'story', d->'stages'->q.stage->>'story', 'gear', reward, 'gear_name', public.rpg_catalog()->'gear'->reward->>'name');
+  return json_build_object('stage', q.stage + 1, 'story', d->'stages'->q.stage->>'story', 'done', q.stage + 1 = 5);
 end; $$;
 
 create or replace function public.rpg_dungeon_clear(p_floor integer)
