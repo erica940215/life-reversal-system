@@ -170,6 +170,13 @@
   }
 
   /* 三件同一個限定系列：全部屬性 +15% */
+  /* 這件裝備屬於哪個套裝／限定系列（顯示用） */
+  function setTag(k) {
+    const g = gearInfo(k) || {}, cat = (RP.status && RP.status.catalog) || {}, sets = cat.sets || {}, out = [];
+    if (g.set && sets[g.set]) out.push(`🧩${sets[g.set].name}`);
+    if (g.pool === "limited" && g.series) out.push(`🌟${(cat.series_name || {})[g.series] || g.series}`);
+    return out.join(" ");
+  }
   function seriesFull() {
     const eq = (RP.status && RP.status.equip) || {};
     const ser = SLOTS.map(([slot]) => { const g = eq[slot] ? gearInfo(eq[slot]) : null; return g && g.pool === "limited" ? g.series : null; });
@@ -302,7 +309,7 @@
           ${g ? `<span class="rp-sub">${statLine(gearStats(cur, gearLevel(cur)))}${g.set && sets[g.set] ? `・${esc(sets[g.set].name)}` : ""}${g.class && CLASSES[g.class] ? `・${CLASSES[g.class].name}專屬` : ""}</span>` : ""}
           <select data-rp="equip" data-slot="${slot}" ${opts.length ? "" : "disabled"}>
             <option value="">${opts.length ? "（卸下）" : "還沒有這類裝備"}</option>
-            ${opts.map(o => `<option value="${o.key}" ${o.key === cur ? "selected" : ""}>[${TIER_NAME[gearInfo(o.key).tier]}] ${esc(gearInfo(o.key).name)} Lv${o.level}</option>`).join("")}
+            ${opts.map(o => `<option value="${o.key}" ${o.key === cur ? "selected" : ""}>[${TIER_NAME[gearInfo(o.key).tier]}] ${esc(gearInfo(o.key).name)} Lv${o.level}${setTag(o.key) ? "　" + esc(setTag(o.key)) : ""}</option>`).join("")}
           </select></div></div>`;
     }).join("");
 
@@ -454,7 +461,20 @@
     const sets = (RP.status.catalog && RP.status.catalog.sets) || {};
     const keys = Object.keys(gear);
     const got = keys.filter(k => gearLevel(k) > 0).length;
-    const groups = TIER_ORDER.map(t => {
+    const bySet = RP.bookView === "set";
+    const cat = RP.status.catalog || {}, names = cat.series_name || {};
+    const fam = {};
+    keys.forEach(k => { const g = gear[k]; if (g.set && sets[g.set]) (fam["s:" + g.set] = fam["s:" + g.set] || []).push(k); if (g.pool === "limited" && g.series) (fam["l:" + g.series] = fam["l:" + g.series] || []).push(k); });
+    const eqd = Object.values((RP.status && RP.status.equip) || {});
+    const setGroups = Object.entries(fam).map(([fk, ks]) => {
+      const isSet = fk.startsWith("s:"), id = fk.slice(2), own = ks.filter(k => gearLevel(k) > 0).length, on = ks.filter(k => eqd.includes(k)).length;
+      const title = isSet ? `🧩 ${esc(sets[id].name)}` : `🌟 限定系列「${esc(names[id] || id)}」`;
+      const rule = isSet ? `穿滿 3 件：${esc(sets[id].desc || "")}` : "武器、防具、飾品都穿這個系列：全部屬性 +15%";
+      return `<div class="rp-sec">${title}<small style="font-weight:400;opacity:.7;margin-left:6px">擁有 ${own}/${ks.length}・身上 ${on} 件</small></div><p class="rp-note" style="margin:0 0 6px">${rule}</p>
+        <div class="rp-grid">${ks.map(k => { const lv = gearLevel(k), g = gear[k];
+          return `<div class="rp-gear t-${g.tier} ${lv ? "" : "locked"} ${eqd.includes(k) ? "rp-worn" : ""}">${gearIcon(k, true)}<b>${lv ? esc(g.name) : "？？？"}</b><span class="rp-sub">${SLOTS.find(s => s[0] === g.slot)[1]}${lv ? `・Lv${lv}` : ""}${eqd.includes(k) ? "・穿著中" : ""}</span></div>`; }).join("")}</div>`;
+    }).join("");
+    const groups = bySet ? setGroups : TIER_ORDER.map(t => {
       const ks = keys.filter(k => gear[k].tier === t);
       if (!ks.length) return "";
       return `<div class="rp-sec">${TIER_NAME[t]}</div><div class="rp-grid">${ks.map(k => {
@@ -466,7 +486,8 @@
           ${g.set && sets[g.set] ? `<span class="rp-mini">${esc(sets[g.set].name)}</span>` : ""}${g.class && CLASSES[g.class] ? `<span class="rp-mini cls">${CLASSES[g.class].name}專屬</span>` : ""}</div>`;
       }).join("")}</div>`;
     }).join("");
-    return `<div class="card rp-card"><h3>裝備圖鑑 ${got} / ${keys.length}</h3><p class="rp-note">Lv5 的裝備可以用金幣和星屑「突破」，最多 ★3，每顆星屬性 +20%（你有 ✨${RP.status.stardust ?? "?"} 星屑）。</p>${groups}</div>`;
+    return `<div class="card rp-card"><h3>裝備圖鑑 ${got} / ${keys.length}</h3>
+      <div class="rp-row" style="margin-bottom:6px"><button type="button" class="btn btn-small ${bySet ? "" : "btn-primary"}" data-rp="bookview" data-v="tier">依稀有度</button><button type="button" class="btn btn-small ${bySet ? "btn-primary" : ""}" data-rp="bookview" data-v="set">依套裝／系列</button></div><p class="rp-note">Lv5 的裝備可以用金幣和星屑「突破」，最多 ★3，每顆星屬性 +20%（你有 ✨${RP.status.stardust ?? "?"} 星屑）。</p>${groups}</div>`;
   }
 
   function render() {
@@ -504,6 +525,7 @@
     if (!el || el.tagName === "SELECT") return;
     const act = el.dataset.rp;
     if (act === "tab") { RP.tab = el.dataset.v; render(); return; }
+    if (act === "bookview") { RP.bookView = el.dataset.v; render(); return; }
     if (act === "autoatk") { try { localStorage.setItem(AUTO_KEY, el.checked ? "1" : "0"); } catch (_) {} if (el.checked) autoAttack(true); return; }
     if (act === "class") {
       const c = CLASSES[el.dataset.v];
@@ -604,6 +626,7 @@
       .rp-slot select { margin-top: 4px; max-width: 100%; padding: 6px; border-radius: 8px; }
       .rp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin: 6px 0 4px; }
       .rp-gear { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 6px; border-radius: 12px; background: rgba(127,127,127,.08); text-align: center; border-top: 4px solid rgba(127,127,127,.3); font-size: 13px; }
+      .rp-gear.rp-worn { outline: 2px solid #3fb950; outline-offset: -2px; }
       .rp-gear.locked { opacity: .45; filter: grayscale(.8); }
       .rp-tag { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 99px; background: #6c4bd8; color: #fff; }
       .rp-sec { font-weight: 800; margin: 12px 0 2px; }
