@@ -307,7 +307,8 @@
     }).join("");
 
     const next = st0.class_set_at ? new Date(new Date(st0.class_set_at).getTime() + 7 * 86400000) : null;
-    const canChange = !next || next.getTime() <= Date.now();
+    const cool = !(!next || next.getTime() <= Date.now()), tk = RP.classTicket || 0, canChange = !cool || tk > 0;
+    if (RP.classTicket == null && typeof db !== "undefined" && currentUser) { RP.classTicket = 0; db.from("player_items").select("qty").eq("user_id", currentUser.id).eq("item_key", "class_ticket").maybeSingle().then(({ data }) => { RP.classTicket = (data && data.qty) || 0; if (RP.classTicket) render(); }); }
 
     return `<div class="card rp-card rp-hero">
         <div class="rp-hero-top">${classIcon(st0.class, true)}
@@ -323,7 +324,7 @@
         <p class="rp-note">有些彩蛋藏在日常的行為裡，條件達成就會自己出現。另外，你也可以寫一句鼓勵自己的話，換一枚徽章。</p>
         <div class="rp-row"><button type="button" class="btn btn-small" data-rp="selfnote">寫一句鼓勵自己的話</button></div></div>
       <div class="card rp-card"><h3>換職業</h3>
-        <p class="rp-note">${canChange ? "現在可以換職業。換了之後 7 天內不能再換。" : `下次可以換：${next.toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}`}</p>
+        <p class="rp-note">${!cool ? "現在可以換職業。換了之後 7 天內不能再換。" : tk > 0 ? `🎫 你有 ${tk} 張「免費換職業券」，現在換會用掉一張（不用等 7 天）。` : `下次可以換：${next.toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}`}</p>
         <div class="rp-row">${Object.entries(CLASSES).filter(([k]) => k !== st0.class).map(([k, c]) =>
           `<button type="button" class="btn btn-small" data-rp="class" data-v="${k}" ${canChange ? "" : "disabled"}>${c.emoji} ${c.name}</button>`).join("")}</div></div>`;
   }
@@ -507,7 +508,7 @@
     if (act === "class") {
       const c = CLASSES[el.dataset.v];
       if (RP.status.class && !confirm(`確定換成「${c.name}」？之後 7 天內不能再換。`)) return;
-      call("rpg_set_class", { p_class: el.dataset.v }, () => toast(`${c.emoji} 你現在是${c.name}了`));
+      call("rpg_set_class", { p_class: el.dataset.v }, d => { if (d && d.used_ticket) RP.classTicket = Math.max(0, (RP.classTicket || 1) - 1); toast(`${c.emoji} 你現在是${c.name}了${d && d.used_ticket ? "（用掉一張免費換職業券）" : ""}`); });
       return;
     }
     if (act === "selfnote") {
