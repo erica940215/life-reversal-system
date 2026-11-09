@@ -9,6 +9,9 @@
   const SP = { d: null, err: null, min: false, line: "" };
   try { SP.min = localStorage.getItem("spiritMin") === "1"; } catch (_) {}
   const hour = () => new Date().getHours();
+  /* 有圖就用圖（spirit/{key}_{1幼體|2成體|3覺醒}.webp），沒有就用 emoji */
+  const IMGV = "1";
+  const pic = (key, stage, emoji, cls, size) => `<img class="sp-img ${cls || ""}" src="img/spirit/${key}_${Math.min(stage, 2) + 1}.webp?v=${IMGV}" alt="" style="${size ? `width:${size}px;height:${size}px;` : ""}" onerror="this.outerHTML='<span class=&quot;sp-emo ${cls || ""}&quot; style=&quot;${size ? `font-size:${Math.round(size * 0.62)}px` : ""}&quot;>${emoji}</span>'">`;
   const focusing = () => { try { return typeof focusTimer !== "undefined" && !!focusTimer; } catch (_) { return false; } };
 
   async function load() {
@@ -32,13 +35,13 @@
     if (!SP.d || !hasDb()) { if (w) w.remove(); return; }
     if (!w) { w = document.createElement("div"); w.id = "sp-float"; document.body.appendChild(w); }
     const b = active(), h = hour();
-    if (!b) { w.className = "sp-float egg"; w.innerHTML = `<button type="button" class="sp-body" data-sp="open" title="靈獸"><span class="sp-emo">🥚</span></button><span class="sp-bub">點我抽第一隻靈獸！</span>`; return; }
+    if (!b) { w.className = "sp-float egg"; w.innerHTML = `<button type="button" class="sp-body" data-sp="open" title="靈獸"><img class="sp-img" src="img/spirit/egg.webp" alt="" style="width:56px;height:56px" onerror="this.outerHTML='<span class=&quot;sp-emo&quot;>🥚</span>'"></button><span class="sp-bub">點我抽第一隻靈獸！</span>`; return; }
     const st = STAGE[b.stage], sleep = h >= 23 || h < 6, ls = lines(b);
     if (!SP.line || Math.random() < 0.35) SP.line = ls[Math.floor(Math.random() * ls.length)];
     w.className = `sp-float r-${b.def.r} s${b.stage} ${sleep ? "sleep" : ""} ${focusing() ? "focus" : ""} mood-${SP.d.mood} ${SP.min ? "min" : ""}`;
-    w.innerHTML = SP.min ? `<button type="button" class="sp-body" data-sp="max" title="叫出靈獸"><span class="sp-emo">${b.def.emoji}</span></button>`
+    w.innerHTML = SP.min ? `<button type="button" class="sp-body" data-sp="max" title="叫出靈獸">${pic(b.key, b.stage, b.def.emoji, "", 34)}</button>`
       : `<span class="sp-bub">${esc(SP.line)}</span><button type="button" class="sp-x" data-sp="min" aria-label="收起">–</button>
-        <button type="button" class="sp-body" data-sp="open" title="${esc(b.name || b.def.name)}"><span class="sp-aura"></span><span class="sp-emo" style="font-size:${Math.round(40 * st[1])}px">${b.def.emoji}</span>${sleep ? `<i class="sp-z">💤</i>` : focusing() ? `<i class="sp-z">📖</i>` : SP.d.mood === "sad" ? `<i class="sp-z">💧</i>` : ""}</button>
+        <button type="button" class="sp-body" data-sp="open" title="${esc(b.name || b.def.name)}"><span class="sp-aura"></span>${pic(b.key, b.stage, b.def.emoji, "", Math.round(64 * st[1]))}${sleep ? `<i class="sp-z">💤</i>` : focusing() ? `<i class="sp-z">📖</i>` : SP.d.mood === "sad" ? `<i class="sp-z">💧</i>` : ""}</button>
         <small class="sp-tag">${esc(b.name || b.def.name)}・${st[0]}</small>`;
   }
 
@@ -51,7 +54,7 @@
       const a = active();
       m.innerHTML = `<div class="vg-card sp-card"><div class="vg-title">🐉 靈獸</div>
         ${a ? (() => { const s = STAGE[a.stage], nx = s[2], pv = STAGE[a.stage - 1] ? STAGE[a.stage - 1][2] : 0, pct = nx ? Math.min(100, (a.xp - pv) / (nx - pv) * 100) : 100;
-          return `<div class="sp-hero r-${a.def.r} s${a.stage}"><span class="sp-aura"></span><span class="sp-emo big">${a.def.emoji}</span></div>
+          return `<div class="sp-hero r-${a.def.r} s${a.stage}"><span class="sp-aura"></span>${pic(a.key, a.stage, a.def.emoji, "big", 116)}</div>
           <div class="sp-info"><b>${esc(a.name || a.def.name)}</b> <em style="color:${RCOL[a.def.r]}">${a.def.r}</em><small>${esc(a.def.name)}・${s[0]}・經驗 ${a.xp}${nx ? ` / ${nx}` : "（已覺醒）"}</small>
             <div class="tph-bar"><i style="width:${pct}%"></i></div><p>${esc(a.def.desc)}</p>
             <button type="button" class="btn btn-small" data-sp="rename" data-k="${a.key}">✏️ 取名字</button></div>`; })() : `<p class="vg-note">還沒有靈獸，先抽一顆蛋吧！</p>`}
@@ -63,7 +66,7 @@
         <div class="sp-out"></div>
         <div class="vg-sec">📖 圖鑑（${d.beasts.length}/${Object.keys(d.defs).length}）・點一下換牠陪你</div>
         <div class="sp-grid">${Object.entries(d.defs).map(([k, df]) => { const o = d.beasts.find(x => x.key === k);
-          return `<button type="button" class="sp-it ${o ? "" : "lock"} ${st.active === k ? "on" : ""}" ${o ? `data-sp="act" data-k="${k}"` : "disabled"} style="--c:${RCOL[df.r]}"><span>${o ? df.emoji : "❔"}</span><b>${o ? esc(o.name || df.name) : "？？？"}</b><small>${df.r}${o ? "・" + STAGE[o.stage][0] : ""}</small></button>`; }).join("")}</div>
+          return `<button type="button" class="sp-it ${o ? "" : "lock"} ${st.active === k ? "on" : ""}" ${o ? `data-sp="act" data-k="${k}"` : "disabled"} style="--c:${RCOL[df.r]}"><span>${o ? pic(k, o.stage, df.emoji, "", 44) : "❔"}</span><b>${o ? esc(o.name || df.name) : "？？？"}</b><small>${df.r}${o ? "・" + STAGE[o.stage][0] : ""}</small></button>`; }).join("")}</div>
         <label class="sp-hide"><input type="checkbox" data-sp="hide" ${SP.min ? "checked" : ""}> 平常收成小圖示</label>
         <button type="button" class="btn" data-sp="close" style="width:100%;margin-top:8px">關閉</button></div>`;
     };
@@ -76,7 +79,7 @@
         const { data, error } = await db.rpc("spirit_pull", { p_free: x.dataset.free === "1" });
         if (error) { x.disabled = false; return toast(error.message); }
         await load(); draw();
-        m.querySelector(".sp-out").innerHTML = `<div class="sp-reveal" style="--c:${RCOL[data.rarity]}"><span class="sp-emo big">${data.def.emoji}</span><b>${data.rarity}・${esc(data.def.name)}</b><small>${data.new ? "✨ 新的靈獸！" : "重複了，經驗大增"}</small><p>${esc(data.def.desc)}</p></div>`;
+        m.querySelector(".sp-out").innerHTML = `<div class="sp-reveal" style="--c:${RCOL[data.rarity]}">${pic(data.key, 0, data.def.emoji, "big", 110)}<b>${data.rarity}・${esc(data.def.name)}</b><small>${data.new ? "✨ 新的靈獸！" : "重複了，經驗大增"}</small><p>${esc(data.def.desc)}</p></div>`;
       }
       if (a === "act") { const { data, error } = await db.rpc("spirit_set_active", { p_key: x.dataset.k }); if (error) return toast(error.message); SP.d = data; render(); draw(); toast("🐉 換牠陪你了"); }
       if (a === "rename") { const v = prompt("幫牠取個名字（最多 12 字）"); if (v == null) return; const { data } = await db.rpc("spirit_rename", { p_key: x.dataset.k, p_name: v }); if (data) { SP.d = data; render(); draw(); } }
@@ -98,6 +101,9 @@
     #sp-float > * { pointer-events: auto; }
     #bh-ov ~ #sp-float, body.bh-lock #sp-float { z-index: 9995; }
     .sp-body { position: relative; border: 0; background: none; cursor: pointer; padding: 0; width: 64px; height: 64px; display: grid; place-items: center; }
+    .sp-img { display: block; object-fit: contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,.35)); animation: spBob 3s ease-in-out infinite; margin: 0 auto; }
+    .sleep .sp-img { animation: spSleep 4s ease-in-out infinite; filter: brightness(.75); } .mood-sad .sp-img { filter: grayscale(.5); animation: none; } .pet .sp-img { animation: spPet .6s ease; }
+    #sp-float .sp-body { width: auto; height: auto; min-width: 64px; min-height: 64px; }
     .sp-emo { display: block; line-height: 1; filter: drop-shadow(0 4px 6px rgba(0,0,0,.35)); animation: spBob 3s ease-in-out infinite; } .sp-emo.big { font-size: 72px; }
     @keyframes spBob { 50% { transform: translateY(-5px); } }
     .sleep .sp-emo { animation: spSleep 4s ease-in-out infinite; filter: grayscale(.2) brightness(.85); } @keyframes spSleep { 50% { transform: scale(.95) rotate(-4deg); } }
