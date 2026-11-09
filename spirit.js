@@ -111,21 +111,25 @@
     drag.w.style.right = Math.max(0, Math.min(innerWidth - 60, drag.r - dx)) + "px";
     drag.w.style.bottom = Math.max(0, Math.min(innerHeight - 60, drag.b - dy)) + "px";
   }, { passive: false });
-  const endDrag = () => {
+  let tapAt = 0;
+  const endDrag = e => {
     if (!drag) return;
+    if (!dragged && e && e.type === "pointerup") { const x = drag.w.querySelector(".sp-body[data-sp]"); tapAt = Date.now(); drag = null; if (x) act(x.dataset.sp); return; }
     if (dragged) { drag.w.classList.remove("dragging"); try { localStorage.setItem("spiritPos", JSON.stringify({ r: parseFloat(drag.w.style.right), b: parseFloat(drag.w.style.bottom) })); } catch (_) {} }
     drag = null;
   };
   document.addEventListener("pointerup", endDrag); document.addEventListener("pointercancel", endDrag);
-  document.addEventListener("click", e => { if (dragged && e.target.closest("#sp-float")) { e.stopPropagation(); e.preventDefault(); dragged = false; } }, true);
+  document.addEventListener("click", e => { if (e.target.closest("#sp-float .sp-body") && Date.now() - tapAt < 800) { e.stopPropagation(); e.preventDefault(); return; } if (dragged && e.target.closest("#sp-float")) { e.stopPropagation(); e.preventDefault(); dragged = false; } }, true);
   addEventListener("resize", () => { const w = document.getElementById("sp-float"); if (w) placeFloat(w); });
 
   document.addEventListener("click", e => {
     const x = e.target.closest("#sp-float [data-sp]"); if (!x) return;
-    const a = x.dataset.sp;
+    act(x.dataset.sp);
+  });
+  function act(a) {
     if (a === "open") { if (Math.random() < 0.5 && active()) { const f = document.getElementById("sp-float"); f.classList.add("pet"); setTimeout(() => f.classList.remove("pet"), 700); } return panel(); }
     if (a === "min" || a === "max") { SP.min = a === "min"; try { localStorage.setItem("spiritMin", SP.min ? "1" : "0"); } catch (_) {} render(); }
-  });
+  }
 
   const st = document.createElement("style");
   st.textContent = `
