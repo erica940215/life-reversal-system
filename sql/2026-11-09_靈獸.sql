@@ -103,6 +103,8 @@ begin
   rar := case when s.pity >= 29 then (case when r < 0.2 then 'SSR' else 'SR' end)
               when r < 0.03 then 'SSR' when r < 0.15 then 'SR' when r < 0.45 then 'R' else 'N' end;
   select key into k from jsonb_each(public.spirit_defs()) x(key, v) where v->>'r' = rar order by random() limit 1;
+  -- 第一隻一定是小白鹿
+  if s.pulls = 0 and not exists (select 1 from public.spirit_beasts where user_id = u) then k := 'deer'; rar := 'N'; end if;
   isnew := not exists (select 1 from public.spirit_beasts where user_id = u and key = k);
   insert into public.spirit_beasts (user_id, key) values (u, k)
     on conflict (user_id, key) do update set dupes = public.spirit_beasts.dupes + 1, xp = public.spirit_beasts.xp + case rar when 'SSR' then 800 when 'SR' then 500 when 'R' then 300 else 200 end;

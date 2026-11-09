@@ -33,7 +33,7 @@
   function render() {
     let w = document.getElementById("sp-float");
     if (!SP.d || !hasDb()) { if (w) w.remove(); return; }
-    if (!w) { w = document.createElement("div"); w.id = "sp-float"; document.body.appendChild(w); }
+    if (!w) { w = document.createElement("div"); w.id = "sp-float"; document.body.appendChild(w); placeFloat(w); }
     const b = active(), h = hour();
     if (!b) { w.className = "sp-float egg"; w.innerHTML = `<button type="button" class="sp-body" data-sp="open" title="靈獸"><img class="sp-img" src="img/spirit/egg.webp" alt="" style="width:56px;height:56px" onerror="this.outerHTML='<span class=&quot;sp-emo&quot;>🥚</span>'"></button><span class="sp-bub">點我抽第一隻靈獸！</span>`; return; }
     const st = STAGE[b.stage], sleep = h >= 23 || h < 6, ls = lines(b);
@@ -88,6 +88,38 @@
     draw(); document.body.appendChild(m);
   }
 
+  /* 用手指／滑鼠拖著靈獸走，位置會記住 */
+  function placeFloat(w) {
+    let p = null; try { p = JSON.parse(localStorage.getItem("spiritPos") || "null"); } catch (_) {}
+    if (!p) return;
+    w.style.right = Math.max(0, Math.min(innerWidth - 60, p.r)) + "px";
+    w.style.bottom = Math.max(0, Math.min(innerHeight - 60, p.b)) + "px";
+  }
+  let drag = null, dragged = false;
+  document.addEventListener("pointerdown", e => {
+    const body = e.target.closest("#sp-float .sp-body"); if (!body) return;
+    const w = document.getElementById("sp-float"), r = w.getBoundingClientRect();
+    drag = { x: e.clientX, y: e.clientY, r: innerWidth - r.right, b: innerHeight - r.bottom, id: e.pointerId, w };
+    dragged = false;
+  });
+  document.addEventListener("pointermove", e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!dragged && Math.hypot(dx, dy) < 8) return;
+    dragged = true; e.preventDefault();
+    drag.w.classList.add("dragging");
+    drag.w.style.right = Math.max(0, Math.min(innerWidth - 60, drag.r - dx)) + "px";
+    drag.w.style.bottom = Math.max(0, Math.min(innerHeight - 60, drag.b - dy)) + "px";
+  }, { passive: false });
+  const endDrag = () => {
+    if (!drag) return;
+    if (dragged) { drag.w.classList.remove("dragging"); try { localStorage.setItem("spiritPos", JSON.stringify({ r: parseFloat(drag.w.style.right), b: parseFloat(drag.w.style.bottom) })); } catch (_) {} }
+    drag = null;
+  };
+  document.addEventListener("pointerup", endDrag); document.addEventListener("pointercancel", endDrag);
+  document.addEventListener("click", e => { if (dragged && e.target.closest("#sp-float")) { e.stopPropagation(); e.preventDefault(); dragged = false; } }, true);
+  addEventListener("resize", () => { const w = document.getElementById("sp-float"); if (w) placeFloat(w); });
+
   document.addEventListener("click", e => {
     const x = e.target.closest("#sp-float [data-sp]"); if (!x) return;
     const a = x.dataset.sp;
@@ -99,6 +131,7 @@
   st.textContent = `
     #sp-float { position: fixed; right: 12px; bottom: 86px; z-index: 900; display: flex; flex-direction: column; align-items: flex-end; pointer-events: none; }
     #sp-float > * { pointer-events: auto; }
+    #sp-float .sp-body { touch-action: none; cursor: grab; } #sp-float.dragging .sp-body { cursor: grabbing; transform: scale(1.12); } #sp-float.dragging .sp-bub { display: none; }
     #bh-ov ~ #sp-float, body.bh-lock #sp-float { z-index: 9995; }
     .sp-body { position: relative; border: 0; background: none; cursor: pointer; padding: 0; width: 64px; height: 64px; display: grid; place-items: center; }
     .sp-img { display: block; object-fit: contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,.35)); animation: spBob 3s ease-in-out infinite; margin: 0 auto; }
