@@ -35,14 +35,12 @@
     if (!SP.d || !hasDb()) { if (w) w.remove(); return; }
     if (!w) { w = document.createElement("div"); w.id = "sp-float"; document.body.appendChild(w); placeFloat(w); }
     const b = active(), h = hour();
-    if (!b) { w.className = "sp-float egg"; w.innerHTML = `<button type="button" class="sp-body" data-sp="open" title="靈獸"><img class="sp-img" src="img/spirit/egg.webp" alt="" style="width:56px;height:56px" onerror="this.outerHTML='<span class=&quot;sp-emo&quot;>🥚</span>'"></button><span class="sp-bub">點我抽第一隻靈獸！</span>`; return; }
+    if (!b) { w.className = "sp-float egg"; w.innerHTML = `<button type="button" class="sp-body" data-sp="open" title="靈獸"><img class="sp-img" src="img/spirit/egg.webp" alt="" style="width:56px;height:56px" onerror="this.outerHTML='<span class=&quot;sp-emo&quot;>🥚</span>'"></button>`; return; }
     const st = STAGE[b.stage], sleep = h >= 23 || h < 6, ls = lines(b);
     if (!SP.line || Math.random() < 0.35) SP.line = ls[Math.floor(Math.random() * ls.length)];
     w.className = `sp-float r-${b.def.r} s${b.stage} ${sleep ? "sleep" : ""} ${focusing() ? "focus" : ""} mood-${SP.d.mood} ${SP.min ? "min" : ""}`;
     w.innerHTML = SP.min ? `<button type="button" class="sp-body" data-sp="max" title="叫出靈獸">${pic(b.key, b.stage, b.def.emoji, "", 34)}</button>`
-      : `<span class="sp-bub">${esc(SP.line)}</span><button type="button" class="sp-x" data-sp="min" aria-label="收起">–</button>
-        <button type="button" class="sp-body" data-sp="open" title="${esc(b.name || b.def.name)}"><span class="sp-aura"></span>${pic(b.key, b.stage, b.def.emoji, "", Math.round(64 * st[1]))}${sleep ? `<i class="sp-z">💤</i>` : focusing() ? `<i class="sp-z">📖</i>` : SP.d.mood === "sad" ? `<i class="sp-z">💧</i>` : ""}</button>
-        <small class="sp-tag">${esc(b.name || b.def.name)}・${st[0]}</small>`;
+      : `<button type="button" class="sp-body" data-sp="open" title="${esc(b.name || b.def.name)}"><span class="sp-aura"></span>${pic(b.key, b.stage, b.def.emoji, "", Math.round(64 * st[1]))}${sleep ? `<i class="sp-z">💤</i>` : focusing() ? `<i class="sp-z">📖</i>` : SP.d.mood === "sad" ? `<i class="sp-z">💧</i>` : ""}</button>`;
   }
 
   function panel() {
