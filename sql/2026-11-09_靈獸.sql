@@ -96,7 +96,7 @@ begin
   perform public.spirit_sync(u);
   select * into s from public.spirit_state where user_id = u for update;
   if p_free then
-    if not public.grant_item(u, 'spirit_free_mark', 0, 'spirit-free:' || public.life_week(t)) then raise exception '這週的免費抽已經用過了'; end if;
+    if not public.grant_item(u, 'spirit_free_mark', 1, 'spirit-free:' || public.life_week(t)) then raise exception '這週的免費抽已經用過了'; end if;
   else
     perform public.fun_take(u, 'stardust', 300, 'spirit-pull:' || v_id);
   end if;
