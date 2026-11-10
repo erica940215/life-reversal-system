@@ -63,7 +63,7 @@
         <div class="vg-sec">🥚 抽靈獸蛋</div>
         <div class="sp-pull">${d.free ? `<button type="button" class="btn btn-primary" data-sp="pull" data-free="1">🎁 本週免費抽</button>` : ""}
           <button type="button" class="btn ${d.free ? "" : "btn-primary"}" data-sp="pull" ${d.stardust >= 300 ? "" : "disabled"}>✨ 300 星屑抽一次（有 ${d.stardust}）</button></div>
-        <p class="vg-note">機率：N 55%・R 30%・SR 12%・SSR 3%。保底：再 ${Math.max(1, 30 - (st.pity || 0))} 抽內必出 SR 以上。</p>
+        <p class="vg-note">機率：N 55%・R 30%・SR 12%・SSR 3%。保底：再 ${Math.max(1, 30 - (st.pity || 0))} 抽內必出 SR 以上。目前只會抽到已開放的靈獸，新靈獸陸續加入；保底會留到牠們開放。</p>
         <div class="sp-out"></div>
         <div class="vg-sec">📖 圖鑑（${d.beasts.length}/${Object.keys(d.defs).length}）・點一下換牠陪你</div>
         <div class="sp-grid">${Object.entries(d.defs).map(([k, df]) => { const o = d.beasts.find(x => x.key === k);

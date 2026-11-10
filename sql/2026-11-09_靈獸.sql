@@ -86,6 +86,9 @@ begin
     'free', not exists (select 1 from public.item_events where user_id = u and source_key = 'spirit-free:' || public.life_week(t)));
 end; $$;
 
+-- 已經有圖、可以抽到的靈獸（上傳新素材後加進來）
+create or replace function public.spirit_ready() returns text[] language sql immutable as $$ select array['deer', 'panda', 'rabbit', 'fox'] $$;
+
 -- 抽一次靈獸蛋：N 55%、R 30%、SR 12%、SSR 3%；30 抽內沒出 SR 以上，第 30 抽保底
 create or replace function public.spirit_pull(p_free boolean default false)
 returns json language plpgsql security definer set search_path to 'public' as $$
@@ -102,7 +105,9 @@ begin
   end if;
   rar := case when s.pity >= 29 then (case when r < 0.2 then 'SSR' else 'SR' end)
               when r < 0.03 then 'SSR' when r < 0.15 then 'SR' when r < 0.45 then 'R' else 'N' end;
-  select key into k from jsonb_each(public.spirit_defs()) x(key, v) where v->>'r' = rar order by random() limit 1;
+  -- 只抽有圖的靈獸（spirit_ready）；這個稀有度還沒有圖，就從有圖的裡面抽
+  select key into k from jsonb_each(public.spirit_defs()) x(key, v) where v->>'r' = rar and key = any(public.spirit_ready()) order by random() limit 1;
+  if k is null then select key, v->>'r' into k, rar from jsonb_each(public.spirit_defs()) x(key, v) where key = any(public.spirit_ready()) order by random() limit 1; end if;
   -- 第一隻一定是小白鹿
   if s.pulls = 0 and not exists (select 1 from public.spirit_beasts where user_id = u) then k := 'deer'; rar := 'N'; end if;
   isnew := not exists (select 1 from public.spirit_beasts where user_id = u and key = k);
