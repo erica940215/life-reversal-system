@@ -12,6 +12,9 @@
   /* 有圖就用圖（spirit/{key}_{1幼體|2成體|3覺醒}.webp），沒有就用 emoji */
   const IMGV = "1";
   const pic = (key, stage, emoji, cls, size) => `<img class="sp-img ${cls || ""}" src="img/spirit/${key}_${Math.min(stage, 2) + 1}.webp?v=${IMGV}" alt="" style="${size ? `width:${size}px;height:${size}px;` : ""}" onerror="this.outerHTML='<span class=&quot;sp-emo ${cls || ""}&quot; style=&quot;${size ? `font-size:${Math.round(size * 0.62)}px` : ""}&quot;>${emoji}</span>'">`;
+  /* 有狀態圖就用狀態圖（{key}_{階段}_{normal|happy|focus|sleep|sad}），沒有就退回階段圖，再沒有就 emoji */
+  const statePic = (key, stage, state, emoji, size) => { const n = Math.min(stage, 2) + 1, emo = `<span class=&quot;sp-emo&quot; style=&quot;font-size:${Math.round(size * 0.62)}px&quot;>${emoji}</span>`;
+    return `<img class="sp-img" src="img/spirit/${key}_${n}_${state}.webp?v=${IMGV}" alt="" style="width:${size}px;height:${size}px" onload="if(!this.dataset.f)this.classList.add('st')" onerror="if(!this.dataset.f){this.dataset.f=1;this.src='img/spirit/${key}_${n}.webp?v=${IMGV}'}else{this.outerHTML='${emo}'}">`; };
   const focusing = () => { try { return typeof focusTimer !== "undefined" && !!focusTimer; } catch (_) { return false; } };
 
   async function load() {
@@ -40,7 +43,7 @@
     if (!SP.line || Math.random() < 0.35) SP.line = ls[Math.floor(Math.random() * ls.length)];
     w.className = `sp-float r-${b.def.r} s${b.stage} ${sleep ? "sleep" : ""} ${focusing() ? "focus" : ""} mood-${SP.d.mood} ${SP.min ? "min" : ""}`;
     w.innerHTML = SP.min ? `<button type="button" class="sp-body" data-sp="max" title="叫出靈獸">${pic(b.key, b.stage, b.def.emoji, "", 34)}</button>`
-      : `<button type="button" class="sp-body" data-sp="open" title="${esc(b.name || b.def.name)}"><span class="sp-aura"></span>${pic(b.key, b.stage, b.def.emoji, "", Math.round(64 * st[1]))}${sleep ? `<i class="sp-z">💤</i>` : focusing() ? `<i class="sp-z">📖</i>` : SP.d.mood === "sad" ? `<i class="sp-z">💧</i>` : ""}</button>`;
+      : `<button type="button" class="sp-body" data-sp="open" title="${esc(b.name || b.def.name)}"><span class="sp-aura"></span>${statePic(b.key, b.stage, sleep ? "sleep" : focusing() ? "focus" : SP.d.mood === "sad" ? "sad" : SP.d.mood === "great" ? "happy" : "normal", b.def.emoji, Math.round(72 * st[1]))}${sleep ? `<i class="sp-z">💤</i>` : focusing() ? `<i class="sp-z">📖</i>` : SP.d.mood === "sad" ? `<i class="sp-z">💧</i>` : ""}</button>`;
   }
 
   function panel() {
@@ -138,6 +141,8 @@
     .sp-body { position: relative; border: 0; background: none; cursor: pointer; padding: 0; width: 64px; height: 64px; display: grid; place-items: center; }
     .sp-img { display: block; object-fit: contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,.35)); animation: spBob 3s ease-in-out infinite; margin: 0 auto; }
     .sleep .sp-img { animation: spSleep 4s ease-in-out infinite; filter: brightness(.75); } .mood-sad .sp-img { filter: grayscale(.5); animation: none; } .pet .sp-img { animation: spPet .6s ease; }
+    #sp-float .sp-img.st { filter: drop-shadow(0 4px 6px rgba(0,0,0,.35)); } #sp-float .sleep .sp-img.st, #sp-float.sleep .sp-img.st { animation: spSleep 4s ease-in-out infinite; } #sp-float.mood-sad .sp-img.st { animation: spBob 5s ease-in-out infinite; }
+    #sp-float .sp-body:has(.st) .sp-z { display: none; }
     #sp-float .sp-body { width: auto; height: auto; min-width: 64px; min-height: 64px; }
     .sp-emo { display: block; line-height: 1; filter: drop-shadow(0 4px 6px rgba(0,0,0,.35)); animation: spBob 3s ease-in-out infinite; } .sp-emo.big { font-size: 72px; }
     @keyframes spBob { 50% { transform: translateY(-5px); } }
