@@ -28,7 +28,7 @@
   let STATIC = null;
   async function staticTests() {
     if (STATIC) return STATIC;
-    try { const ids = await (await fetch("toeic-tests/index.json?v=3")).json(); STATIC = (await Promise.all(ids.map(i => fetch(`toeic-tests/${i}.json?v=3`).then(r => r.json()).catch(() => null)))).filter(Boolean).map(t => Object.assign(t, { builtin: true })); }
+    try { const ids = await (await fetch("toeic-tests/index.json?v=4")).json(); STATIC = (await Promise.all(ids.map(i => fetch(`toeic-tests/${i}.json?v=4`).then(r => r.json()).catch(() => null)))).filter(Boolean).map(t => Object.assign(t, { builtin: true })); }
     catch (_) { STATIC = []; }
     return STATIC;
   }
