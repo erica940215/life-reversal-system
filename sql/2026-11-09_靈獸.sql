@@ -61,7 +61,8 @@ begin
     + 15 * (select count(*) from public.tasks where user_id = u and completed and completed_at >= s.last_sync)
     + 5 * (select count(*) from public.project_step_logs where user_id = u and done and created_at >= s.last_sync)
     + (select count(*) from public.vocab_log where user_id = u and created_at >= s.last_sync)
-    + 10 * (select count(*) from public.learn_notes where user_id = u and created_at >= s.last_sync);
+    + 10 * (select count(*) from public.learn_notes where user_id = u and created_at >= s.last_sync)
+    + 2 * (select count(*) from public.toeic_answers where user_id = u and created_at >= s.last_sync);
   update public.spirit_beasts set xp = xp + gained where user_id = u and key = s.active;
   update public.spirit_state set last_sync = now() where user_id = u;
   return gained;

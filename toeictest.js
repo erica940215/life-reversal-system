@@ -156,7 +156,7 @@
       m.innerHTML = `<div class="vg-card tc-card"><div class="tc-mh"><b>📝 ${esc(t.title)}・${P.name}</b><span>${done()}/${total}${deadline ? ` ・⏱️ <i id="tt-clock"></i>` : ""}</span><button type="button" class="tr-x" data-x="1">✕</button></div>
         <div class="tc-bar"><i style="width:${done() / total * 100}%"></i></div>
         ${L ? `<div class="tc-p2 tt-au"><button type="button" class="tc-play" data-play="1" ${exam && g.played ? "disabled" : ""}>${exam && g.played ? "✔️ 已播放" : g.played ? "🔁 再聽一次" : "🔊 播放"}</button></div>` : ""}
-        ${body(g)}${g.qs.map((_, qi) => qHtml(g, qi)).join("")}
+        ${g.p === 7 ? `<div class="tt-p7"><span>⏱️ 建議 ${g.qs.length} 分鐘・已用 <b id="tt-p7t">0:00</b></span><div class="tc-mini"><i id="tt-p7b"></i></div><small>💡 先看題目，抓關鍵字，再回文章找答案</small></div>${g.qs.map((_, qi) => qHtml(g, qi)).join("")}${body(g)}` : `${body(g)}${g.qs.map((_, qi) => qHtml(g, qi)).join("")}`}
         ${!exam && g.checked ? reveal(g) : ""}
         <div class="tr-row">${gi > 0 ? `<button type="button" class="btn btn-small" data-prev="1">← 上一組</button>` : ""}
           ${!exam && !g.checked ? `<button type="button" class="btn btn-small btn-primary" data-check="1" ${all ? "" : "disabled"} style="margin-left:auto">對答案</button>` : `<button type="button" class="btn btn-small btn-primary" data-next="1" style="margin-left:auto">${gi + 1 < G.length ? "下一組 →" : "交卷看成績"}</button>`}</div></div>`;
@@ -164,8 +164,24 @@
       if (L && !g.played) setTimeout(() => doPlay(g), 400);
       G.slice(gi + 1, gi + 3).forEach(n => { const a = audioOf(n); if (a) clip(a.key, a.body).catch(() => {}); if (n.p === 1) photo(n.it.img).catch(() => {}); });
       tickClock();
+      if (g.p === 7 && !g.t0) g.t0 = Date.now();
     }
-    function reveal(g) {
+    /* Part 7 每組的計時：建議每題 1 分鐘，超過會提醒 */
+    const p7iv = setInterval(() => {
+      if (!m.isConnected) return clearInterval(p7iv);
+      const g = G[gi]; if (!g || g.p !== 7 || !g.t0 || g.checked) return;
+      const used = (Date.now() - g.t0) / 1000, lim = g.qs.length * 60, t = m.querySelector("#tt-p7t"), b = m.querySelector("#tt-p7b");
+      if (t) t.textContent = `${Math.floor(used / 60)}:${String(Math.floor(used % 60)).padStart(2, "0")}`;
+      if (b) { b.style.width = Math.min(100, used / lim * 100) + "%"; b.style.background = used > lim ? "#f85149" : ""; }
+      if (used > lim && !g.warned) { g.warned = true; toast("⏱️ 這組超過建議時間了：先選最有把握的答案，往下做"); }
+    }, 1000);
+    function reveal(g) { return reveal0(g) + tools(g); }
+    function tools(g) {
+      const wrong = g.qs.some((q, qi) => ans[`${g.id}#${qi}`] !== q.a);
+      return `<div class="tt-tools">${wrong ? `<div class="tt-rs"><small>❓ 這組錯在哪？</small>${REASONS.map(r => `<button type="button" class="tr-chip sm ${g.reason === r ? "on" : ""}" data-rs="${r}">${r}</button>`).join("")}</div>` : ""}
+        <div class="tr-row">${g.p === 3 || g.p === 4 ? `<button type="button" class="btn btn-small" data-shadow="1">🎧 逐句跟讀</button>` : ""}<button type="button" class="btn btn-small" data-vocab="1">📚 收集生字</button></div></div>`;
+    }
+    function reveal0(g) {
       const it = g.it;
       if (g.p === 1) return `<p class="tt-why">🈶 ${esc(it.zh)}</p>`;
       if (g.p === 2) return `<p class="tt-why">🗣️ ${esc(it.q)}<br>🈶 ${esc(it.zh)}</p>`;
@@ -189,11 +205,15 @@
       db.from("toeic_mocks").insert({ l_acc: lN ? lR / lN : null, r_acc: rN ? rR / rN : null, est: est || Ls || Rs, detail: { test_id: t.id, parts, by, mode } }).then(() => {});
       const rows = []; G.forEach(g => g.qs.forEach((q, qi) => rows.push({ qid: `${g.id}#${qi}`, part: g.p, tag: g.p === 2 || g.p === 5 ? (g.it.tag || "test") : "test", correct: ans[`${g.id}#${qi}`] === q.a, mode: "test" })));
       if (rows.length) db.from("toeic_answers").insert(rows).then(() => {});
+      /* 答錯的題目放進錯題本，跟每日練習一起照遺忘曲線複習 */
+      const rv = rows.filter(r => !r.correct).map(r => ({ qid: r.qid, part: r.part, tag: r.tag, stage: 0, due: tomorrow() }));
+      if (rv.length) db.from("toeic_review").upsert(rv, { onConflict: "user_id,qid" }).then(() => { if (window.ToeicSys) window.ToeicSys.load(); });
       if (lN + rN >= 50) db.rpc("toeic_task_done", { p_task: "mock" }).then(r => { if (r.data && r.data.granted) toast(`📝 模擬試題完成，星屑 +${r.data.amount}`); });
       m.innerHTML = `<div class="vg-card tc-card"><div style="text-align:center"><div style="font-size:42px">📊</div><h3>${esc(t.title)} 成績</h3></div>
         <div class="tc-score">${Ls != null ? `<div><small>🎧 聽力</small><b>${Ls}</b><small>${lR}/${lN}</small></div>` : ""}${Rs != null ? `<div><small>📖 閱讀</small><b>${Rs}</b><small>${rR}/${rN}</small></div>` : ""}${est != null ? `<div><small>預估總分</small><b>${est}</b></div>` : ""}</div>
         <div class="tr-scroll"><table class="tr-cmp"><tr><th>Part</th><th>答對</th><th>正確率</th></tr>${Object.entries(by).map(([p, [o, n]]) => `<tr><td>${PARTS[p].name}</td><td>${o}/${n}</td><td class="${o / n >= 0.7 ? "up" : o / n < 0.5 ? "dn" : ""}">${Math.round(o / n * 100)}%</td></tr>`).join("")}</table></div>
         <p class="tr-note">${(() => { const w = Object.entries(by).sort((a, b) => a[1][0] / a[1][1] - b[1][0] / b[1][1])[0]; return w ? `最弱的是 ${PARTS[w[0]].name}（${Math.round(w[1][0] / w[1][1] * 100)}%），下次可以只挑這個 Part 再練一次。` : ""; })()}${parts.length < 7 ? "只練部分 Part 時，分數是用這幾個 Part 推估的。" : ""}換算是粗估，正式考試的分數表會依難度調整。</p>
+        ${G.some(g => g.qs.some((q, qi) => ans[`${g.id}#${qi}`] !== q.a)) ? `<p class="tr-note">❌ 答錯的題目已放進錯題本，明天開始會在「🔁 錯題複習」再出現。</p>` : ""}
         ${exam ? `<button type="button" class="btn" data-review="1" style="width:100%">🔍 一題一題看答案與解析</button>` : ""}
         <button type="button" class="btn btn-primary" data-x="1" style="width:100%;margin-top:6px">完成</button></div>`;
       m.dataset.fin = "1"; load();
@@ -205,10 +225,84 @@
       if (e.target.closest("[data-check]")) { G[gi].checked = true; stop(); return draw(); }
       if (e.target.closest("[data-next]")) { stop(); if (gi + 1 < G.length) { gi++; goReading(); draw(); } else if (m.dataset.fin) { m.remove(); } else finish(); return; }
       if (e.target.closest("[data-prev]")) { stop(); gi--; return draw(); }
+      const rs = e.target.closest("[data-rs]"); if (rs) { const g = G[gi]; g.reason = rs.dataset.rs; saveReasons(g, ans, g.reason); toast("📝 記下來了，週報會幫你統計"); return draw(); }
+      if (e.target.closest("[data-shadow]")) return shadow(G[gi]);
+      if (e.target.closest("[data-vocab]")) return vocabPick(G[gi]);
       if (e.target.closest("[data-review]")) { G.forEach(g => { g.checked = true; g.played = true; }); gi = 0; exam = false; deadline = null; return draw(); }
     });
-    goReading(); draw(); document.body.appendChild(m);
+    goReading(); draw(); document.body.appendChild(m); focusOn(m);
   }
+
+  /* ---------- 共用小工具 ---------- */
+  const REASONS = ["單字不會", "聽不出來", "文法不懂", "陷阱題", "時間不夠", "粗心"];
+  const tomorrow = () => { const d = new Date(Date.now() + 8 * 3600e3 - 6 * 3600e3 + 864e5); return d.toISOString().slice(0, 10); };
+  function saveReasons(g, ans, reason) {
+    const rows = g.qs.map((q, qi) => [q, qi]).filter(([q, qi]) => ans[`${g.id}#${qi}`] !== q.a).map(([q, qi]) => ({ qid: `${g.id}#${qi}`, part: g.p, tag: g.p === 2 || g.p === 5 ? (g.it.tag || "test") : "test", reason }));
+    if (rows.length) db.from("toeic_reasons").insert(rows).then(() => {});
+  }
+  /* 練習時靈獸切換成「專注陪讀」 */
+  function focusOn(m) {
+    window.__studyFocus = true; if (window.Spirit && window.Spirit.render) window.Spirit.render();
+    const ob = new MutationObserver(() => { if (!m.isConnected) { ob.disconnect(); if (!document.querySelector(".tc-modal")) { window.__studyFocus = false; if (window.Spirit && window.Spirit.render) window.Spirit.render(); } } });
+    ob.observe(document.body, { childList: true });
+  }
+  /* 🎧 逐句跟讀：一句一句播，可以先遮字幕再看字幕 */
+  const sentences = g => g.p === 3 ? g.it.script.map(l => ({ s: /^w/i.test(l.s) ? "W" : "M", t: l.t })) : (g.it.talk.match(/[^.!?]+[.!?]+["']?/g) || [g.it.talk]).map(t => ({ s: /^w/i.test(g.it.g || "") ? "W" : "M", t: t.trim() }));
+  function shadow(g) {
+    const L = sentences(g), h = hashN(g.id), vM = h % 2 ? "us_m" : "uk_m", vW = h % 2 ? "ca_f" : "us_f", m = document.createElement("div"); m.className = "vg-modal tc-modal";
+    let hide = true, auto = false;
+    const sayLine = async (k) => { const l = L[k], v = l.s === "W" ? vW : vM; stop(); m.querySelectorAll(".tt-sl").forEach((x, j) => x.classList.toggle("on", j === k));
+      try { const url = await clip(`sh|${v}|${l.t}`, { text: l.t, voice: v, duo: [v] }); await new Promise((res, rej) => { const a = new Audio(url); cur = a; a.onended = res; a.onerror = rej; a.play().catch(rej); }); }
+      catch (_) { await new Promise(res => { try { const u = new SpeechSynthesisUtterance(l.t); u.lang = "en-US"; u.rate = 0.9; u.onend = res; u.onerror = res; speechSynthesis.speak(u); } catch (_) { res(); } }); } };
+    const draw = () => { m.innerHTML = `<div class="vg-card tc-card"><div class="tc-mh"><b>🎧 逐句跟讀</b><button type="button" class="tr-x" data-x="1">✕</button></div>
+      <p class="tr-note">建議：① 遮著字幕聽一句、自己跟著念 ② 聽不出來再點「看字幕」③ 最後用連播模式從頭聽一次。</p>
+      <div class="tr-row"><button type="button" class="btn btn-small" data-hide="1">${hide ? "👀 全部顯示字幕" : "🙈 全部遮住"}</button><button type="button" class="btn btn-small btn-primary" data-auto="1">${auto ? "⏹ 停止連播" : "▶️ 逐句連播（每句停 2 秒讓你跟念）"}</button></div>
+      ${L.map((l, k) => `<div class="tt-sl"><button type="button" class="tc-abc" data-line="${k}" style="width:40px;height:40px;font-size:16px">▶</button><div><small>${l.s === "W" ? "👩" : "👨"} ${k + 1}</small><p class="${hide ? "blur" : ""}" data-show="${k}">${esc(l.t)}</p></div></div>`).join("")}</div>`; };
+    m.addEventListener("click", async e => {
+      if (e.target === m || e.target.closest("[data-x]")) { auto = false; stop(); return m.remove(); }
+      const ln = e.target.closest("[data-line]"); if (ln) return sayLine(Number(ln.dataset.line));
+      const sh = e.target.closest("[data-show]"); if (sh) return sh.classList.toggle("blur");
+      if (e.target.closest("[data-hide]")) { hide = !hide; return draw(); }
+      if (e.target.closest("[data-auto]")) { auto = !auto; draw(); if (auto) { for (let k = 0; k < L.length && auto && m.isConnected; k++) { await sayLine(k); await new Promise(r => setTimeout(r, 2000)); } auto = false; if (m.isConnected) draw(); } else stop(); }
+    });
+    draw(); document.body.appendChild(m);
+  }
+  /* 📚 收集生字：從這組題目挑出你單字庫還沒有的字，一鍵加入「多益模考生字」 */
+  const STOP = new Set("about above after again against because before being below between could doesn't during every further having here hers herself himself itself just more most myself other ought ours ourselves same should some such than that their theirs them themselves then there these they this those through under until very were what when where which while whom with would your yours yourself yourselves please thank thanks also will shall have been from into over only each both onto upon will would make made said says like well also than then they them".split(" "));
+  let MYWORDS = null;
+  async function vocabPick(g) {
+    if (!MYWORDS) { const { data } = await db.from("vocab_words").select("word"); MYWORDS = new Set((data || []).map(x => String(x.word).toLowerCase())); }
+    const it = g.it, text = [it.q, it.text, it.talk, ...(it.o || []), ...(it.script || []).map(l => l.t), ...(it.docs || []).flatMap(d => [d.title, d.text]), ...g.qs.flatMap(q => [q.q, ...(q.o || [])])].filter(Boolean).join(" ");
+    const sentOf = w => (text.match(new RegExp(`[^.!?\n]*\b${w}\b[^.!?\n]*[.!?]?`, "i")) || [""])[0].trim().slice(0, 200);
+    const words = [...new Set((text.match(/[A-Za-z][a-z-]{4,}/g) || []).map(w => w.toLowerCase()))].filter(w => !STOP.has(w) && !MYWORDS.has(w)).sort((a, b) => b.length - a.length).slice(0, 36);
+    const m = document.createElement("div"); m.className = "vg-modal";
+    m.innerHTML = `<div class="vg-card"><div class="vg-title">📚 收集生字</div><p class="tr-note">這組題目裡你單字庫還沒有的字（長的、比較難的排前面）。點一下輸入中文意思，就會加進「📖 單字」的「多益模考生字」，之後一起複習。</p>
+      <div class="tr-row">${words.length ? words.map(w => `<button type="button" class="tr-chip sm" data-w="${esc(w)}">${esc(w)}</button>`).join("") : "這組沒有新字了 🎉"}</div><button type="button" class="btn" data-vx="1" style="width:100%">完成</button></div>`;
+    m.addEventListener("click", async e => {
+      if (e.target === m || e.target.closest("[data-vx]")) return m.remove();
+      const b = e.target.closest("[data-w]"); if (!b || b.classList.contains("on")) return;
+      const w = b.dataset.w, mean = prompt(`「${w}」的中文意思？`, ""); if (mean == null) return;
+      const { error } = await db.from("vocab_words").insert({ user_id: currentUser.id, deck: "多益模考生字", word: w, meaning: mean.trim() || "（待補）", example: sentOf(w), tags: "多益模考" });
+      if (error) return toast(/duplicate|unique/.test(error.message) ? "這個字已經在單字庫了" : error.message);
+      MYWORDS.add(w); b.classList.add("on"); b.textContent = "✓ " + w;
+    });
+    document.body.appendChild(m);
+  }
+  /* 給每日練習的錯題複習用：用題號把模擬試題的題目找回來 */
+  function getQ(qid) {
+    const m = /^t(.+)-(p\d[a-z]?)-(\d+)#(\d+)$/.exec(qid); if (!m) return null;
+    const t = X.tests.find(x => String(x.id) === m[1]); if (!t || !t.parts || !t.parts[m[2]]) return null;
+    const p = Number(Object.keys(PARTS).find(k => PARTS[k].chunks.includes(m[2]))), it = t.parts[m[2]][Number(m[3])]; if (!it) return null;
+    const qi = Number(m[4]), q = p === 1 || p === 2 || p === 5 ? { q: it.q || "", o: it.o, a: it.a, why: it.why } : (it.qs || [])[qi]; if (!q) return null;
+    let ctx = "";
+    if (p === 1) ctx = `<p class="tt-doc">📷 ${esc(it.img)}</p>`;
+    if (p === 3) ctx = `<details class="tr-list"><summary>📜 對話原文（可以先聽再看）</summary><p class="tt-script">${it.script.map(l => `<b>${/^w/i.test(l.s) ? "W" : "M"}:</b> ${esc(l.t)}`).join("<br>")}</p></details>`;
+    if (p === 4) ctx = `<details class="tr-list"><summary>📜 原文（可以先聽再看）</summary><p class="tt-script">${esc(it.talk)}</p></details>`;
+    if (p === 6) ctx = `<div class="tt-doc"><b>${esc(it.title)}</b><p>${esc(it.text).replace(/\n/g, "<br>")}</p></div>`;
+    if (p === 7) ctx = it.docs.map(d => `<div class="tt-doc"><b>${esc(d.title)}</b><p>${esc(d.text).replace(/\n/g, "<br>")}</p></div>`).join("");
+    return { id: qid, part: p, tag: it.tag || "test", q: p === 1 ? "Which statement best describes the photo?" : q.q, o: q.o, a: q.a, zh: it.zh || "", why: q.why || "", ctx, test: true, group: { id: `t${t.id}-${m[2]}-${m[3]}`, p, it } };
+  }
+  window.ToeicTest = { getQ, load, play: (g, cb) => play(g, cb), ensure: async () => { if (!X.tests.length) await load(); return X.tests.length; } };
 
   document.addEventListener("click", e => {
     const b = e.target.closest("[data-tt]"); if (!b) return; const id = /^\d+$/.test(b.dataset.v || "") ? Number(b.dataset.v) : b.dataset.v;
@@ -228,7 +322,11 @@
     .tt-photo img { width: 100%; border-radius: 12px; display: block; } .tt-doc { padding: 10px 12px; border-radius: 10px; background: rgba(127,127,127,.08); margin: 8px 0; font-size: 13.5px; line-height: 1.6; } .tt-doc p { margin: 6px 0 0; }
     .tt-bl { font-weight: 700; color: #7c5cff; } .tt-q { margin: 10px 0; } .tt-qq { font-weight: 600; font-size: 14px; margin: 6px 0; }
     .nb-opt.pick, .tc-abc.pick { border-color: #7c5cff; background: rgba(124,92,255,.18); } .tt-why { font-size: 13px; padding: 6px 10px; border-radius: 8px; background: rgba(255,213,74,.12); margin: 6px 0; }
-    .tt-script { font-size: 13px; line-height: 1.7; }`;
+    .tt-script { font-size: 13px; line-height: 1.7; }
+    .tt-p7 { padding: 8px 10px; border-radius: 10px; background: rgba(124,92,255,.08); margin: 8px 0; font-size: 12.5px; } .tt-p7 small { display: block; opacity: .7; margin-top: 4px; }
+    .tt-tools { border-top: 1px dashed rgba(127,127,127,.3); margin-top: 10px; padding-top: 8px; } .tt-rs { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; } .tt-rs small { opacity: .7; margin-right: 4px; }
+    .tt-sl { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid rgba(127,127,127,.12); } .tt-sl p { margin: 2px 0; font-size: 14px; cursor: pointer; transition: filter .2s; } .tt-sl small { font-size: 11px; opacity: .6; }
+    .tt-sl p.blur { filter: blur(6px); user-select: none; } .tt-sl.on .tc-abc { border-color: #7c5cff; background: rgba(124,92,255,.2); }`;
   document.head.appendChild(css);
 
   if (typeof window.applyPage === "function") { const base = window.applyPage; window.applyPage = function (name) { const r = base.apply(this, arguments); if (name === "toeic") setTimeout(load, 300); return r; }; }

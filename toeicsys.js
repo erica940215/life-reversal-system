@@ -21,7 +21,14 @@
     const b = B(); if (!b) return [];
     return b.P5.map(r => toQ(r, 5)).concat(b.P2.map(r => toQ(r, 2))).concat(T.ai.filter(x => !x.flagged).map(x => ({ id: x.id, part: x.part, tag: x.tag, ai: true, ...x.data })));
   }
-  const qById = id => allQs().find(q => q.id === id);
+  const qById = id => allQs().find(q => q.id === id) || (window.ToeicTest ? window.ToeicTest.getQ(id) : null);
+  const REASONS = ["單字不會", "聽不出來", "文法不懂", "陷阱題", "時間不夠", "粗心"];
+  /* 練習時靈獸切換成「專注陪讀」 */
+  function studyFocus(m) {
+    window.__studyFocus = true; if (window.Spirit && window.Spirit.render) window.Spirit.render();
+    const ob = new MutationObserver(() => { if (!m.isConnected) { ob.disconnect(); if (!document.querySelector(".tc-modal")) { window.__studyFocus = false; if (window.Spirit && window.Spirit.render) window.Spirit.render(); } } });
+    ob.observe(document.body, { childList: true });
+  }
   function tagStats(part) {
     const tags = Object.keys(part === 5 ? B().TAGS5 : B().TAGS2), st = {};
     tags.forEach(t => { st[t] = { n: 0, ok: 0 }; });
@@ -87,16 +94,19 @@
   async function load() {
     if (!hasDb()) return;
     const t = todayStr();
-    const [s, a, r, ai, m, v] = await Promise.all([
+    if (window.ToeicTest) { try { await window.ToeicTest.ensure(); } catch (_) {} }
+    const [s, a, r, ai, m, v, rs, bo, sk] = await Promise.all([
       db.from("toeic_settings").select("*").maybeSingle(),
       db.from("toeic_answers").select("qid, part, tag, correct, mode, day, created_at").order("created_at", { ascending: false }).limit(1500),
       db.from("toeic_review").select("*"),
       db.from("toeic_qbank").select("*").order("created_at", { ascending: false }).limit(500),
       db.from("toeic_mocks").select("*").order("created_at", { ascending: false }).limit(20),
-      db.from("vocab_log").select("id", { count: "exact", head: true }).eq("day", t)]);
+      db.from("vocab_log").select("id", { count: "exact", head: true }).eq("day", t),
+      db.from("toeic_reasons").select("reason, part, tag, day").order("created_at", { ascending: false }).limit(500),
+      db.rpc("toeic_boss"), db.rpc("toeic_streak")]);
     if (s.error && /toeic_settings/.test(s.error.message)) { T.err = "資料庫還沒設定：到 Supabase 執行 sql/2026-11-12_多益系統.sql"; T.loaded = true; render(); return; }
     T.set = s.data || { exam_date: addDays(t, 90), target: 650, start_score: 400, daily_min: 45, voice: "ai", _new: true };
-    T.ans = a.data || []; T.review = r.data || []; T.ai = ai.data || []; T.mocks = m.data || []; T.vocabToday = v.count || 0; T.loaded = true; T.err = null;
+    T.ans = a.data || []; T.review = r.data || []; T.ai = ai.data || []; T.mocks = m.data || []; T.vocabToday = v.count || 0; T.reasons = rs.data || []; T.boss = bo.data || null; T.streak = sk.data || { cur: 0, best: 0 }; T.loaded = true; T.err = null;
     render(); renderToday();
   }
 
@@ -106,18 +116,23 @@
     const daysLeft = s.exam_date ? Math.round((new Date(s.exam_date) - new Date(t)) / 864e5) : null;
     const due = T.review.filter(x => x.due <= t).length, done = m => T.ans.filter(a => a.day === t && a.mode === m).length;
     const sz = mins <= 30 ? { v: 15, p5: 10, p2: 8 } : mins <= 45 ? { v: 20, p5: 12, p2: 10 } : { v: 25, p5: 15, p2: 12 };
-    if (daysLeft != null && daysLeft <= 14 && daysLeft >= 0) { sz.p5 += 3; sz.p2 += 3; }
+    /* 🏁 考前衝刺：14 天內少做新題、多複習錯題；最後 3 天只做輕量練習＋秒殺技巧回顧 */
+    const sprint = daysLeft != null && daysLeft >= 0 && daysLeft <= 14 ? (daysLeft <= 3 ? "final" : "sprint") : null;
+    if (sprint === "sprint") { sz.p5 = Math.round(sz.p5 * 0.6); sz.p2 = Math.round(sz.p2 * 0.6); }
+    if (sprint === "final") { sz.p5 = 5; sz.p2 = 5; sz.v = 10; }
     const tasks = [];
-    if (dow === 0 || (daysLeft != null && daysLeft <= 7 && daysLeft > 0 && dow === 3)) tasks.push({ k: "mock", icon: "📝", name: "小模考（Part 2 ×15＋Part 5 ×20）", need: 35, have: done("mock"), min: 25 });
+    if (sprint !== "final" && (dow === 0 || (daysLeft != null && daysLeft <= 7 && daysLeft > 3 && dow === 3))) tasks.push({ k: "mock", icon: "📝", name: "小模考（Part 2 ×15＋Part 5 ×20）", need: 35, have: done("mock"), min: 25 });
     else {
       tasks.push({ k: "vocab", icon: "📚", name: `單字 ${sz.v} 個（到「📖 單字」練）`, need: sz.v, have: T.vocabToday, min: 10, ext: true });
       tasks.push({ k: "p2", icon: "🎧", name: `聽力 Part 2 應答 ×${sz.p2}`, need: sz.p2, have: done("p2"), min: 10 });
       tasks.push({ k: "p5", icon: "✏️", name: `閱讀 Part 5 文法單字 ×${sz.p5}`, need: sz.p5, have: done("p5"), min: 10 });
     }
-    if (due) tasks.push({ k: "review", icon: "🔁", name: `錯題複習 ×${Math.min(due, 15)}`, need: Math.min(due, 15), have: done("review"), min: 5 });
+    const rcap = sprint === "sprint" ? 30 : 15;
+    if (due) tasks.push({ k: "review", icon: "🔁", name: `錯題複習 ×${Math.min(due, rcap)}`, need: Math.min(due, rcap), have: done("review"), min: sprint === "sprint" ? 15 : 5 });
+    if (sprint === "final") { let seen = false; try { seen = localStorage.getItem("tcTips:" + t) === "1"; } catch (_) {} tasks.push({ k: "tips", icon: "⚡", name: "秒殺技巧回顧（20 種題型）", need: 1, have: seen ? 1 : 0, min: 10, tips: true }); }
     if (mins >= 60 && dow !== 0) tasks.push({ k: "bonus", icon: "🚀", name: "加碼：弱點題 ×10", need: 10, have: done("bonus"), min: 8, opt: true });
     tasks.forEach(x => { x.ok = x.have >= x.need; });
-    return { tasks, daysLeft, due };
+    return { tasks, daysLeft, due, sprint };
   }
   /* 預估分數：近 150 題正確率換算（粗估，模考會更準） */
   function estimate() {
@@ -153,10 +168,12 @@
           <button type="button" class="tr-x" data-tc="set" title="設定">⚙️</button></div>
         <div class="tc-score"><div><small>預估總分</small><b>${E.total ?? "—"}</b><small>目標 ${s.target}</small></div><div><small>🎧 聽力</small><b>${E.L ?? "—"}</b><small>Part 2 ${pct(E.a2)}</small></div><div><small>📖 閱讀</small><b>${E.R ?? "—"}</b><small>Part 5 ${pct(E.a5)}</small></div></div>
         ${E.total != null ? `<div class="tc-prog"><i style="width:${Math.min(100, Math.max(0, (E.total - s.start_score) / Math.max(1, s.target - s.start_score) * 100))}%"></i></div><p class="tr-note">從 ${s.start_score} 到 ${s.target}：${E.total >= s.target ? "🎉 預估已經達標！繼續保持" : `還差約 ${s.target - E.total} 分`}（每個 Part 做滿 10 題後才會開始預估，只看 Part 2、5，所以是粗估）</p>` : `<p class="tr-note">每個 Part 做滿 10 題後，就會開始預估分數。</p>`}
+        <div class="tc-flame"><span>🔥 連續 <b>${(T.streak && T.streak.cur) || 0}</b> 天完成多益任務</span><small>最長 ${(T.streak && T.streak.best) || 0} 天・7／30／100 天有獎勵</small></div>
+        ${P.sprint ? `<p class="tc-sprint">${P.sprint === "final" ? "🧘 考前最後 3 天：只做輕量練習＋回顧秒殺技巧，保持手感、早點睡。" : "🏁 考前衝刺模式：新題減少、錯題複習加倍，把會錯的變成不會錯。"}</p>` : ""}
         ${s._new ? `<p class="tc-new">👋 第一次來：我先幫你設定成「90 天後考、目標 650、每天 45 分鐘」，按右上角 ⚙️ 可以改。</p>` : ""}</section>
       <section class="card"><h2>📅 今天的練習 ${allDone ? "✅" : ""}</h2>
         ${P.tasks.map(x => `<div class="tc-task ${x.ok ? "ok" : ""}"><span class="tc-ic">${x.ok ? "✅" : x.icon}</span><div><b>${esc(x.name)}</b><small>${Math.min(x.have, x.need)}/${x.need}・約 ${x.min} 分鐘${x.opt ? "・選做" : ""}</small><div class="tc-mini"><i style="width:${Math.min(100, x.have / x.need * 100)}%"></i></div></div>
-          ${x.ext ? `<button type="button" class="btn btn-small" onclick="showPage('vocab')">去背</button>` : `<button type="button" class="btn btn-small ${x.ok ? "" : "btn-primary"}" data-tc="go" data-v="${x.k}">${x.ok ? "再練" : "開始"}</button>`}</div>`).join("")}
+          ${x.tips ? `<button type="button" class="btn btn-small ${x.ok ? "" : "btn-primary"}" data-tc="tips">${x.ok ? "再看" : "打開"}</button>` : x.ext ? `<button type="button" class="btn btn-small" onclick="showPage('vocab')">去背</button>` : `<button type="button" class="btn btn-small ${x.ok ? "" : "btn-primary"}" data-tc="go" data-v="${x.k}">${x.ok ? "再練" : "開始"}</button>`}</div>`).join("")}
         <p class="tr-note">${allDone ? "🎉 今天的份都完成了！多做的題目一樣會算進分數和弱點分析。" : "照順序做就好：先聽力（腦袋最清醒時）、再文法，最後複習錯題。每完成一項都有星屑。"}</p></section>
       <section class="card"><h2>🧭 弱點分析</h2>
         ${weak.length ? `<p class="tc-weak">最需要加強：${weak.map(([p, k, v]) => `<b>${esc((p === 5 ? B().TAGS5 : B().TAGS2)[k].name)}</b>（${pct(v.acc)}）`).join("、")}。出題會自動多給你這幾類。</p>` : `<p class="tr-note">每一類做滿 3 題後，這裡會告訴你最弱的是哪些。</p>`}
@@ -166,6 +183,7 @@
       <section class="card"><h2>🔁 錯題本</h2><p class="tr-note">答錯的題目會在 1 → 3 → 7 → 14 天後再出現，連續答對 4 次就畢業。目前 ${T.review.length} 題在本子裡，今天到期 ${P.due} 題。</p>
         <div class="tr-row"><button type="button" class="btn btn-small" data-tc="go" data-v="review" ${P.due ? "" : "disabled"}>🔁 複習到期的</button><button type="button" class="btn btn-small" data-tc="go" data-v="mock">📝 現在來一次小模考</button></div>
         ${T.mocks.length ? `<div class="tc-mocks">${T.mocks.slice(0, 8).reverse().map(m => `<div><b>${m.est}</b><small>${new Date(m.created_at).toLocaleDateString("zh-TW", { month: "numeric", day: "numeric" })}</small></div>`).join("")}</div><p class="tr-note">↑ 最近幾次小模考的預估總分</p>` : ""}</section>
+      ${growthHtml()}${reportHtml()}${bossHtml()}
       <p class="tr-note small" style="padding:0 6px">題目都是原創的模擬題（內建 ${B().P5.length + B().P2.length} 題＋AI 已出 ${T.ai.length} 題），預估分數只是參考，實際分數以官方考試為準。</p>`;
   }
 
@@ -175,8 +193,71 @@
     if (!box) { box = document.createElement("section"); box.id = "tc-today"; box.className = "card"; const ref = document.getElementById("tw-today"); ref ? ref.after(box) : tp.appendChild(box); }
     const P = plan(), left = P.tasks.filter(x => !x.ok && !x.opt), E = estimate();
     box.innerHTML = `<h2>🎯 今日多益 ${left.length ? `<small class="nb-prog">${P.tasks.filter(x => x.ok).length}/${P.tasks.length}</small>` : "✅"}</h2>
-      <p class="tr-note">${P.daysLeft != null && P.daysLeft >= 0 ? `倒數 ${P.daysLeft} 天・` : ""}預估 ${E.total ?? "—"} / ${T.set.target}</p>
+      <p class="tr-note">${T.streak && T.streak.cur ? `🔥 ${T.streak.cur} 天・` : ""}${P.daysLeft != null && P.daysLeft >= 0 ? `倒數 ${P.daysLeft} 天・` : ""}${P.sprint ? "🏁 衝刺中・" : ""}預估 ${E.total ?? "—"} / ${T.set.target}</p>
       ${left.length ? `<ul class="tr-sig">${left.map(x => `<li>${x.icon} ${esc(x.name)} <small>${x.have}/${x.need}</small></li>`).join("")}</ul><button type="button" class="btn btn-primary" style="width:100%" data-tcg="${left[0].ext ? "vocab" : left[0].k}">${left[0].ext ? "📚 去背單字" : "▶️ 開始練習"}</button>` : `<p>🎉 今天的多益練習都完成了！</p>`}`;
+  }
+
+  /* ---------- 📈 分數成長曲線＋預測 ---------- */
+  const weekOf = d => { const x = new Date(d + "T00:00:00Z"), w = (x.getUTCDay() + 6) % 7; x.setUTCDate(x.getUTCDate() - w); return x.toISOString().slice(0, 10); };
+  const r5 = v => Math.max(5, Math.min(495, Math.round(v / 5) * 5));
+  function growthPoints() {
+    const W = {}; T.ans.forEach(a => { if (a.part !== 2 && a.part !== 5) return; const k = weekOf(a.day); W[k] = W[k] || { 2: [0, 0], 5: [0, 0] }; W[k][a.part][1]++; if (a.correct) W[k][a.part][0]++; });
+    const pts = Object.entries(W).filter(([, w]) => w[2][1] >= 8 && w[5][1] >= 8).map(([k, w]) => ({ t: new Date(k + "T00:00:00Z").getTime() + 3 * 864e5, v: r5(60 + w[2][0] / w[2][1] * 430) + r5(40 + w[5][0] / w[5][1] * 440), kind: "週" }));
+    T.mocks.forEach(m => { if (m.est) pts.push({ t: new Date(m.created_at).getTime(), v: m.est, kind: "模考" }); });
+    return pts.sort((a, b) => a.t - b.t);
+  }
+  function growthHtml() {
+    const pts = growthPoints(), s = T.set;
+    if (pts.length < 2) return `<section class="card"><h2>📈 分數成長</h2><p class="tr-note">每週 Part 2、Part 5 各做滿 8 題，或做一次模考，就會在這裡畫出你的分數曲線和「考試當天預測」。目前還差一點資料。</p></section>`;
+    const n = pts.length, mx = pts.reduce((a, p) => a + p.t, 0) / n, my = pts.reduce((a, p) => a + p.v, 0) / n;
+    const sl = pts.reduce((a, p) => a + (p.t - mx) * (p.v - my), 0) / (pts.reduce((a, p) => a + (p.t - mx) ** 2, 0) || 1);
+    const ex = s.exam_date ? new Date(s.exam_date + "T00:00:00Z").getTime() : null, pred = ex ? Math.round(Math.max(10, Math.min(990, my + sl * (ex - mx)))) : null;
+    const t0 = pts[0].t, t1 = Math.max(pts[n - 1].t, ex || 0), vs = pts.map(p => p.v).concat([s.target, pred || s.target]), lo = Math.min(...vs) - 30, hi = Math.max(...vs) + 30;
+    const Wd = 640, H = 200, x = t => 10 + (t - t0) / (t1 - t0 || 1) * (Wd - 20), y = v => 10 + (1 - (v - lo) / (hi - lo)) * (H - 30);
+    const perWeek = Math.round(sl * 7 * 864e5);
+    return `<section class="card"><h2>📈 分數成長</h2>
+      <svg class="tr-chart" style="height:200px" viewBox="0 0 ${Wd} ${H}" preserveAspectRatio="none">
+        <line x1="0" x2="${Wd}" y1="${y(s.target)}" y2="${y(s.target)}" class="tc-tg"/><text x="${Wd - 6}" y="${y(s.target) - 4}" text-anchor="end" class="tr-ax">目標 ${s.target}</text>
+        ${pred != null ? `<path d="M${x(pts[n - 1].t)},${y(my + sl * (pts[n - 1].t - mx))}L${x(ex)},${y(pred)}" class="tc-pred"/><circle cx="${x(ex)}" cy="${y(pred)}" r="4" class="tc-predc"/><text x="${x(ex) - 6}" y="${y(pred) - 8}" text-anchor="end" class="tr-ax">考試日 ${pred}</text>` : ""}
+        <path d="${pts.map((p, i) => `${i ? "L" : "M"}${x(p.t)},${y(p.v)}`).join("")}" class="tc-line"/>
+        ${pts.map(p => `<circle cx="${x(p.t)}" cy="${y(p.v)}" r="${p.kind === "模考" ? 4 : 3}" class="${p.kind === "模考" ? "tc-mk" : "tc-wk"}"/>`).join("")}</svg>
+      <p class="tr-note">●綠點＝每週練習換算 ●紫點＝模考・虛線＝照目前速度的預測</p>
+      <p class="tc-weak" style="background:rgba(124,92,255,.1)">${pred == null ? "設定考試日期後就能預測。" : `照目前的速度（每週約 ${perWeek >= 0 ? "+" : ""}${perWeek} 分），考試當天大約 <b>${pred}</b> 分。${pred >= s.target ? "🎉 有機會達標，保持下去！" : `離目標還差 ${s.target - pred} 分：${perWeek <= 0 ? "最近沒有在進步，試試多做錯題複習和弱點專練。" : `要達標，每週需要再多進步約 ${Math.ceil((s.target - pred) / Math.max(1, (ex - Date.now()) / 6048e5))} 分。`}`}`}（預測是用直線粗估）</p></section>`;
+  }
+  /* ---------- 📊 每週讀書報告 ---------- */
+  function reportHtml() {
+    const wk = weekOf(todayStr()), prev = weekOf(addDays(wk, -1)), inW = (d, w) => d >= w && d < addDays(w, 7);
+    const A = T.ans.filter(a => inW(a.day, wk)), Bp = T.ans.filter(a => inW(a.day, prev)), acc = x => x.length ? x.filter(a => a.correct).length / x.length : null;
+    const days = new Set(A.map(a => a.day)).size, ra = T.reasons.filter(r => inW(r.day, wk)), rc = {}; ra.forEach(r => { rc[r.reason] = (rc[r.reason] || 0) + 1; });
+    const topR = Object.entries(rc).sort((a, b) => b[1] - a[1]).slice(0, 3), ts = {};
+    A.filter(a => a.part === 2 || a.part === 5).forEach(a => { const k = a.part + ":" + a.tag; ts[k] = ts[k] || [0, 0]; ts[k][1]++; if (a.correct) ts[k][0]++; });
+    const weakT = Object.entries(ts).filter(([, v]) => v[1] >= 3).sort((a, b) => a[1][0] / a[1][1] - b[1][0] / b[1][1]).slice(0, 3).map(([k, v]) => { const [p, tg] = k.split(":"), d = (p === "5" ? B().TAGS5 : B().TAGS2)[tg]; return `${d ? d.name : tg}（${Math.round(v[0] / v[1] * 100)}%）`; });
+    const a1 = acc(A), a0 = acc(Bp), dlt = a1 != null && a0 != null ? Math.round((a1 - a0) * 100) : null;
+    const ADV = { 單字不會: "多花時間在「📖 單字」，並把模考生字收進單字庫", 聽不出來: "用 Part 3、4 的「🎧 逐句跟讀」，遮字幕先聽", 文法不懂: "點弱點分析裡的題型看秒殺技巧，再專練 8 題", 陷阱題: "答題前先刪掉「重複字、發音像」的選項", 時間不夠: "Part 7 練習時盯著建議時間，超時就先猜", 粗心: "選完答案把句子從頭念一次再送出" };
+    const tip = topR.length ? ADV[topR[0][0]] : weakT.length ? `專練「${weakT[0].split("（")[0]}」` : "保持每天的節奏";
+    return `<section class="card"><h2>📊 本週讀書報告 <small class="nb-prog">${wk.slice(5).replace("-", "/")} 起</small></h2>
+      <div class="tc-score"><div><small>練習天數</small><b>${days}</b><small>/ 7 天</small></div><div><small>做題數</small><b>${A.length}</b><small>上週 ${Bp.length}</small></div><div><small>正確率</small><b>${a1 == null ? "—" : Math.round(a1 * 100) + "%"}</b><small class="${dlt == null ? "" : dlt >= 0 ? "up" : "dn"}">${dlt == null ? "—" : `${dlt >= 0 ? "▲" : "▼"} ${Math.abs(dlt)}%`}</small></div></div>
+      <p class="tr-note">🧭 這週最弱：${weakT.length ? weakT.join("、") : "資料還不夠（每類做滿 3 題）"}</p>
+      <p class="tr-note">❓ 最常錯的原因：${topR.length ? topR.map(([r, c]) => `${r} ×${c}`).join("、") : "還沒標記過（答錯時點「錯在哪」就會統計）"}</p>
+      <p class="tc-weak" style="background:rgba(63,185,80,.1)">👉 下週建議：${tip}。</p></section>`;
+  }
+  /* ---------- 👹 每週 Boss ---------- */
+  const BOSSES = [["📚 遺忘巨像", "專吃你背過的單字"], ["🌀 時態幽靈", "讓過去和未來混在一起"], ["🎭 陷阱魔術師", "最愛重複字和發音陷阱"], ["⏳ 時間吞噬者", "Part 7 讀到一半就收卷"], ["🐉 介系詞巨龍", "in／on／at 傻傻分不清"], ["🦑 長句章魚", "把主詞動詞藏在八條腿裡"]];
+  function bossHtml() {
+    const b = T.boss; if (!b) return "";
+    const wi = Math.floor(new Date(b.week).getTime() / 6048e5) % BOSSES.length, [nm, ds] = BOSSES[wi], left = Math.max(0, b.hp - b.dmg), dead = left === 0;
+    return `<section class="card tc-boss ${dead ? "dead" : ""}"><h2>👹 本週 Boss：${nm}</h2><p class="tr-note">${ds}。這週每答對 1 題就打 1 下，模考和完整試題答對算 2 下。週一重生。</p>
+      <div class="tc-hp"><i style="width:${left / b.hp * 100}%"></i><span>HP ${left} / ${b.hp}</span></div>
+      ${dead ? (b.claimed ? `<p>🏆 這週已經打倒並領過獎勵了！</p>` : `<button type="button" class="btn btn-primary" data-tc="boss" style="width:100%">🏆 領取擊敗獎勵：普通召喚券 ×1＋星屑 200</button>`) : `<p class="tr-note">還差 ${left} 下。做一次完整試題的聽力或閱讀，就能打掉一大半！</p>`}</section>`;
+  }
+  function tipsModal() {
+    try { localStorage.setItem("tcTips:" + todayStr(), "1"); } catch (_) {}
+    const m = document.createElement("div"); m.className = "vg-modal";
+    const sec = (title, tags) => `<h3>${title}</h3>${Object.values(tags).map(t => `<p class="tc-tip"><b>${esc(t.name)}</b>：${esc(t.tip)}</p>`).join("")}`;
+    m.innerHTML = `<div class="vg-card" style="max-height:88vh;overflow:auto"><div class="vg-title">⚡ 秒殺技巧總複習</div>${sec("🎧 Part 2", B().TAGS2)}${sec("✏️ Part 5", B().TAGS5)}
+      <p class="tr-note">考場提醒：Part 2 聽不懂就刪掉「重複字」的選項；Part 5 一題不超過 30 秒；Part 7 先看題目再找答案；最後 5 分鐘把空白的全部猜完。</p><button type="button" class="btn btn-primary" data-vx="1" style="width:100%">看完了</button></div>`;
+    m.addEventListener("click", e => { if (e.target === m || e.target.closest("[data-vx]")) { m.remove(); render(); renderToday(); claim(); } });
+    document.body.appendChild(m);
   }
 
   /* ---------- 練習 ---------- */
@@ -186,7 +267,7 @@
     if (kind === "p5") return pick(5, left("p5"));
     if (kind === "p2") return pick(2, left("p2"));
     if (kind === "bonus") return pick(5, 5).concat(pick(2, 5));
-    if (kind === "review") return T.review.filter(x => x.due <= t).sort((a, b) => a.due < b.due ? -1 : 1).slice(0, 15).map(x => qById(x.qid)).filter(Boolean);
+    if (kind === "review") return T.review.filter(x => x.due <= t).sort((a, b) => a.due < b.due ? -1 : 1).slice(0, plan().sprint === "sprint" ? 30 : 15).map(x => qById(x.qid)).filter(Boolean);
     if (kind === "mock") return pick(2, 15).concat(pick(5, 20));
     if (kind.startsWith("tag:")) { const [, p, tg] = kind.split(":"), pool = shuffle(allQs().filter(q => q.part === Number(p) && q.tag === tg)); return pool.slice(0, 8); }
     return [];
@@ -209,6 +290,7 @@
     const v = P.tasks.find(x => x.k === "vocab"); if (v && v.ok) { const { data } = await db.rpc("toeic_task_done", { p_task: "vocab" }); if (data && data.granted) got += data.amount; }
     if (P.tasks.filter(x => !x.opt).every(x => x.ok)) { const { data } = await db.rpc("toeic_task_done", { p_task: "allday" }); if (data && data.granted) got += data.amount; }
     if (got) toast(`🎯 多益任務完成，星屑 +${got}`);
+    const sk = await db.rpc("toeic_streak"); if (sk.data) { T.streak = sk.data; if (sk.data.granted) toast(`🔥 連續 ${sk.data.cur} 天！里程碑獎勵到手`); }
   }
 
   function session(kind) {
@@ -224,23 +306,24 @@
     }
     const mark = k => m.querySelectorAll(".tc-abc").forEach((b, j) => b.classList.toggle("speak", j === k));
     function draw() {
-      const q = qs[i]; answered = false; t0 = Date.now(); const tip = (q.part === 5 ? B().TAGS5 : B().TAGS2)[q.tag];
+      const q = qs[i]; answered = false; t0 = Date.now(); const tip = q.part === 5 ? B().TAGS5[q.tag] : q.part === 2 ? B().TAGS2[q.tag] : null;
       m.innerHTML = `<div class="vg-card tc-card"><div class="tc-mh"><b>${title}</b><span>${i + 1}/${qs.length}</span><button type="button" class="tr-x" data-x="1">✕</button></div>
-        <div class="tc-bar"><i style="width:${i / qs.length * 100}%"></i></div><p class="tc-tagname">${q.part === 5 ? "Part 5" : "Part 2"}・${esc(tip ? tip.name : q.tag)}${q.ai ? "・🤖 AI 題" : ""}</p>
-        ${q.part === 5 ? `<p class="tc-q">${esc(q.q).replace("-------", '<span class="tc-blank">_______</span>')}</p>${q.o.map((o, k) => `<button type="button" class="nb-opt" data-k="${k}">(${"ABCD"[k]}) ${esc(o)}</button>`).join("")}`
+        <div class="tc-bar"><i style="width:${i / qs.length * 100}%"></i></div><p class="tc-tagname">Part ${q.part}・${esc(tip ? tip.name : q.test ? "模擬試題錯題" : q.tag)}${q.ai ? "・🤖 AI 題" : ""}</p>
+        ${q.part !== 2 ? `${q.group && (q.part === 3 || q.part === 4) ? `<div class="tc-p2"><button type="button" class="tc-play" data-gplay="1">🔊 播放${q.part === 3 ? "對話" : "獨白"}</button></div>` : ""}${q.ctx || ""}<p class="tc-q">${esc(q.q).replace(/-{3,}/, '<span class="tc-blank">_______</span>')}</p>${q.o.map((o, k) => `<button type="button" class="nb-opt" data-k="${k}">(${"ABCD"[k]}) ${esc(o)}</button>`).join("")}`
           : `<div class="tc-p2"><button type="button" class="tc-play" data-play="1">🔊 播放題目</button><p class="tr-note">只用聽的！題目和三個回答都會念一次，聽完選最合適的回應。</p></div><div class="tc-abcs">${q.o.map((_, k) => `<button type="button" class="tc-abc" data-k="${k}">${"ABC"[k]}</button>`).join("")}</div>`}
         <div class="tc-fb"></div></div>`;
       if (q.part === 2) setTimeout(() => playQ(q), 350);
       preload(qs[i + 1]);
     }
     function feedback(k) {
-      const q = qs[i], ok = k === q.a, tip = (q.part === 5 ? B().TAGS5 : B().TAGS2)[q.tag]; answered = true; stopAudio(); if (ok) right++;
+      const q = qs[i], ok = k === q.a, tip = q.part === 5 ? B().TAGS5[q.tag] : q.part === 2 ? B().TAGS2[q.tag] : null; answered = true; stopAudio(); if (ok) right++;
       res.push({ q, ok }); record(q, ok, Date.now() - t0, kind);
       m.querySelectorAll("[data-k]").forEach(b => { const j = Number(b.dataset.k); b.disabled = true; b.classList.add(j === q.a ? "ok" : j === k ? "no" : "x"); });
       if (isMock) { setTimeout(next, 450); return; }
       m.querySelector(".tc-fb").innerHTML = `<div class="tc-exp ${ok ? "good" : "bad"}"><b>${ok ? "⭕ 答對了！" : `❌ 正解是 ${"ABCD"[q.a]}`}</b>
         ${q.part === 2 ? `<p class="tc-tr">🗣️ ${esc(q.q)}<br>${q.o.map((o, j) => `<span class="${j === q.a ? "up" : ""}">(${"ABC"[j]}) ${esc(o)}</span>`).join("<br>")}</p>` : ""}
         <p>🈶 ${esc(q.zh)}</p><p>💡 ${esc(q.why)}</p>${tip ? `<p class="tc-tip">⚡ 秒殺技巧：${esc(tip.tip)}</p>` : ""}<div class="tc-ai"></div></div>
+        ${ok ? "" : `<div class="tt-rs"><small>❓ 錯在哪？</small>${REASONS.map(r => `<button type="button" class="tr-chip sm" data-rs="${r}">${r}</button>`).join("")}</div>`}
         <div class="tr-row">${ok ? "" : `<button type="button" class="btn btn-small" data-ai="1">🤖 為什麼？</button>`}${q.part === 2 ? `<button type="button" class="btn btn-small" data-play="1">🔊 再聽一次</button>` : ""}${q.ai ? `<button type="button" class="btn btn-small" data-flag="1">🚩 這題怪怪的</button>` : ""}<button type="button" class="btn btn-primary" data-next="1" style="margin-left:auto">${i + 1 < qs.length ? "下一題 →" : "看結果"}</button></div>`;
     }
     function next() { i++; if (i < qs.length) draw(); else finish(); }
@@ -259,6 +342,8 @@
     m.addEventListener("click", async e => {
       if (e.target.closest("[data-x]") || e.target === m) { if (i > 0 && i < qs.length && !confirm("中途離開？做過的題目會保留。")) return; stopAudio(); m.remove(); render(); renderToday(); claim(); return; }
       if (e.target.closest("[data-play]")) { playing = false; return playQ(qs[i]); }
+      if (e.target.closest("[data-gplay]")) { const b = e.target.closest("[data-gplay]"); b.textContent = "🔊 播放中…"; await window.ToeicTest.play(qs[i].group); b.textContent = "🔁 再聽一次"; return; }
+      const rs = e.target.closest("[data-rs]"); if (rs) { const q = qs[i]; m.querySelectorAll("[data-rs]").forEach(x => x.classList.toggle("on", x === rs)); db.from("toeic_reasons").insert({ qid: q.id, part: q.part, tag: q.tag, reason: rs.dataset.rs }).then(() => {}); T.reasons.unshift({ reason: rs.dataset.rs, part: q.part, tag: q.tag, day: todayStr() }); return; }
       const k = e.target.closest("[data-k]"); if (k && !answered) return feedback(Number(k.dataset.k));
       if (e.target.closest("[data-next]")) return next();
       if (e.target.closest("[data-flag]")) { const q = qs[i]; await db.from("toeic_qbank").update({ flagged: true }).eq("id", q.id); const x = T.ai.find(a => a.id === q.id); if (x) x.flagged = true; toast("🚩 謝謝回報，這題之後不會再出現"); return; }
@@ -267,7 +352,7 @@
         box.innerHTML = error || !data || data.error ? `<p class="tr-note dn">😵 ${esc((data && data.error) || (error && error.message) || "AI 沒回應")}</p>` : `<p class="tc-aitext">🤖 ${esc(data.text).replace(/\n/g, "<br>")}</p>`; }
     });
     document.addEventListener("keydown", function kh(e) { if (!m.isConnected) return document.removeEventListener("keydown", kh); const k = "abcd".indexOf(e.key.toLowerCase()); if (k >= 0 && !answered && qs[i] && k < qs[i].o.length) feedback(k); else if (e.key === "Enter" && answered) next(); });
-    draw(); document.body.appendChild(m);
+    draw(); document.body.appendChild(m); studyFocus(m);
   }
 
   function tipModal(part, tag) {
@@ -303,10 +388,12 @@
     const a = b.dataset.tc;
     if (a === "go") { if (T.set._new) { const s = Object.assign({}, T.set); delete s._new; await db.from("toeic_settings").upsert(s, { onConflict: "user_id" }); delete T.set._new; } session(b.dataset.v); }
     if (a === "set") settings();
+    if (a === "tips") tipsModal();
+    if (a === "boss") { const { data, error } = await db.rpc("toeic_boss_claim"); if (error) return toast(error.message); T.boss = data; render(); toast("🏆 擊敗 Boss！普通召喚券 +1、星屑 +200"); }
     if (a === "tip") tipModal(Number(b.dataset.part), b.dataset.v);
   }
   function onChange() {}
-  document.addEventListener("click", e => { const b = e.target.closest("[data-tcg]"); if (!b) return; if (b.dataset.tcg === "vocab") return showPage("vocab"); session(b.dataset.tcg); });
+  document.addEventListener("click", e => { const b = e.target.closest("[data-tcg]"); if (!b) return; if (b.dataset.tcg === "vocab") return showPage("vocab"); if (b.dataset.tcg === "tips") return tipsModal(); session(b.dataset.tcg); });
 
   const css = document.createElement("style");
   css.textContent = `
@@ -328,6 +415,13 @@
     .tc-abc.speak { border-color: #7c5cff; transform: scale(1.08); background: rgba(124,92,255,.15); } .tc-abc.ok { background: rgba(63,185,80,.3); border-color: #3fb950; } .tc-abc.no { background: rgba(248,81,73,.3); border-color: #f85149; } .tc-abc.x { opacity: .45; }
     .tc-exp { margin-top: 10px; padding: 10px 12px; border-radius: 12px; font-size: 13.5px; line-height: 1.6; } .tc-exp.good { background: rgba(63,185,80,.1); } .tc-exp.bad { background: rgba(248,81,73,.08); } .tc-exp p { margin: 6px 0; }
     .tc-tr { font-family: ui-sans-serif, system-ui; } .tc-tip { padding: 8px 10px; border-radius: 10px; background: rgba(255,213,74,.14); font-size: 13px; } .tc-aitext { padding: 8px 10px; border-radius: 10px; background: rgba(124,92,255,.1); }
+    .tc-flame { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px; margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: linear-gradient(90deg, rgba(255,140,0,.15), rgba(255,80,80,.08)); font-size: 13.5px; } .tc-flame b { font-size: 18px; color: #ff8c00; } .tc-flame small { opacity: .65; font-size: 11.5px; }
+    .tc-sprint { font-size: 13px; padding: 8px 10px; border-radius: 10px; background: rgba(248,81,73,.12); margin: 8px 0 0; font-weight: 600; }
+    .tc-line { fill: none; stroke: #3fb950; stroke-width: 2; vector-effect: non-scaling-stroke; }
+    .tc-tg { stroke: #e3b341; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; } .tc-pred { stroke: #b48cff; stroke-dasharray: 5 4; fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; } .tc-predc { fill: #b48cff; } .tc-mk { fill: #b48cff; } .tc-wk { fill: #3fb950; }
+    .tc-boss { background: linear-gradient(160deg, rgba(248,81,73,.1), rgba(124,92,255,.08)); } .tc-boss.dead h2 { text-decoration: line-through; opacity: .7; }
+    .tc-hp { position: relative; height: 22px; border-radius: 12px; background: rgba(127,127,127,.2); overflow: hidden; margin: 8px 0; } .tc-hp i { display: block; height: 100%; background: linear-gradient(90deg, #f85149, #ff9f43); transition: width .5s; } .tc-hp span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+    .tt-rs { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 8px 0; } .tt-rs small { opacity: .7; margin-right: 4px; }
     .tc-wr { font-size: 13px; border-bottom: 1px solid rgba(127,127,127,.15); padding: 6px 0; margin: 0; }`;
   document.head.appendChild(css);
 

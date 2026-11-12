@@ -15,7 +15,7 @@
   /* 有狀態圖就用狀態圖（{key}_{階段}_{normal|happy|focus|sleep|sad}），沒有就退回階段圖，再沒有就 emoji */
   const statePic = (key, stage, state, emoji, size) => { const n = Math.min(stage, 2) + 1, emo = `<span class=&quot;sp-emo&quot; style=&quot;font-size:${Math.round(size * 0.62)}px&quot;>${emoji}</span>`;
     return `<img class="sp-img" src="img/spirit/${key}_${n}_${state}.webp?v=${IMGV}" alt="" style="width:${size}px;height:${size}px" onload="if(!this.dataset.f)this.classList.add('st')" onerror="if(!this.dataset.f){this.dataset.f=1;this.src='img/spirit/${key}_${n}.webp?v=${IMGV}'}else{this.outerHTML='${emo}'}">`; };
-  const focusing = () => { try { return typeof focusTimer !== "undefined" && !!focusTimer; } catch (_) { return false; } };
+  const focusing = () => { try { return !!window.__studyFocus || (typeof focusTimer !== "undefined" && !!focusTimer); } catch (_) { return false; } };
 
   async function load() {
     const { data, error } = await db.rpc("spirit_status");
@@ -181,5 +181,5 @@
     setInterval(() => { if (!document.hidden) render(); }, 30 * 1000);
     document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
   })(0);
-  window.Spirit = { load, open: panel };
+  window.Spirit = { load, open: panel, render };
 })();
