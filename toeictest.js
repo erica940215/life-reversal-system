@@ -22,7 +22,15 @@
     if (!hasDb()) return;
     const [t, a] = await Promise.all([db.from("toeic_tests").select("*").order("id"), db.from("toeic_mocks").select("*").order("created_at", { ascending: false }).limit(60)]);
     if (t.error) { X.err = t.error.message; render(); return; }
-    X.tests = t.data || []; X.attempts = (a.data || []).filter(m => m.detail && m.detail.test_id); render();
+    X.tests = (await staticTests()).concat(t.data || []); X.attempts = (a.data || []).filter(m => m.detail && m.detail.test_id); render();
+  }
+  /* 內建試題（Claude 出的，放在 toeic-tests/） */
+  let STATIC = null;
+  async function staticTests() {
+    if (STATIC) return STATIC;
+    try { const ids = await (await fetch("toeic-tests/index.json?v=3")).json(); STATIC = (await Promise.all(ids.map(i => fetch(`toeic-tests/${i}.json?v=3`).then(r => r.json()).catch(() => null)))).filter(Boolean).map(t => Object.assign(t, { builtin: true })); }
+    catch (_) { STATIC = []; }
+    return STATIC;
   }
   const have = (t, p) => PARTS[p].chunks.every(c => t.parts && Array.isArray(t.parts[c]) && t.parts[c].length);
   const ready = t => [1, 2, 3, 4, 5, 6, 7].filter(p => have(t, p));
@@ -34,8 +42,8 @@
     if (!box) { box = document.createElement("section"); box.id = "tt-card"; box.className = "card"; const root = page.querySelector("#tc-root"); root ? root.after(box) : page.appendChild(box); }
     if (X.err) { box.innerHTML = `<h2>📝 完整模擬試題</h2><p class="tr-note">${esc(X.err)}</p>`; return; }
     box.innerHTML = `<h2>📝 完整模擬試題</h2><p class="tr-note">每回 200 題、跟正式考試一樣分 7 個 Part。可以整回計時考，也可以只挑想練的 Part。題目是 AI 原創的模擬題。</p>
-      ${X.tests.map(t => { const r = ready(t), last = X.attempts.find(a => a.detail.test_id === t.id), busy = X.gen && X.gen.id === t.id;
-        return `<div class="tt-test"><div class="tt-h"><b>${esc(t.title)}</b>${last ? `<small>上次 ${last.est ? `預估 ${last.est}` : ""}・${new Date(last.created_at).toLocaleDateString("zh-TW", { month: "numeric", day: "numeric" })}</small>` : ""}</div>
+      ${X.tests.map(t => { const r = ready(t), last = X.attempts.find(a => String(a.detail.test_id) === String(t.id)), busy = X.gen && X.gen.id === t.id;
+        return `<div class="tt-test"><div class="tt-h"><b>${t.builtin ? "⭐ " : ""}${esc(t.title)}</b>${last ? `<small>上次 ${last.est ? `預估 ${last.est}` : ""}・${new Date(last.created_at).toLocaleDateString("zh-TW", { month: "numeric", day: "numeric" })}</small>` : ""}</div>
           <div class="tt-parts">${[1, 2, 3, 4, 5, 6, 7].map(p => `<span class="${have(t, p) ? "ok" : ""}" title="${PARTS[p].name}">P${p}</span>`).join("")}</div>
           ${busy ? `<p class="tr-note">⏳ ${esc(X.gen.msg)}</p>` : r.length < 7 ? `<button type="button" class="btn btn-small" data-tt="gen" data-v="${t.id}">✨ 產生缺少的 Part（約 10–15 分鐘）</button>` : ""}
           ${r.length ? `<button type="button" class="btn btn-small btn-primary" data-tt="start" data-v="${t.id}">▶️ 開始練習</button>` : ""}</div>`; }).join("")}
@@ -63,7 +71,7 @@
   }
   async function newTest() {
     const themes = ["real estate, insurance and customer service", "airlines, conferences and marketing", "education, publishing and media", "construction, energy and city services", "fashion retail, e-commerce and shipping"];
-    const { data, error } = await db.from("toeic_tests").insert({ title: `第 ${X.tests.length + 1} 回`, theme: themes[X.tests.length % themes.length] }).select().single();
+    const { data, error } = await db.from("toeic_tests").insert({ title: `AI 出題 第 ${X.tests.filter(t => !t.builtin).length + 1} 回`, theme: themes[X.tests.length % themes.length] }).select().single();
     if (error) return toast(error.message);
     X.tests.push(data); render(); generate(data.id);
   }
@@ -101,7 +109,7 @@
     return G.filter(g => g.qs.length);
   }
   function startDialog(id) {
-    const t = X.tests.find(x => x.id === id), r = ready(t), m = document.createElement("div"); m.className = "vg-modal";
+    const t = X.tests.find(x => String(x.id) === String(id)), r = ready(t), m = document.createElement("div"); m.className = "vg-modal";
     m.innerHTML = `<div class="vg-card"><div class="vg-title">📝 ${esc(t.title)}：要練哪些？</div>
       <div class="tr-row"><button type="button" class="tr-chip sm" data-pre="all">整回</button><button type="button" class="tr-chip sm" data-pre="L">只考聽力</button><button type="button" class="tr-chip sm" data-pre="R">只考閱讀</button></div>
       ${[1, 2, 3, 4, 5, 6, 7].map(p => `<label class="tt-pk ${r.includes(p) ? "" : "off"}"><input type="checkbox" value="${p}" ${r.includes(p) ? "" : "disabled"}> <b>${PARTS[p].name}</b><small>${PARTS[p].n} 題・${PARTS[p].tip}${r.includes(p) ? "" : "（還沒產生）"}</small></label>`).join("")}
@@ -203,7 +211,7 @@
   }
 
   document.addEventListener("click", e => {
-    const b = e.target.closest("[data-tt]"); if (!b) return; const id = Number(b.dataset.v);
+    const b = e.target.closest("[data-tt]"); if (!b) return; const id = /^\d+$/.test(b.dataset.v || "") ? Number(b.dataset.v) : b.dataset.v;
     if (b.dataset.tt === "gen") generate(id);
     if (b.dataset.tt === "start") startDialog(id);
     if (b.dataset.tt === "new") newTest();
