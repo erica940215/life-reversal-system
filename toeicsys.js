@@ -376,7 +376,13 @@
   /* 🧬 錯題變形題：AI 出一題同觀念、換句子的新題 */
   async function makeVariant(q) {
     const { data, error } = await db.functions.invoke("toeic", { body: { action: "variant", id: q.id, part: q.part, tag: q.tag, q: q.q, o: q.o, a: q.a, why: q.why } });
-    if (error || !data || !data.item) throw new Error((data && data.error) || (error && error.message) || "AI 沒回應");
+    if (error || !data || !data.item) {
+      /* AI 額度用完：改從題庫挑一題「同類型、還沒做過」的題目 */
+      const seen = new Set(T.ans.map(a => a.qid)), pool = allQs().filter(x => x.part === q.part && x.tag === q.tag && x.id !== q.id && !x.test), fresh = pool.filter(x => !seen.has(x.id));
+      const pick = shuffle(fresh.length ? fresh : pool)[0];
+      if (pick) { toast("🛟 AI 在休息，先從題庫挑一題同類型的"); return Object.assign({}, pick, { variant: true }); }
+      throw new Error((data && data.error) || (error && error.message) || "AI 沒回應");
+    }
     const x = data.item; T.ai.unshift(x); return { id: x.id, part: x.part, tag: x.tag, ai: true, variant: true, ...x.data };
   }
   async function variantSession(q) {

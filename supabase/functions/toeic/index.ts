@@ -1,28 +1,15 @@
 // 🎯 多益系統：AI 出題（附自我檢查）、AI 解析、AI 語音（Gemini TTS，存進 Storage 快取）
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import * as AI from "./ai.ts";
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Access-Control-Allow-Methods": "POST, OPTIONS" };
 const j = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 const KEY = () => Deno.env.get("GEMINI_API_KEY") || "";
-const TEXT_MODEL = "gemini-3.8-flash";
 const TTS_MODEL = Deno.env.get("TOEIC_TTS_MODEL") || "gemini-3.8-flash-tts";
 const admin = () => createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const G = "https://generativelanguage.googleapis.com/v1beta";
 
-async function gemini(sys: string, user: string, schema?: unknown, temp = 0.7) {
-  /* 忙線（429／5xx）就等一下再試，最後換備用模型 */
-  let r: Response | null = null;
-  for (const [i, model] of [TEXT_MODEL, TEXT_MODEL, TEXT_MODEL].entries()) {
-    if (i) await new Promise(ok => setTimeout(ok, 2500 * i + Math.random() * 1500));
-    r = await fetch(`${G}/models/${model}:generateContent`, { method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": KEY() },
-      body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: "user", parts: [{ text: user }] }], generationConfig: schema ? { responseMimeType: "application/json", responseSchema: schema, temperature: temp } : { temperature: temp } }) });
-    if (r.ok || !(r.status === 429 || r.status >= 500)) break;
-    console.error("Gemini retry", model, r.status);
-  }
-  if (!r || !r.ok) { console.error("Gemini", r?.status, await r?.text()); throw new Error(`${r?.status === 429 ? "AI 今天的免費額度用完了或太多人在用（429）" : "AI 服務暫時出錯（" + r?.status + "）"}，請稍後再試`); }
-  const p: any = await r.json();
-  const t = (p?.candidates?.[0]?.content?.parts ?? []).filter((x: any) => !x.thought).map((x: any) => x.text ?? "").join("");
-  return schema ? JSON.parse(t) : t;
-}
+/* 文字 AI：自動在多個模型之間備援（ai.ts） */
+const gemini = (sys: string, user: string, schema?: unknown, temp = 0.7) => AI.text(sys, [{ text: user }], schema, temp);
 
 /* ---------- 語音 ---------- */
 function wav(pcm: Uint8Array, rate = 24000) {
@@ -43,19 +30,14 @@ async function tts(text: string, voice: string, duo?: string[], study = false) {
   const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(TTS_MODEL + "|" + voice + "|" + text)))).map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
   const sb = admin(), path = `v1/${hash}.wav`, url = sb.storage.from("toeic-audio").getPublicUrl(path).data.publicUrl;
   const head = await fetch(url, { method: "HEAD" }); if (head.ok) return { url, cached: true };
-  const r = await fetch(`${G}/models/${TTS_MODEL}:generateContent`, { method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": KEY() },
-    body: JSON.stringify(duo
-      ? { contents: [{ parts: [{ text: `Read this TOEIC listening test recording at a natural exam pace. ${duo.length > 1 ? "Two speakers: Man and Woman." : ""}\n${text}` }] }],
-          generationConfig: { responseModalities: ["AUDIO"], speechConfig: duo.length > 1
-            ? { multiSpeakerVoiceConfig: { speakerVoiceConfigs: [{ speaker: "Man", voiceConfig: { prebuiltVoiceConfig: { voiceName: (VOICES[duo[0]] || VOICES.us_m)[0] } } }, { speaker: "Woman", voiceConfig: { prebuiltVoiceConfig: { voiceName: (VOICES[duo[1]] || VOICES.uk_f)[0] } } }] } }
-            : { voiceConfig: { prebuiltVoiceConfig: { voiceName: (VOICES[duo[0]] || VOICES.us_f)[0] } } } } }
-      : study ? { contents: [{ parts: [{ text: `You are reading a study audio track for a Taiwanese learner preparing for TOEIC. Read English parts naturally and clearly in ${vv[1]}; read Chinese parts in natural Taiwanese Mandarin. Leave a short pause between items. Text:\n${text}` }] }],
-          generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: vv[0] } } } } }
-      : { contents: [{ parts: [{ text: `Read this TOEIC listening test line clearly at a normal exam pace, in ${vv[1]}: ${text}` }] }],
-          generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: vv[0] } } } } }) });
-  if (!r.ok) { const t = await r.text(); console.error("TTS", r.status, t); throw new Error(`語音服務出錯（${r.status}）`); }
-  const p: any = await r.json(), inl = p?.candidates?.[0]?.content?.parts?.find((x: any) => x.inlineData)?.inlineData, b64 = inl?.data;
-  if (!b64) throw new Error("語音服務沒有回傳聲音");
+  const sc = duo
+    ? (duo.length > 1 ? { multiSpeakerVoiceConfig: { speakerVoiceConfigs: [{ speaker: "Man", voiceConfig: { prebuiltVoiceConfig: { voiceName: (VOICES[duo[0]] || VOICES.us_m)[0] } } }, { speaker: "Woman", voiceConfig: { prebuiltVoiceConfig: { voiceName: (VOICES[duo[1]] || VOICES.uk_f)[0] } } }] } }
+      : { voiceConfig: { prebuiltVoiceConfig: { voiceName: (VOICES[duo[0]] || VOICES.us_f)[0] } } })
+    : { voiceConfig: { prebuiltVoiceConfig: { voiceName: vv[0] } } };
+  const prompt = duo ? `Read this TOEIC listening test recording at a natural exam pace. ${duo.length > 1 ? "Two speakers: Man and Woman." : ""}\n${text}`
+    : study ? `You are reading a study audio track for a Taiwanese learner preparing for TOEIC. Read English parts naturally and clearly in ${vv[1]}; read Chinese parts in natural Taiwanese Mandarin. Leave a short pause between items. Text:\n${text}`
+    : `Read this TOEIC listening test line clearly at a normal exam pace, in ${vv[1]}: ${text}`;
+  const inl = await AI.speech(prompt, sc), b64 = inl.data;
   const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0)), isWav = /wav/.test(inl.mimeType || "") || (bytes[0] === 0x52 && bytes[1] === 0x49);
   const rate = Number(/rate=(\d+)/.exec(inl.mimeType || "")?.[1]) || 24000;
   const up = await sb.storage.from("toeic-audio").upload(path, isWav ? bytes : wav(bytes, rate), { contentType: "audio/wav", upsert: true });
@@ -174,11 +156,7 @@ async function image(prompt: string) {
   const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(IMG_MODEL + "|" + prompt)))).map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
   const sb = admin(), path = `img/${hash}.png`, url = sb.storage.from("toeic-audio").getPublicUrl(path).data.publicUrl;
   const head = await fetch(url, { method: "HEAD" }); if (head.ok) return { url, cached: true };
-  const r = await fetch(`${G}/models/${IMG_MODEL}:generateContent`, { method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": KEY() },
-    body: JSON.stringify({ contents: [{ parts: [{ text: `A realistic, natural photograph for an English listening test (no text, no captions, no watermarks): ${prompt}` }] }], generationConfig: { responseModalities: ["IMAGE", "TEXT"] } }) });
-  if (!r.ok) { console.error("IMG", r.status, await r.text()); throw new Error(`圖片服務出錯（${r.status}）`); }
-  const p: any = await r.json(), inl = p?.candidates?.[0]?.content?.parts?.find((x: any) => x.inlineData)?.inlineData;
-  if (!inl?.data) throw new Error("圖片服務沒有回傳圖片");
+  const inl = await AI.picture(`A realistic, natural photograph for an English listening test (no text, no captions, no watermarks): ${prompt}`);
   const bytes = Uint8Array.from(atob(inl.data), c => c.charCodeAt(0));
   const up = await sb.storage.from("toeic-audio").upload(path, bytes, { contentType: inl.mimeType || "image/png", upsert: true });
   if (up.error) throw new Error(up.error.message);
@@ -200,5 +178,5 @@ Deno.serve(async (req) => {
     if (b.action === "explain") return j(await explain(b.q));
     if (b.action === "gen") return j(await gen(b, u.user.id));
     return j({ error: "unknown action" }, 400);
-  } catch (e) { return j({ error: String((e as Error).message || e) }, 500); }
+  } catch (e) { return j({ error: String((e as Error).message || e), quota: e instanceof AI.QuotaError }, 500); }
 });

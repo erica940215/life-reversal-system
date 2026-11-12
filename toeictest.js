@@ -310,18 +310,40 @@
     const payload = { action: "diagnose", mode: o.mode, parts: Object.fromEntries(Object.entries(o.by).map(([p, [c, n]]) => [PARTS[p].name, `${c}/${n}（${Math.round(c / n * 100)}%）`])),
       listening: o.Ls, reading: o.Rs, estimate: o.est, tag_accuracy: Object.fromEntries(Object.entries(tagAcc).map(([k, [c, n]]) => [k, `${c}/${n}`])), wrong_reasons: reasons,
       part7_words_per_minute: wpm, target: set.target, start_score: set.start_score, days_to_exam: daysLeft, daily_minutes: set.daily_min, previous_estimates: past };
-    const box = o.box();
-    try {
-      const { data, error } = await db.functions.invoke("toeic", { body: payload });
-      if (error || !data || data.error) throw new Error((data && data.error) || (error && error.message) || "AI 沒回應");
+    async function save(data, rule) {
       const until = (() => { const d = new Date(Date.now() + 8 * 3600e3 - 6 * 3600e3 + 7 * 864e5); return d.toISOString().slice(0, 10); })();
       const adj = { p2: data.p2, p5: data.p5, review: data.review, focus: data.focus, until };
       const mk = await o.mockP; if (mk.data) await db.from("toeic_mocks").update({ detail: Object.assign({}, o.detail, { diag: data }) }).eq("id", mk.data.id);
       await db.from("toeic_settings").upsert({ plan_adj: adj }, { onConflict: "user_id" });
       if (window.ToeicSys) window.ToeicSys.load();
-      const b = o.box(); if (b) b.innerHTML = `<p class="tc-h4">🤖 AI 診斷</p><p>${esc(data.summary)}</p>${data.losses.length ? `<p class="tc-h4">📉 分數掉在哪</p><ul class="tc-ul">${data.losses.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      const b = o.box(); if (b) b.innerHTML = `<p class="tc-h4">${rule ? "📊 自動診斷（AI 休息中，用你的作答數據算的）" : "🤖 AI 診斷"}</p><p>${esc(data.summary)}</p>${data.losses.length ? `<p class="tc-h4">📉 分數掉在哪</p><ul class="tc-ul">${data.losses.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
         ${data.plan.length ? `<p class="tc-h4">🗓️ 下週這樣練</p><ul class="tc-ul">${data.plan.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}<p class="tr-note">📐 接下來 7 天的每日練習已經照這份診斷自動調整（Part 2 ×${data.p2}、Part 5 ×${data.p5}、錯題 ×${data.review}）。</p>`;
-    } catch (err) { const b = o.box(); if (b) b.innerHTML = `<p class="tr-note dn">😵 AI 診斷暫時寫不出來：${esc(err.message)}。成績已經存好了。</p>`; }
+    }
+    const box = o.box();
+    try {
+      const { data, error } = await db.functions.invoke("toeic", { body: payload });
+      if (error || !data || data.error) throw new Error((data && data.error) || (error && error.message) || "AI 沒回應");
+      await save(data, false);
+    } catch (err) {
+      /* AI 額度用完：用規則自己做一份診斷（一樣會調整每日練習） */
+      const b = o.box(); try { const d = ruleDiag(payload, o); await save(d, true); } catch (e2) { if (b) b.innerHTML = `<p class="tr-note dn">😵 診斷暫時寫不出來：${esc(err.message)}。成績已經存好了。</p>`; }
+    }
+  }
+  /* AI 不能用時的「規則診斷」：找最弱的 Part、文法點、錯誤原因，配對應的練法 */
+  function ruleDiag(P, o) {
+    const parts = Object.entries(o.by).map(([p, [c, n]]) => ({ p: Number(p), name: PARTS[p].name, acc: c / n, c, n })).sort((a, b) => a.acc - b.acc);
+    const tags = Object.entries(P.tag_accuracy || {}).map(([k, v]) => { const [c, n] = v.split("/").map(Number); return { k, c, n, acc: c / n }; }).filter(x => x.n >= 2).sort((a, b) => a.acc - b.acc);
+    const rs = Object.entries(P.wrong_reasons || {}).sort((a, b) => b[1] - a[1]), best = parts[parts.length - 1], worst = parts[0];
+    const L = parts.filter(x => x.p <= 4), Rd = parts.filter(x => x.p >= 5), avg = a => a.length ? a.reduce((s, x) => s + x.c, 0) / a.reduce((s, x) => s + x.n, 0) : null, la = avg(L), ra = avg(Rd);
+    const TIP = { 1: "Part 1：每天聽 5 張照片題，先猜「人在做什麼」", 2: "每日 Part 2 多做一點，聽到第一個字（Who／When／Where）就先刪選項", 3: "Part 3 用「🎧 逐句跟讀」每天 1 組，先看題目再聽", 4: "Part 4 每天通勤聽 2 組獨白，抓「誰在說、目的、下一步」", 5: "每日弱點專練 Part 5 最弱的文法點 8 題", 6: "Part 6 先讀空格前後兩句，再決定答案", 7: "Part 7 每天計時做 2 組，先看題目再回文章找關鍵字" };
+    const focusMap = { 詞性: "pos", 時態: "tense", "主動／被動": "voice", 介系詞: "prep", 連接詞: "conj", 代名詞: "pron", 關係詞: "rel", 比較級: "comp", 單字搭配: "vocab", "分詞／動名詞": "part" };
+    const focus = tags.filter(t => t.k.startsWith("Part 5") && t.acc < 0.6).map(t => focusMap[t.k.replace("Part 5 ", "")]).filter(Boolean).slice(0, 3);
+    const cl = v => Math.max(0.7, Math.min(1.5, Math.round(v * 10) / 10));
+    return {
+      summary: `這次最好的是 ${best.name}（${Math.round(best.acc * 100)}%），最需要補的是 ${worst.name}（${Math.round(worst.acc * 100)}%）。${la != null && ra != null ? (la < ra ? "整體來說聽力比閱讀弱，接下來一週多練聽。" : "整體來說閱讀比聽力弱，接下來一週多練閱讀。") : ""}`,
+      losses: [...parts.slice(0, 2).map(x => `${x.name} 只答對 ${x.c}/${x.n}（${Math.round(x.acc * 100)}%）`), ...tags.slice(0, 1).map(t => `${t.k} 答對 ${t.c}/${t.n}`), ...(P.part7_words_per_minute && P.part7_words_per_minute < 120 ? [`Part 7 每分鐘只讀 ${P.part7_words_per_minute} 字，容易寫不完`] : []), ...(rs.length ? [`最常錯的原因是「${rs[0][0]}」（${rs[0][1]} 組）`] : [])].slice(0, 3),
+      plan: [...new Set([TIP[worst.p], parts[1] ? TIP[parts[1].p] : null, focus.length ? "每天做一次「🗺️ 弱點專練」" : null, "每天錯題複習清空，週日再做一次完整試題的弱項 Part"].filter(Boolean))].slice(0, 4),
+      p2: cl(la != null && ra != null ? 1 + (ra - la) : 1), p5: cl(la != null && ra != null ? 1 + (la - ra) : 1), review: 1.2, focus };
   }
   /* 🚇 通勤純聽用：每天輪替幾組 Part 3／4 */
   function listenGroups(n) {

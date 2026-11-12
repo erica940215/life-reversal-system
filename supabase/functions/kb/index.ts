@@ -1,25 +1,12 @@
 // 🧠 複習系統：把導入的資料（文字、PDF、圖片）整理成「由簡單到難」的知識點，再做成各種形式的題卡
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import * as AI from "./ai.ts";
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Access-Control-Allow-Methods": "POST, OPTIONS" };
 const j = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 const KEY = () => Deno.env.get("GEMINI_API_KEY") || "";
-const MODEL = "gemini-3.8-flash";
-const G = "https://generativelanguage.googleapis.com/v1beta";
 
-async function gemini(sys: string, parts: unknown[], schema?: unknown, temp = 0.5) {
-  let r: Response | null = null;
-  for (let i = 0; i < 3; i++) {
-    if (i) await new Promise(ok => setTimeout(ok, 2500 * i + Math.random() * 1500));
-    r = await fetch(`${G}/models/${MODEL}:generateContent`, { method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": KEY() },
-      body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: "user", parts }], generationConfig: schema ? { responseMimeType: "application/json", responseSchema: schema, temperature: temp } : { temperature: temp } }) });
-    if (r.ok || !(r.status === 429 || r.status >= 500)) break;
-    console.error("Gemini retry", r.status);
-  }
-  if (!r || !r.ok) { console.error("Gemini", r?.status, (await r?.text())?.slice(0, 500)); throw new Error(r?.status === 429 ? "AI 今天的免費額度用完了（429），大約下午 4 點會恢復" : `AI 服務暫時出錯（${r?.status}），請稍後再試`); }
-  const p: any = await r.json();
-  const t = (p?.candidates?.[0]?.content?.parts ?? []).filter((x: any) => !x.thought).map((x: any) => x.text ?? "").join("");
-  return schema ? JSON.parse(t) : t;
-}
+/* 文字 AI：自動在多個模型之間備援（ai.ts） */
+const gemini = (sys: string, parts: unknown[], schema?: unknown, temp = 0.5) => AI.text(sys, parts, schema, temp);
 const STR = { type: "STRING" }, INT = { type: "INTEGER" }, NUM = { type: "NUMBER" }, BOOL = { type: "BOOLEAN" };
 const ARR = (it: unknown) => ({ type: "ARRAY", items: it }), OBJ = (p: Record<string, unknown>, req: string[]) => ({ type: "OBJECT", properties: p, required: req });
 
@@ -118,5 +105,5 @@ Deno.serve(async (req) => {
     if (b.action === "grade") return j(await grade(b));
     if (b.action === "explain") return j(await explain(b));
     return j({ error: "unknown action" }, 400);
-  } catch (e) { return j({ error: String((e as Error).message || e) }, 500); }
+  } catch (e) { return j({ error: String((e as Error).message || e), quota: e instanceof AI.QuotaError }, 500); }
 });

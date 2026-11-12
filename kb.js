@@ -119,7 +119,7 @@
           <button type="button" class="btn" data-kb="exam" data-v="${sid}" ${learned ? "" : "disabled"}>🎯 綜合測驗</button></div></section>
       <section class="card"><h2>🗺️ 知識地圖</h2><p class="tr-note">由上到下＝由簡單到難。顏色是熟練度：灰＝還沒學、橘＝剛開始、黃＝有印象、綠＝記牢了。點任一個可以看比喻和重點。</p>
         <div class="kb-map"><div class="kb-root">${esc(s.title)}</div><ul>${secs.map(([k, arr]) => `<li><span class="kb-sec">${esc(k)}</span><ul>${arr.map(p => { const m = ptM(p); return `<li><button type="button" class="kb-pt ${p.learned_at ? "" : "new"}" data-kb="pt" data-v="${p.id}"><span class="kb-dot" style="background:${p.learned_at ? mColor(m) : "rgba(127,127,127,.35)"}"></span>${esc(p.title)} <small>L${p.level}</small></button></li>`; }).join("")}</ul></li>`).join("")}</ul></div></section>
-      <section class="card"><details><summary>⚙️ 管理</summary><div class="tr-row" style="margin-top:8px"><button type="button" class="btn btn-small" data-kb="rename" data-v="${sid}">改名／改科目</button><button type="button" class="btn btn-small" data-kb="del" data-v="${sid}">🗑️ 刪除這份資料</button></div></details></section>`;
+      <section class="card"><details><summary>⚙️ 管理</summary><div class="tr-row" style="margin-top:8px"><button type="button" class="btn btn-small" data-kb="rename" data-v="${sid}">改名／改科目</button><button type="button" class="btn btn-small" data-kb="del" data-v="${sid}">🗑️ 刪除這份資料</button><button type="button" class="btn btn-small" data-kb="redo" data-v="${sid}">🤖 用 AI 重新整理</button></div></details></section>`;
   }
 
   function renderToday() {
@@ -143,6 +143,7 @@
       ${tab === "text" ? `<textarea id="kb-text" rows="9" placeholder="貼上筆記、講義文字、文章…（越完整越好）">${esc(m._text || "")}</textarea>`
         : `<label class="kb-drop"><input type="file" id="kb-file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.heic,.heif,.docx,.pptx,.txt,.md,.csv,image/*,application/pdf"><span>📎 選擇檔案<br><small>PDF、照片／截圖（可以多張）、Word（.docx）、PPT（.pptx）、文字檔</small></span></label>
           ${files.length ? `<ul class="kb-files">${files.map((f, i) => `<li>${esc(f.name)} <small>${(f.size / 1048576).toFixed(1)} MB</small> <button type="button" class="tr-x" data-rm="${i}">✕</button></li>`).join("")}</ul>` : ""}`}
+      <label class="kb-n">整理方式<select id="kb-mode"><option value="ai">🤖 AI 整理（有比喻、9 種題型，推薦）</option><option value="local">⚡ 快速模式（不用 AI，適合條列式筆記）</option></select></label>
       <label class="kb-n">知識點數量<select id="kb-n"><option value="10">精簡（約 10 個）</option><option value="18" selected>標準（約 18 個）</option><option value="28">詳細（約 28 個）</option></select></label>
       <p class="tr-note">整理大約要 1～3 分鐘，可以關掉這個視窗去做別的，完成會通知你。</p>
       <button type="button" class="btn btn-primary" data-go="1" style="width:100%">✨ 開始整理</button><button type="button" class="btn" data-vx="1" style="width:100%;margin-top:6px">取消</button></div>`;
@@ -158,7 +159,8 @@
         if (tab === "text" && (m._text || "").trim().length < 30) return toast("內容太短了，至少貼一段文字");
         if (tab === "file" && !files.length) return toast("先選檔案");
         const b = e.target.closest("[data-go]"); b.disabled = true; b.textContent = "⏳ 讀取檔案中…";
-        try { const input = tab === "text" ? { text: m._text, kind: "text" } : await readFiles(files); m.remove(); ingest(sub, title, n, input); }
+        const local = m.querySelector("#kb-mode").value === "local";
+        try { const input = tab === "text" ? { text: m._text, kind: "text", files: [] } : await readFiles(files); m.remove(); ingest(sub, title, n, input, local); }
         catch (err) { b.disabled = false; b.textContent = "✨ 開始整理"; toast("😵 " + err.message); }
       }
     });
@@ -199,7 +201,9 @@
   }
 
   /* 整理流程：① AI 拆知識點 → ② 每 4 個知識點做一批題卡（兩批同時做） */
-  async function ingest(subject, title, n, input) {
+  const isQuota = m => /429|額度|忙不過來|quota/i.test(String(m || ""));
+  async function ingest(subject, title, n, input, local) {
+    if (local) return localIngest(subject, title, input);
     const tmp = "tmp" + Date.now(); K.busy[tmp] = "AI 正在讀資料、拆知識點…"; toast("✨ 開始整理，大約 1～3 分鐘，可以先去做別的");
     K.sources.unshift({ id: tmp, subject, title: title || "（整理中）", kind: input.kind, status: "outline" }); K.view = null; render();
     try {
@@ -215,13 +219,80 @@
       await makeCards(sr.data.id);
     } catch (err) {
       K.sources = K.sources.filter(s => s.id !== tmp); delete K.busy[tmp]; render();
+      /* AI 全部用完：有文字的資料改用「快速模式」在手機上直接整理，照片才需要等 AI */
+      if (isQuota(err.message)) { toast("🛟 AI 額度暫時用完，改用快速模式整理（不用 AI）"); return localIngest(subject, title, input); }
       toast("😵 整理失敗：" + err.message);
     }
+  }
+  /* ---------- ⚡ 快速模式：不用 AI，從筆記的結構（標題、「名詞：解釋」、條列、步驟）直接做題卡 ---------- */
+  async function localIngest(subject, title, input) {
+    let text = input.text || "";
+    if (!text && input.files.some(f => f.mime === "application/pdf")) { try { toast("📄 讀取 PDF 文字中…"); text = await pdfText(input.files.filter(f => f.mime === "application/pdf")); } catch (_) {} }
+    if (text.replace(/\s/g, "").length < 30) return toast(input.files.length ? "😵 照片要用 AI 才看得懂，AI 額度恢復後再導入一次（或改貼文字）" : "😵 內容太少，整理不出知識點");
+    const pts = localOutline(text); if (!pts.length) return toast("😵 整理不出知識點：試試用「標題＋條列」或「名詞：解釋」的格式");
+    const sr = await db.from("kb_sources").insert({ subject, title: title || (text.trim().split("\n")[0] || "未命名").replace(/^#+\s*|^【|】$/g, "").slice(0, 40), kind: input.kind, summary: `⚡ 快速模式整理（不用 AI）：${pts.length} 個知識點。AI 恢復後可以在「⚙️ 管理」按「🤖 用 AI 重新整理」，會多出比喻和更多題型。`, raw: text.slice(0, 60000), status: "ready" }).select().single();
+    if (sr.error) return toast(sr.error.message);
+    const pr = await db.from("kb_points").insert(pts.map((p, i) => ({ source_id: sr.data.id, pos: i, section: p.section, title: p.title, level: p.level, summary: p.summary, analogy: p.analogy || null, key_terms: p.key_terms, excerpt: p.excerpt, cards_ready: true }))).select();
+    if (pr.error) return toast(pr.error.message);
+    const rows = []; pr.data.forEach((row, i) => pts[i].cards.forEach(c => rows.push({ point_id: row.id, source_id: sr.data.id, type: c.type, level: c.level, data: c.data })));
+    const cr = rows.length ? await db.from("kb_cards").insert(rows).select("id, point_id, source_id, type, level, data, reps, lapses, ease, ivl, due, suspended") : { data: [] };
+    K.sources.unshift(sr.data); K.points = K.points.concat(pr.data); K.cards = K.cards.concat(cr.data || []); render(); renderToday();
+    db.rpc("kb_done", { p_task: "import" }).then(r => { if (r.data && r.data.granted) toast(`✨ 第一次導入資料，星屑 +${r.data.amount}`); });
+    toast(`⚡ 快速模式整理好了：${pts.length} 個知識點、${rows.length} 張題卡`);
+  }
+  let pdfP = null;
+  const loadPdf = () => pdfP || (pdfP = new Promise((res, rej) => { const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"; s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; res(window.pdfjsLib); }; s.onerror = () => { pdfP = null; rej(new Error("PDF 工具載入失敗")); }; document.head.appendChild(s); }));
+  async function pdfText(files) {
+    const L = await loadPdf(), out = [];
+    for (const f of files) { const bin = Uint8Array.from(atob(f.data), c => c.charCodeAt(0)), doc = await L.getDocument({ data: bin }).promise;
+      for (let i = 1; i <= Math.min(doc.numPages, 80); i++) { const tc = await (await doc.getPage(i)).getTextContent(); let line = "", lastY = null; const ls = [];
+        tc.items.forEach(it => { const y = Math.round(it.transform[5]); if (lastY != null && Math.abs(y - lastY) > 3) { ls.push(line); line = ""; } line += it.str; lastY = y; }); ls.push(line);
+        out.push(`--- 第 ${i} 頁 ---\n` + ls.map(x => x.trim()).filter(Boolean).join("\n")); } }
+    return out.join("\n\n");
+  }
+  const BUL = /^\s*(?:[-*•‧·●○▪◆■□►➤✓]|\(?\d{1,2}[.)、）]|[①-⑳]|[a-zA-Z][.)])\s*/;
+  const DEF = /^(.{1,30}?)\s*[：:＝=]\s*(.{4,})$/, STEP = /^\s*(?:\(?\d{1,2}[.)、）]|[①-⑳]|step\s*\d+[:.]?|第[一二三四五六七八九十\d]+步)\s*/i;
+  function localOutline(text) {
+    const lines = text.replace(/\r/g, "").split("\n").map(l => l.trim()).filter(Boolean), secs = []; let cur = { name: "重點整理", items: [] }; secs.push(cur);
+    const isHead = l => /^#{1,6}\s+/.test(l) || /^第[一二三四五六七八九十百\d]+[章節課單元篇]/.test(l) || /^【.+】$/.test(l) || /^[一二三四五六七八九十]+[、.]\s*\S/.test(l) || /^---.*---$/.test(l) || /^\d+(\.\d+)+\s+\S/.test(l) || (l.length <= 18 && !/[。，,；;：:.!?！？]$/.test(l) && !DEF.test(l) && !BUL.test(l));
+    lines.forEach(l => { if (isHead(l)) { cur = { name: l.replace(/^#+\s*|^【|】$|^-+\s*|\s*-+$/g, "").slice(0, 40) || "重點", items: [] }; secs.push(cur); } else cur.items.push(l); });
+    const pts = [], allTerms = [], sh = a => shuffle(a);
+    secs.filter(x => x.items.length).forEach(sec => {
+      const defs = [], steps = [], bul = [];
+      sec.items.forEach(raw => { const isStep = STEP.test(raw), l = raw.replace(BUL, "").trim(), m = DEF.exec(l);
+        if (m && !/https?$/i.test(m[1]) && !/[。，,]/.test(m[1])) defs.push({ term: m[1].trim(), def: m[2].trim(), raw }); else if (isStep) steps.push(l); else if (l.length >= 4) bul.push(l); });
+      defs.forEach(d => allTerms.push(d.term));
+      defs.forEach(d => pts.push({ section: sec.name, title: d.term, level: 1, summary: d.def, key_terms: [d.term], excerpt: d.raw, _def: d,
+        cards: [{ type: "flash", level: 1, data: { q: `「${d.term}」是什麼？`, a: d.def } }, { type: "cloze", level: 1, data: { text: `{{${d.term}}}：${d.def}` } }] }));
+      if (defs.length >= 2) pts.push({ section: sec.name, title: `${sec.name}：名詞配對`, level: 3, summary: defs.map(d => `${d.term}：${d.def}`).join("\n"), key_terms: defs.map(d => d.term).slice(0, 5), excerpt: defs.map(d => d.raw).join("\n"),
+        cards: [{ type: "match", level: 3, data: { q: `把「${sec.name}」的名詞和解釋配對`, pairs: sh(defs).slice(0, 5).map(d => ({ l: d.term, r: d.def.slice(0, 60) })) } }] });
+      if (steps.length >= 3) pts.push({ section: sec.name, title: /步驟|流程|程序$/.test(sec.name) ? sec.name : `${sec.name}的步驟`, level: 4, summary: steps.map((x, i) => `${i + 1}. ${x}`).join("\n"), key_terms: [], excerpt: steps.join("\n"),
+        cards: [{ type: "order", level: 4, data: { q: `依序排出「${sec.name}」的步驟`, items: steps.slice(0, 6) } }, { type: "flash", level: 2, data: { q: `「${sec.name}」有哪幾個步驟？`, a: steps.map((x, i) => `${i + 1}. ${x}`).join("\n") } }] });
+      if (bul.length) { const top = bul.slice(0, 8), cs = [{ type: "flash", level: 2, data: { q: `「${sec.name}」有哪些重點？（${top.length} 點）`, a: top.map(x => "• " + x).join("\n") } }];
+        const key = top.map(x => (x.match(/「([^」]{2,12})」|[A-Za-z][A-Za-z0-9+#.-]{2,}/) || [])).find(m => m[0]); if (key) { const k = key[1] || key[0], line = top.find(x => x.includes(k)); cs.push({ type: "cloze", level: 1, data: { text: line.replace(k, `{{${k}}}`) } }); }
+        if (top.length >= 3) cs.push({ type: "short", level: 5, data: { q: `用自己的話說明「${sec.name}」`, points: top.slice(0, 4), model: top.slice(0, 4).join("；") } });
+        pts.push({ section: sec.name, title: sec.name, level: 2, summary: top.join("\n"), key_terms: [], excerpt: sec.items.join("\n").slice(0, 1500), cards: cs, _bul: top }); }
+    });
+    /* 名詞夠多時，加「看解釋選名詞」的選擇題；不同段落的句子互換，做成是非題 */
+    pts.filter(p => p._def).forEach(p => { const others = sh(allTerms.filter(t => t !== p._def.term)).slice(0, 3); if (others.length === 3) p.cards.push({ type: "mcq", level: 2, data: { q: `哪個名詞的意思是：「${p._def.def}」？`, o: [p._def.term, ...others], ans: 0, why: `${p._def.term}：${p._def.def}` } }); });
+    const bp = pts.filter(p => p._bul); bp.forEach(p => { const o = bp.filter(x => x !== p && x._bul.length); p.cards.push({ type: "tf", level: 1, data: { s: `「${p.section}」的重點之一：${p._bul[0]}`, t: true, why: "這句就在這一段的重點裡。" } });
+      if (o.length) { const x = o[Math.floor(Math.random() * o.length)]; p.cards.push({ type: "tf", level: 2, data: { s: `「${p.section}」的重點之一：${x._bul[0]}`, t: false, why: `這句其實是在講「${x.section}」。` } }); } });
+    pts.sort((a, b) => a.level - b.level);
+    return pts.slice(0, 40);
+  }
+  /* AI 做題卡失敗時，用知識點本身的重點做幾張基本卡 */
+  function localCards(p, all) {
+    const cs = [{ type: "flash", level: Math.min(2, p.level), data: { q: `說明「${p.title}」`, a: p.summary } }];
+    const k = (p.key_terms || []).find(t => t && p.summary.includes(t)); if (k) cs.push({ type: "cloze", level: 1, data: { text: p.summary.replace(k, `{{${k}}}`) } });
+    const others = shuffle(all.filter(x => x.id !== p.id).map(x => x.title)).slice(0, 3);
+    if (p.analogy && others.length === 3) cs.push({ type: "analogy", level: 2, data: { analogy: p.analogy, o: [p.title, ...others], ans: 0, why: p.summary } });
+    if (p.level >= 4) cs.push({ type: "short", level: p.level, data: { q: `用自己的話說明「${p.title}」，並舉一個例子`, points: (p.key_terms || []).slice(0, 4).length ? p.key_terms.slice(0, 4) : [p.summary.slice(0, 60)], model: p.summary } });
+    return cs.map(c => ({ point_id: p.id, ...c }));
   }
   async function makeCards(sid) {
     const s = srcById(sid), todo = ptsOf(sid).filter(p => !p.cards_ready); if (!todo.length || K.busy[sid]) return;
     const batches = []; for (let i = 0; i < todo.length; i += 4) batches.push(todo.slice(i, i + 4));
-    let done = 0, fail = 0; K.busy[sid] = `做題卡中 0/${todo.length} 個知識點…`; render(); renderToday();
+    let done = 0, fail = 0, basic = 0; K.busy[sid] = `做題卡中 0/${todo.length} 個知識點…`; render(); renderToday();
     const run = async b => {
       let ok = false;
       for (let k = 0; k < 2 && !ok; k++) {
@@ -230,7 +301,14 @@
           if (error || !data || data.error) throw new Error((data && data.error) || (error && error.message));
           if (data.cards.length) { const r = await db.from("kb_cards").insert(data.cards.map(c => Object.assign({ source_id: sid }, c))).select("id, point_id, source_id, type, level, data, reps, lapses, ease, ivl, due, suspended"); if (r.error) throw new Error(r.error.message); K.cards = K.cards.concat(r.data); }
           const ids = b.map(p => p.id); await db.from("kb_points").update({ cards_ready: true }).in("id", ids); b.forEach(p => { p.cards_ready = true; }); ok = true;
-        } catch (err) { if (/429|額度/.test(err.message)) { k = 9; } else await new Promise(r => setTimeout(r, 3000)); }
+        } catch (err) {
+          if (isQuota(err.message)) { /* AI 用完：先用重點做基本卡，之後可以再讓 AI 補 */
+            const cs = b.flatMap(p => localCards(p, ptsOf(sid)));
+            const r = await db.from("kb_cards").insert(cs.map(c => Object.assign({ source_id: sid }, c))).select("id, point_id, source_id, type, level, data, reps, lapses, ease, ivl, due, suspended");
+            if (!r.error) { K.cards = K.cards.concat(r.data); await db.from("kb_points").update({ cards_ready: true }).in("id", b.map(p => p.id)); b.forEach(p => { p.cards_ready = true; }); ok = true; basic += b.length; }
+            k = 9;
+          } else await new Promise(r => setTimeout(r, 3000));
+        }
       }
       if (!ok) fail += b.length; done += b.length; K.busy[sid] = `做題卡中 ${done}/${todo.length} 個知識點…`; render();
     };
@@ -238,7 +316,8 @@
     delete K.busy[sid];
     if (!fail) { await db.from("kb_sources").update({ status: "ready" }).eq("id", sid); s.status = "ready"; }
     render(); renderToday();
-    toast(fail ? `⚠️ 「${s.title}」有 ${fail} 個知識點的題卡沒做成功，點進去按「繼續產生題卡」` : `🎉 「${s.title}」整理好了：${ptsOf(sid).length} 個知識點、${K.cards.filter(c => c.source_id === sid).length} 張題卡，可以開始學了`);
+    if (basic) toast(`🛟 AI 額度暫時用完：有 ${basic} 個知識點先做了基本題卡，AI 恢復後可以在「⚙️ 管理」按「🤖 用 AI 重新整理」`);
+    else toast(fail ? `⚠️ 「${s.title}」有 ${fail} 個知識點的題卡沒做成功，點進去按「繼續產生題卡」` : `🎉 「${s.title}」整理好了：${ptsOf(sid).length} 個知識點、${K.cards.filter(c => c.source_id === sid).length} 張題卡，可以開始學了`);
   }
 
   /* ---------- 題卡（9 種） ---------- */
@@ -447,6 +526,10 @@
     if (a === "exam") exam(id);
     if (a === "pt") pointModal(id);
     if (a === "resume") makeCards(id);
+    if (a === "redo") { const s = srcById(id); const { data } = await db.from("kb_sources").select("raw").eq("id", id).maybeSingle();
+      if (!data || !data.raw) return toast("這份資料沒有存原始文字（PDF／照片），請重新導入一次檔案");
+      if (!confirm(`用 AI 重新整理「${s.title}」？會新增一份 AI 版本，原本這份和它的複習紀錄會保留，確認沒問題再自己刪掉舊的。`)) return;
+      K.view = null; ingest(s.subject, s.title + "（AI 版）", 18, { text: data.raw, kind: s.kind, files: [] }); }
     if (a === "rename") { const s = srcById(id), t = prompt("新的標題", s.title); if (t == null) return; const sub = prompt("科目", s.subject); if (sub == null) return;
       await db.from("kb_sources").update({ title: t.trim() || s.title, subject: sub.trim() || s.subject }).eq("id", id); s.title = t.trim() || s.title; s.subject = sub.trim() || s.subject; render(); }
     if (a === "del") { const s = srcById(id); if (!confirm(`刪除「${s.title}」？知識點、題卡和複習紀錄都會一起刪掉，不能復原。`)) return;
