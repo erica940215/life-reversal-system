@@ -9,13 +9,13 @@
     { key: "today", pages: ["today"] },
     { key: "tasks", pages: ["tasks", "calendar", "projects"] },
     { key: "focus", pages: ["focus", "vocab"] },
-    { key: "life", pages: ["life", "records", "ideas"] },
+    { key: "life", pages: ["life", "records", "ideas", "trade"] },
     { key: "game", icon: "🎮", label: "遊戲", pages: ["rpg", "farm", "doom"] }
   ];
   const LABEL = {
     today: "🏠 今日", tasks: "📋 任務", calendar: "📅 日曆", projects: "🎯 專案",
     focus: "⏱️ 專注", vocab: "📖 單字", life: "🌿 生活", records: "📊 紀錄",
-    ideas: "💡 想法", rpg: "⚔️ 冒險", farm: "🏝️ 星露島", doom: "☢️ 末世"
+    ideas: "💡 想法", trade: "📈 模擬交易", rpg: "⚔️ 冒險", farm: "🏝️ 星露島", doom: "☢️ 末世"
   };
   const groupOf = p => GROUPS.find(g => g.pages.includes(p));
   const lastKey = g => "navLast:" + g.key;
