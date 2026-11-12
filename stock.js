@@ -166,13 +166,14 @@
       const [d, bench, f] = await Promise.all([market(sym), sym === bs ? null : market(bs).catch(() => null), fund(sym)]);
       if (bench) bench.label = bl;
       const A = analyze(d, bench, f), name = (f.tw && f.tw.name) || (f.rev && f.rev.name) || (f.y && f.y.name) || d.name, rp = rulePlan(A), y = f.y || {};
+      const NB = window.Newbie;
       const scored = A.filter(x => x.score != null), strong = scored.slice().sort((a, b) => b.score - a.score);
       out.innerHTML = `<section class="card sk-head"><div class="sk-title"><div><b>${esc(name)}</b> <small>${esc(sym)}${y.industry || (f.rev && f.rev.industry) ? `・${esc((f.rev && f.rev.industry) || y.industry)}` : ""}${y.mcap ? `・市值 ${big(y.mcap)}` : ""}</small>
           <div class="sk-px">${fx(A.px)} <small>${esc(d.currency || "")}</small> <span class="${cls(A.ret.m1)}">1 個月 ${pct(A.ret.m1)}</span> <span class="${cls(A.ret.y1)}">1 年 ${pct(A.ret.y1)}</span></div></div>
           <div class="sk-total s${A.total >= 62 ? "g" : A.total <= 42 ? "r" : "y"}"><b>${A.total}</b><small>綜合分數</small></div></div>
         ${priceChart(d, A)}
-        <p class="tr-verdict">📌 ${esc(rp.view)}。最強的面向是${strong.slice(0, 2).map(x => x.name.replace(/（.*）/, "")).join("、")}，最弱的是${strong.slice(-2).reverse().map(x => x.name.replace(/（.*）/, "")).join("、")}。</p></section>
-        <section class="card"><h2>🧭 十個面向</h2>${A.map(x => `<details class="sk-dim" ${x.score != null && (x.score >= 70 || x.score <= 35) ? "open" : ""}><summary><span>${x.icon} ${x.name}</span>${x.score != null ? `${bar(x.score)}<b>${x.score}</b>` : `<em>參考</em>`}</summary><ul>${x.lines.map(l => `<li>${esc(l)}</li>`).join("")}</ul><p class="tr-note">💡 ${x.tip}</p></details>`).join("")}
+        <p class="tr-verdict">📌 ${esc(rp.view)}。最強的面向是${strong.slice(0, 2).map(x => x.name.replace(/（.*）/, "")).join("、")}，最弱的是${strong.slice(-2).reverse().map(x => x.name.replace(/（.*）/, "")).join("、")}。</p>${NB ? NB.plainTotal(A.total) : ""}</section>
+        <section class="card"><h2>🧭 十個面向</h2>${A.map(x => `<details class="sk-dim" ${x.score != null && (x.score >= 70 || x.score <= 35) ? "open" : ""}><summary><span>${x.icon} ${x.name}</span>${x.score != null ? `${bar(x.score)}<b>${x.score}</b>` : `<em>參考</em>`}</summary>${NB ? NB.plain(x.key, x.score) : ""}<ul>${x.lines.map(l => `<li>${NB ? NB.gl(esc(l)) : esc(l)}</li>`).join("")}</ul><p class="tr-note">💡 ${x.tip}</p></details>`).join("")}
           ${y.summary ? `<details class="sk-dim"><summary><span>🏢 公司在做什麼</span></summary><p class="tr-note" style="opacity:.85">${esc(y.summary)}…</p></details>` : ""}</section>
         <section class="card" id="sk-ai"><h2>🤖 我的看法</h2><p class="tr-note">AI 正在讀上面的數據寫看法…</p></section>
         <p class="tr-note small" style="padding:0 6px">⚠️ 以上是根據公開數據的整理與推論，不是投資建議；資料可能延遲，下單前請自己再確認，並只用輸得起的錢。</p>`;
@@ -206,6 +207,7 @@
     if (a === "sim") { try { const S = JSON.parse(store.get("tradeSim") || "{}"); S.sym = st.last; S.mk = mkOf(st.last); store.set("tradeSim", JSON.stringify(S)); } catch (_) {} location.hash = "#trade"; location.reload(); }
   }
 
+  window.StockPage = { rerender: () => { if (document.querySelector("#sk-out .sk-head")) go(st.last); } };
   const css = document.createElement("style");
   css.textContent = `
     .sk-title { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; } .sk-title small { opacity: .65; font-size: 12px; } .sk-title > div > b { font-size: 20px; }
