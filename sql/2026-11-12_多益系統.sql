@@ -48,3 +48,21 @@ begin
 end; $$;
 revoke all on function public.toeic_task_done(text) from public, anon;
 grant execute on function public.toeic_task_done(text) to authenticated;
+
+-- 完整模擬試題（一回 200 題，分段由 AI 產生）
+create table if not exists public.toeic_tests (
+  id bigserial primary key, user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  title text not null, theme text, parts jsonb not null default '{}', created_at timestamptz not null default now());
+alter table public.toeic_tests enable row level security;
+grant select, insert, update, delete on public.toeic_tests to authenticated;
+grant usage, select on sequence public.toeic_tests_id_seq to authenticated;
+do $$ begin
+  if not exists (select 1 from pg_policies where tablename = 'toeic_tests' and policyname = 'own all') then
+    create policy "own all" on public.toeic_tests for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  end if;
+end $$;
+create or replace function public.toeic_test_put(p_id bigint, p_uid uuid, p_chunk text, p_items jsonb)
+returns boolean language sql security definer set search_path to 'public' as $$
+  update public.toeic_tests set parts = parts || jsonb_build_object(p_chunk, p_items) where id = p_id and user_id = p_uid returning true $$;
+revoke all on function public.toeic_test_put(bigint, uuid, text, jsonb) from public, anon, authenticated;
+grant execute on function public.toeic_test_put(bigint, uuid, text, jsonb) to service_role;
