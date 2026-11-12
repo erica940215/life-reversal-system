@@ -17,6 +17,7 @@ create table if not exists public.trade_runs (
   created_at timestamptz not null default now()
 );
 alter table public.trade_runs enable row level security;
+grant select, insert, update, delete on public.trade_runs to authenticated;
 do $$ begin
   if not exists (select 1 from pg_policies where tablename = 'trade_runs' and policyname = 'own all') then
     create policy "own all" on public.trade_runs for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
