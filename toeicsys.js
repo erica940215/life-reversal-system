@@ -13,6 +13,14 @@
   const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   const hashN = s => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
 
+  /* AI 診斷後的每日練習調整（7 天有效） */
+  const adj = () => { const a = T.set && T.set.plan_adj; return a && a.until >= todayStr() ? a : {}; };
+  /* 最弱的 Part 5 文法點（至少做過 5 題、正確率低於 65%） */
+  function weakTag() {
+    const st = tagStats(5), f = (adj().focus || [])[0];
+    const w = Object.entries(st).filter(([, v]) => v.n >= 5 && v.acc < 0.65).sort((a, b) => a[1].acc - b[1].acc)[0];
+    return w ? w[0] : f || null;
+  }
   const T = { set: null, ans: [], review: [], ai: [], mocks: [], vocabToday: 0, loaded: false, err: null };
 
   /* ---------- 題目 ---------- */
@@ -33,7 +41,8 @@
     const tags = Object.keys(part === 5 ? B().TAGS5 : B().TAGS2), st = {};
     tags.forEach(t => { st[t] = { n: 0, ok: 0 }; });
     T.ans.filter(a => a.part === part).slice(0, 400).forEach(a => { if (st[a.tag]) { st[a.tag].n++; if (a.correct) st[a.tag].ok++; } });
-    tags.forEach(t => { const s = st[t]; s.acc = s.n ? s.ok / s.n : null; s.w = s.n < 3 ? 1.3 : 0.4 + (1 - s.acc) * 1.6; });
+    const fo = part === 5 ? adj().focus || [] : [];
+    tags.forEach(t => { const s = st[t]; s.acc = s.n ? s.ok / s.n : null; s.w = (s.n < 3 ? 1.3 : 0.4 + (1 - s.acc) * 1.6) * (fo.includes(t) ? 1.8 : 1); });
     return st;
   }
   /* 依弱點加權挑題：沒做過的優先，弱的類型多出 */
@@ -95,7 +104,7 @@
     if (!hasDb()) return;
     const t = todayStr();
     if (window.ToeicTest) { try { await window.ToeicTest.ensure(); } catch (_) {} }
-    const [s, a, r, ai, m, v, rs, bo, sk] = await Promise.all([
+    const [s, a, r, ai, m, v, rs, bo, sk, rdg, cw] = await Promise.all([
       db.from("toeic_settings").select("*").maybeSingle(),
       db.from("toeic_answers").select("qid, part, tag, correct, mode, day, created_at").order("created_at", { ascending: false }).limit(1500),
       db.from("toeic_review").select("*"),
@@ -103,10 +112,12 @@
       db.from("toeic_mocks").select("*").order("created_at", { ascending: false }).limit(20),
       db.from("vocab_log").select("id", { count: "exact", head: true }).eq("day", t),
       db.from("toeic_reasons").select("reason, part, tag, day").order("created_at", { ascending: false }).limit(500),
-      db.rpc("toeic_boss"), db.rpc("toeic_streak")]);
+      db.rpc("toeic_boss"), db.rpc("toeic_streak"),
+      db.from("toeic_reading").select("words, secs, wpm, correct, total, day, created_at").order("created_at", { ascending: false }).limit(300),
+      db.from("vocab_words").select("deck").like("deck", "多益核心%")]);
     if (s.error && /toeic_settings/.test(s.error.message)) { T.err = "資料庫還沒設定：到 Supabase 執行 sql/2026-11-12_多益系統.sql"; T.loaded = true; render(); return; }
     T.set = s.data || { exam_date: addDays(t, 90), target: 650, start_score: 400, daily_min: 45, voice: "ai", _new: true };
-    T.ans = a.data || []; T.review = r.data || []; T.ai = ai.data || []; T.mocks = m.data || []; T.vocabToday = v.count || 0; T.reasons = rs.data || []; T.boss = bo.data || null; T.streak = sk.data || { cur: 0, best: 0 }; T.loaded = true; T.err = null;
+    T.ans = a.data || []; T.review = r.data || []; T.ai = ai.data || []; T.mocks = m.data || []; T.vocabToday = v.count || 0; T.reasons = rs.data || []; T.boss = bo.data || null; T.streak = sk.data || { cur: 0, best: 0 }; T.reading = rdg.data || []; T.core = {}; (cw.data || []).forEach(x => { T.core[x.deck] = (T.core[x.deck] || 0) + 1; }); T.loaded = true; T.err = null;
     render(); renderToday();
   }
 
@@ -120,6 +131,7 @@
     const sprint = daysLeft != null && daysLeft >= 0 && daysLeft <= 14 ? (daysLeft <= 3 ? "final" : "sprint") : null;
     if (sprint === "sprint") { sz.p5 = Math.round(sz.p5 * 0.6); sz.p2 = Math.round(sz.p2 * 0.6); }
     if (sprint === "final") { sz.p5 = 5; sz.p2 = 5; sz.v = 10; }
+    const A = adj(); if (A.until && sprint !== "final") { sz.p2 = Math.max(5, Math.round(sz.p2 * (A.p2 || 1))); sz.p5 = Math.max(5, Math.round(sz.p5 * (A.p5 || 1))); }
     const tasks = [];
     if (sprint !== "final" && (dow === 0 || (daysLeft != null && daysLeft <= 7 && daysLeft > 3 && dow === 3))) tasks.push({ k: "mock", icon: "📝", name: "小模考（Part 2 ×15＋Part 5 ×20）", need: 35, have: done("mock"), min: 25 });
     else {
@@ -127,12 +139,14 @@
       tasks.push({ k: "p2", icon: "🎧", name: `聽力 Part 2 應答 ×${sz.p2}`, need: sz.p2, have: done("p2"), min: 10 });
       tasks.push({ k: "p5", icon: "✏️", name: `閱讀 Part 5 文法單字 ×${sz.p5}`, need: sz.p5, have: done("p5"), min: 10 });
     }
-    const rcap = sprint === "sprint" ? 30 : 15;
+    const rcap = Math.round((sprint === "sprint" ? 30 : 15) * (A.until ? A.review || 1 : 1));
     if (due) tasks.push({ k: "review", icon: "🔁", name: `錯題複習 ×${Math.min(due, rcap)}`, need: Math.min(due, rcap), have: done("review"), min: sprint === "sprint" ? 15 : 5 });
+    const wt = sprint === "final" ? null : weakTag();
+    if (wt && dow !== 0) tasks.push({ k: "weak", icon: "🗺️", name: `弱點專練：${B().TAGS5[wt].name} ×8`, need: 8, have: done("weak"), min: 6, tag: wt });
     if (sprint === "final") { let seen = false; try { seen = localStorage.getItem("tcTips:" + t) === "1"; } catch (_) {} tasks.push({ k: "tips", icon: "⚡", name: "秒殺技巧回顧（20 種題型）", need: 1, have: seen ? 1 : 0, min: 10, tips: true }); }
     if (mins >= 60 && dow !== 0) tasks.push({ k: "bonus", icon: "🚀", name: "加碼：弱點題 ×10", need: 10, have: done("bonus"), min: 8, opt: true });
     tasks.forEach(x => { x.ok = x.have >= x.need; });
-    return { tasks, daysLeft, due, sprint };
+    return { tasks, daysLeft, due, sprint, adj: A };
   }
   /* 預估分數：近 150 題正確率換算（粗估，模考會更準） */
   function estimate() {
@@ -174,16 +188,19 @@
       <section class="card"><h2>📅 今天的練習 ${allDone ? "✅" : ""}</h2>
         ${P.tasks.map(x => `<div class="tc-task ${x.ok ? "ok" : ""}"><span class="tc-ic">${x.ok ? "✅" : x.icon}</span><div><b>${esc(x.name)}</b><small>${Math.min(x.have, x.need)}/${x.need}・約 ${x.min} 分鐘${x.opt ? "・選做" : ""}</small><div class="tc-mini"><i style="width:${Math.min(100, x.have / x.need * 100)}%"></i></div></div>
           ${x.tips ? `<button type="button" class="btn btn-small ${x.ok ? "" : "btn-primary"}" data-tc="tips">${x.ok ? "再看" : "打開"}</button>` : x.ext ? `<button type="button" class="btn btn-small" onclick="showPage('vocab')">去背</button>` : `<button type="button" class="btn btn-small ${x.ok ? "" : "btn-primary"}" data-tc="go" data-v="${x.k}">${x.ok ? "再練" : "開始"}</button>`}</div>`).join("")}
+        <button type="button" class="btn tc-cmb" data-tcg="commute">🚇 通勤純聽：今天的對話＋錯題＋單字，關螢幕也能播</button>
+        ${P.adj && P.adj.until ? `<p class="tr-note">🤖 依最近一次模考的 AI 診斷調整中（到 ${P.adj.until.slice(5).replace("-", "/")}）</p>` : ""}
         <p class="tr-note">${allDone ? "🎉 今天的份都完成了！多做的題目一樣會算進分數和弱點分析。" : "照順序做就好：先聽力（腦袋最清醒時）、再文法，最後複習錯題。每完成一項都有星屑。"}</p></section>
       <section class="card"><h2>🧭 弱點分析</h2>
         ${weak.length ? `<p class="tc-weak">最需要加強：${weak.map(([p, k, v]) => `<b>${esc((p === 5 ? B().TAGS5 : B().TAGS2)[k].name)}</b>（${pct(v.acc)}）`).join("、")}。出題會自動多給你這幾類。</p>` : `<p class="tr-note">每一類做滿 3 題後，這裡會告訴你最弱的是哪些。</p>`}
-        <details class="sk-dim" open><summary><span>🎧 Part 2 應答</span></summary>${Object.entries(st2).map(([k, v]) => tagRow(2, k, v)).join("")}</details>
-        <details class="sk-dim" open><summary><span>✏️ Part 5 文法單字</span></summary>${Object.entries(st5).map(([k, v]) => tagRow(5, k, v)).join("")}</details>
+        ${heatHtml()}
+        <details class="sk-dim"><summary><span>🎧 Part 2 應答</span></summary>${Object.entries(st2).map(([k, v]) => tagRow(2, k, v)).join("")}</details>
+        <details class="sk-dim"><summary><span>✏️ Part 5 文法單字（長條圖）</span></summary>${Object.entries(st5).map(([k, v]) => tagRow(5, k, v)).join("")}</details>
         <p class="tr-note">點任一類，可以看它的「秒殺技巧」或專練這一類。</p></section>
       <section class="card"><h2>🔁 錯題本</h2><p class="tr-note">答錯的題目會在 1 → 3 → 7 → 14 天後再出現，連續答對 4 次就畢業。目前 ${T.review.length} 題在本子裡，今天到期 ${P.due} 題。</p>
         <div class="tr-row"><button type="button" class="btn btn-small" data-tc="go" data-v="review" ${P.due ? "" : "disabled"}>🔁 複習到期的</button><button type="button" class="btn btn-small" data-tc="go" data-v="mock">📝 現在來一次小模考</button></div>
         ${T.mocks.length ? `<div class="tc-mocks">${T.mocks.slice(0, 8).reverse().map(m => `<div><b>${m.est}</b><small>${new Date(m.created_at).toLocaleDateString("zh-TW", { month: "numeric", day: "numeric" })}</small></div>`).join("")}</div><p class="tr-note">↑ 最近幾次小模考的預估總分</p>` : ""}</section>
-      ${growthHtml()}${reportHtml()}${bossHtml()}
+      ${diagHtml()}${growthHtml()}${readHtml()}${reportHtml()}${wordsHtml()}${bossHtml()}
       <p class="tr-note small" style="padding:0 6px">題目都是原創的模擬題（內建 ${B().P5.length + B().P2.length} 題＋AI 已出 ${T.ai.length} 題），預估分數只是參考，實際分數以官方考試為準。</p>`;
   }
 
@@ -194,7 +211,8 @@
     const P = plan(), left = P.tasks.filter(x => !x.ok && !x.opt), E = estimate();
     box.innerHTML = `<h2>🎯 今日多益 ${left.length ? `<small class="nb-prog">${P.tasks.filter(x => x.ok).length}/${P.tasks.length}</small>` : "✅"}</h2>
       <p class="tr-note">${T.streak && T.streak.cur ? `🔥 ${T.streak.cur} 天・` : ""}${P.daysLeft != null && P.daysLeft >= 0 ? `倒數 ${P.daysLeft} 天・` : ""}${P.sprint ? "🏁 衝刺中・" : ""}預估 ${E.total ?? "—"} / ${T.set.target}</p>
-      ${left.length ? `<ul class="tr-sig">${left.map(x => `<li>${x.icon} ${esc(x.name)} <small>${x.have}/${x.need}</small></li>`).join("")}</ul><button type="button" class="btn btn-primary" style="width:100%" data-tcg="${left[0].ext ? "vocab" : left[0].k}">${left[0].ext ? "📚 去背單字" : "▶️ 開始練習"}</button>` : `<p>🎉 今天的多益練習都完成了！</p>`}`;
+      ${left.length ? `<ul class="tr-sig">${left.map(x => `<li>${x.icon} ${esc(x.name)} <small>${x.have}/${x.need}</small></li>`).join("")}</ul><button type="button" class="btn btn-primary" style="width:100%" data-tcg="${left[0].ext ? "vocab" : left[0].k}">${left[0].ext ? "📚 去背單字" : "▶️ 開始練習"}</button>` : `<p>🎉 今天的多益練習都完成了！</p>`}
+      <button type="button" class="btn" style="width:100%;margin-top:6px" data-tcg="commute">🚇 通勤純聽</button>`;
   }
 
   /* ---------- 📈 分數成長曲線＋預測 ---------- */
@@ -250,6 +268,67 @@
       <div class="tc-hp"><i style="width:${left / b.hp * 100}%"></i><span>HP ${left} / ${b.hp}</span></div>
       ${dead ? (b.claimed ? `<p>🏆 這週已經打倒並領過獎勵了！</p>` : `<button type="button" class="btn btn-primary" data-tc="boss" style="width:100%">🏆 領取擊敗獎勵：普通召喚券 ×1＋星屑 200</button>`) : `<p class="tr-note">還差 ${left} 下。做一次完整試題的聽力或閱讀，就能打掉一大半！</p>`}</section>`;
   }
+  /* ---------- 🗺️ 文法弱點地圖：Part 5 十種文法點 × 最近 6 週 ---------- */
+  function heatHtml() {
+    const wk0 = weekOf(todayStr()), weeks = [5, 4, 3, 2, 1, 0].map(k => addDays(wk0, -7 * k)), tags = Object.keys(B().TAGS5), st = tagStats(5), wt = weakTag(), fo = adj().focus || [];
+    const C = {}; T.ans.forEach(a => { if (a.part !== 5 || !B().TAGS5[a.tag]) return; const k = a.tag + "|" + weekOf(a.day); C[k] = C[k] || [0, 0]; C[k][1]++; if (a.correct) C[k][0]++; });
+    const cell = (ok, n) => n ? `<td style="background:hsla(${Math.round(ok / n * 120)},70%,45%,${0.35 + Math.min(n, 10) / 20})" title="${ok}/${n} 題">${Math.round(ok / n * 100)}</td>` : `<td class="nil">·</td>`;
+    if (!T.ans.some(a => a.part === 5 && B().TAGS5[a.tag])) return `<p class="tr-note">🗺️ 做幾題 Part 5 後，這裡會出現「文法弱點地圖」：十種文法點各自的正確率，紅色就是要補的地方。</p>`;
+    return `<h3 class="tc-h3">🗺️ 文法弱點地圖 <small>Part 5・數字是正確率 %・顏色越紅越弱</small></h3>
+      <div class="tr-scroll"><table class="tc-heat"><tr><th></th>${weeks.map(w => `<th>${w.slice(5).replace("-", "/")}</th>`).join("")}<th>全部</th></tr>
+      ${tags.map(t => `<tr data-tc="tip" data-part="5" data-v="${t}"><th>${t === wt ? "🎯 " : fo.includes(t) ? "🤖 " : ""}${esc(B().TAGS5[t].name)}</th>${weeks.map(w => { const c = C[t + "|" + w]; return c ? cell(c[0], c[1]) : `<td class="nil">·</td>`; }).join("")}${cell(st[t].ok, st[t].n)}</tr>`).join("")}</table></div>
+      <p class="tr-note">${wt ? `🎯 最弱的是「${esc(B().TAGS5[wt].name)}」，今天的練習多了一項「弱點專練」，每天自動挑最弱的那一類。` : "每一類做滿 5 題後，最弱的那一類會自動變成每日的「弱點專練」。"}${fo.length ? "🤖＝AI 診斷建議加重的類型。" : ""}點任一列可以看秘訣或專練。</p>`;
+  }
+  /* ---------- 🤖 模考 AI 診斷 ---------- */
+  function diagHtml() {
+    const m = T.mocks.find(x => x.detail && x.detail.diag), A = adj();
+    if (!m) return `<section class="card"><h2>🤖 模考 AI 診斷</h2><p class="tr-note">做一回「📝 完整模擬試題」（任選 Part、至少 20 題），交卷後 AI 會寫一份診斷：分數掉在哪、下週怎麼練，並自動調整每日練習的比例 7 天。</p></section>`;
+    const d = m.detail.diag, nm = t => B().TAGS5[t] ? B().TAGS5[t].name : t;
+    return `<section class="card"><h2>🤖 模考 AI 診斷 <small class="nb-prog">${new Date(m.created_at).toLocaleDateString("zh-TW", { month: "numeric", day: "numeric" })}・預估 ${m.est || "—"}</small></h2>
+      <p>${esc(d.summary)}</p>
+      ${d.losses && d.losses.length ? `<p class="tc-h4">📉 分數掉在哪</p><ul class="tc-ul">${d.losses.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      ${d.plan && d.plan.length ? `<p class="tc-h4">🗓️ 下週這樣練</p><ul class="tc-ul">${d.plan.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      <p class="tc-weak" style="background:rgba(124,92,255,.1)">${A.until ? `📐 每日練習已自動調整到 ${A.until.slice(5).replace("-", "/")}：Part 2 ×${A.p2}、Part 5 ×${A.p5}、錯題複習 ×${A.review}${A.focus && A.focus.length ? `、加重 ${A.focus.map(nm).join("、")}` : ""}` : "這次診斷的調整已經過期（7 天），做下一回模考會再更新。"}</p></section>`;
+  }
+  /* ---------- 📖 Part 7 閱讀速度 ---------- */
+  function readHtml() {
+    const R = T.reading.filter(r => r.wpm >= 20 && r.wpm <= 600 && r.secs >= 15);
+    if (!R.length) return `<section class="card"><h2>📖 Part 7 閱讀速度</h2><p class="tr-note">在完整模擬試題做 Part 7 時，每一組文章會自動計時（從看到文章到全部選完），算出你「每分鐘讀幾個字」和答對率，這裡會畫出你有沒有變快。</p></section>`;
+    const D = {}; R.forEach(r => { D[r.day] = D[r.day] || { w: 0, s: 0, c: 0, t: 0 }; const x = D[r.day]; x.w += r.words; x.s += r.secs; x.c += r.correct; x.t += r.total; });
+    const days = Object.keys(D).sort().slice(-14), pts = days.map(d => ({ d, wpm: Math.round(D[d].w / D[d].s * 60), acc: D[d].c / D[d].t }));
+    const last = R.slice(0, 5), lw = Math.round(last.reduce((a, r) => a + r.words, 0) / last.reduce((a, r) => a + r.secs, 0) * 60), la = last.reduce((a, r) => a + r.correct, 0) / last.reduce((a, r) => a + r.total, 0);
+    const first = pts[0], lvl = lw < 100 ? ["🐢 偏慢", "照這個速度 Part 7 很可能寫不完：先練「先看題目、再回文章找關鍵字」，不要每個字都讀。"] : lw < 150 ? ["🚶 普通", "再快一點就夠用了：練習略讀，先看每段第一句。"] : lw < 200 ? ["🏃 夠用", "這個速度可以寫完 Part 7，重點放在答對率。"] : ["🚀 很快", "速度沒問題了，注意不要因為太快看錯細節。"];
+    const W = 640, H = 150, mx = Math.max(220, ...pts.map(p => p.wpm)), x = i => 20 + i / Math.max(1, pts.length - 1) * (W - 40), y = v => 10 + (1 - v / mx) * (H - 30);
+    return `<section class="card"><h2>📖 Part 7 閱讀速度</h2>
+      <div class="tc-score"><div><small>最近 5 組</small><b>${lw}</b><small>字／分鐘</small></div><div><small>答對率</small><b>${Math.round(la * 100)}%</b><small>最近 5 組</small></div><div><small>程度</small><b style="font-size:17px">${lvl[0]}</b><small>${pts.length > 1 ? `第一天 ${first.wpm}` : "目標 150+"}</small></div></div>
+      ${pts.length > 1 ? `<svg class="tr-chart" style="height:150px" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><line x1="0" x2="${W}" y1="${y(150)}" y2="${y(150)}" class="tc-tg"/><text x="${W - 4}" y="${y(150) - 4}" text-anchor="end" class="tr-ax">150 字／分</text>
+        <path d="${pts.map((p, i) => `${i ? "L" : "M"}${x(i)},${y(p.wpm)}`).join("")}" class="tc-line"/>${pts.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.wpm)}" r="3.5" class="tc-wk"><title>${p.d}：${p.wpm} 字／分，答對 ${Math.round(p.acc * 100)}%</title></circle>`).join("")}</svg>` : ""}
+      <p class="tr-note">${lvl[1]}（速度包含看題目和選答案的時間；正式考試 Part 7 大約需要每分鐘 150 字以上才寫得完）</p></section>`;
+  }
+  /* ---------- 📚 多益核心單字庫 ---------- */
+  const WT = () => window.TOEIC_WORDS;
+  const wordsOf = tp => tp.w.trim().split("\n").map(l => { const [word, pos, meaning, example, example_zh] = l.split("|"); return { word, pos, meaning, example, example_zh }; });
+  function wordsHtml() {
+    if (!WT()) return "";
+    const tot = WT().topics.reduce((a, t) => a + wordsOf(t).length, 0), added = Object.values(T.core || {}).reduce((a, b) => a + b, 0);
+    return `<section class="card"><h2>📚 多益核心單字庫 <small class="nb-prog">${added}/${tot}</small></h2><p class="tr-note">多益最常考的 ${tot} 個字，依主題分成 ${WT().topics.length} 組。點一組可以先看，按「加入」就會放進「📖 單字」照遺忘曲線複習（每日任務的單字也算這些）。建議一週加一組。</p>
+      <div class="tc-topics">${WT().topics.map(t => { const n = wordsOf(t).length, h = (T.core || {})["多益核心・" + t.name] || 0; return `<button type="button" class="tc-topic ${h >= n ? "done" : h ? "half" : ""}" data-tc="words" data-v="${t.k}"><span>${t.icon}</span><b>${esc(t.name)}</b><small>${h >= n ? "✓ 已加入" : h ? `${h}/${n}` : `${n} 字`}</small></button>`; }).join("")}</div></section>`;
+  }
+  function wordsModal(k) {
+    const tp = WT().topics.find(t => t.k === k); if (!tp) return; const W = wordsOf(tp), deck = "多益核心・" + tp.name, has = (T.core || {})[deck] || 0, m = document.createElement("div"); m.className = "vg-modal";
+    m.innerHTML = `<div class="vg-card" style="max-height:88vh;overflow:auto"><div class="vg-title">${tp.icon} ${esc(tp.name)}（${W.length} 字）</div><p class="tr-note">點單字可以聽發音、看例句。</p>
+      <table class="tc-wl">${W.map((w, i) => `<tr data-wi="${i}"><td><b>${esc(w.word)}</b> <small>${esc(w.pos)}</small><div class="tc-ex" hidden>${esc(w.example)}<br><small>${esc(w.example_zh)}</small></div></td><td>${esc(w.meaning)}</td></tr>`).join("")}</table>
+      <button type="button" class="btn btn-primary" data-add="1" style="width:100%;position:sticky;bottom:0">${has >= W.length ? "✓ 已經全部加入了" : `📥 加入單字庫（${deck}）`}</button><button type="button" class="btn" data-vx="1" style="width:100%;margin-top:6px">關閉</button></div>`;
+    m.addEventListener("click", async e => {
+      if (e.target === m || e.target.closest("[data-vx]")) return m.remove();
+      const tr = e.target.closest("[data-wi]"); if (tr) { const w = W[Number(tr.dataset.wi)], ex = tr.querySelector(".tc-ex"); ex.hidden = !ex.hidden; stopAudio(); say(w.word, "us_f"); return; }
+      const b = e.target.closest("[data-add]"); if (b && !b.disabled) { b.disabled = true; b.textContent = "加入中…";
+        const { data, error } = await db.rpc("vocab_import", { p_rows: W.map(w => Object.assign({ tags: "多益核心" }, w)), p_deck: deck });
+        if (error) { b.disabled = false; b.textContent = "📥 再試一次"; return toast(error.message); }
+        T.core[deck] = (T.core[deck] || 0) + (data.added || 0); b.textContent = `✓ 加入 ${data.added} 個字${data.dup ? `（${data.dup} 個本來就有）` : ""}`; render(); toast(`📚 ${tp.name}：加入 ${data.added} 個字，去「📖 單字」開始背吧`); }
+    });
+    document.body.appendChild(m);
+  }
   function tipsModal() {
     try { localStorage.setItem("tcTips:" + todayStr(), "1"); } catch (_) {}
     const m = document.createElement("div"); m.className = "vg-modal";
@@ -267,13 +346,14 @@
     if (kind === "p5") return pick(5, left("p5"));
     if (kind === "p2") return pick(2, left("p2"));
     if (kind === "bonus") return pick(5, 5).concat(pick(2, 5));
-    if (kind === "review") return T.review.filter(x => x.due <= t).sort((a, b) => a.due < b.due ? -1 : 1).slice(0, plan().sprint === "sprint" ? 30 : 15).map(x => qById(x.qid)).filter(Boolean);
+    if (kind === "weak") { const wt = weakTag(); if (!wt) return []; const seen = new Set(T.ans.map(a => a.qid)), pool = allQs().filter(q => q.part === 5 && q.tag === wt); return shuffle(pool.filter(q => !seen.has(q.id))).concat(shuffle(pool.filter(q => seen.has(q.id)))).slice(0, left("weak")); }
+    if (kind === "review") { const x = plan().tasks.find(y => y.k === "review"); return T.review.filter(x => x.due <= t).sort((a, b) => a.due < b.due ? -1 : 1).slice(0, x ? x.need : 15).map(x => qById(x.qid)).filter(Boolean); }
     if (kind === "mock") return pick(2, 15).concat(pick(5, 20));
     if (kind.startsWith("tag:")) { const [, p, tg] = kind.split(":"), pool = shuffle(allQs().filter(q => q.part === Number(p) && q.tag === tg)); return pool.slice(0, 8); }
     return [];
   }
   async function record(q, correct, ms, mode) {
-    const t = todayStr(), m = mode.startsWith("tag:") ? "drill" : mode;
+    const t = todayStr(), m = mode.startsWith("tag:") || mode === "variant" ? "drill" : mode;
     T.ans.unshift({ qid: q.id, part: q.part, tag: q.tag, correct, mode: m, day: t, created_at: new Date().toISOString() });
     db.from("toeic_answers").insert({ qid: q.id, part: q.part, tag: q.tag, correct, ms, mode: m, day: t }).then(() => {});
     const rv = T.review.find(x => x.qid === q.id);
@@ -293,13 +373,23 @@
     const sk = await db.rpc("toeic_streak"); if (sk.data) { T.streak = sk.data; if (sk.data.granted) toast(`🔥 連續 ${sk.data.cur} 天！里程碑獎勵到手`); }
   }
 
-  function session(kind) {
-    const qs = buildSet(kind);
+  /* 🧬 錯題變形題：AI 出一題同觀念、換句子的新題 */
+  async function makeVariant(q) {
+    const { data, error } = await db.functions.invoke("toeic", { body: { action: "variant", id: q.id, part: q.part, tag: q.tag, q: q.q, o: q.o, a: q.a, why: q.why } });
+    if (error || !data || !data.item) throw new Error((data && data.error) || (error && error.message) || "AI 沒回應");
+    const x = data.item; T.ai.unshift(x); return { id: x.id, part: x.part, tag: x.tag, ai: true, variant: true, ...x.data };
+  }
+  async function variantSession(q) {
+    toast("🧬 AI 出題中…約 10 秒");
+    try { const v = await makeVariant(q); session("variant", [v], "🧬 錯題變形題"); } catch (err) { toast("😵 " + err.message); }
+  }
+  function session(kind, preset, ptitle) {
+    const qs = preset || buildSet(kind);
     if (!qs.length) return toast(kind === "review" ? "今天沒有到期的錯題 🎉" : "這類題目還沒有");
     const isMock = kind === "mock", m = document.createElement("div"); m.className = "vg-modal tc-modal";
     let i = 0, t0 = 0, answered = false, right = 0, playing = false; const res = [];
     preload(qs[0]); preload(qs[1]);
-    const title = { p5: "✏️ Part 5 文法單字", p2: "🎧 Part 2 應答", review: "🔁 錯題複習", mock: "📝 小模考", bonus: "🚀 弱點加碼" }[kind] || "🎯 專項練習";
+    const title = ptitle || { p5: "✏️ Part 5 文法單字", p2: "🎧 Part 2 應答", review: "🔁 錯題複習", mock: "📝 小模考", bonus: "🚀 弱點加碼", weak: "🗺️ 弱點專練" }[kind] || "🎯 專項練習";
     async function playQ(q) {
       if (playing) return; playing = true; stopAudio(); const [va, vb] = voicesOf(q), box = m.querySelector(".tc-p2");
       try { box && box.classList.add("on"); mark(-1); await say(q.q, va); for (let k = 0; k < q.o.length; k++) { await wait(500); if (!m.isConnected || answered) break; mark(k); await say(q.o[k], vb); } } finally { playing = false; mark(-2); box && box.classList.remove("on"); }
@@ -308,7 +398,7 @@
     function draw() {
       const q = qs[i]; answered = false; t0 = Date.now(); const tip = q.part === 5 ? B().TAGS5[q.tag] : q.part === 2 ? B().TAGS2[q.tag] : null;
       m.innerHTML = `<div class="vg-card tc-card"><div class="tc-mh"><b>${title}</b><span>${i + 1}/${qs.length}</span><button type="button" class="tr-x" data-x="1">✕</button></div>
-        <div class="tc-bar"><i style="width:${i / qs.length * 100}%"></i></div><p class="tc-tagname">Part ${q.part}・${esc(tip ? tip.name : q.test ? "模擬試題錯題" : q.tag)}${q.ai ? "・🤖 AI 題" : ""}</p>
+        <div class="tc-bar"><i style="width:${i / qs.length * 100}%"></i></div><p class="tc-tagname">Part ${q.part}・${esc(tip ? tip.name : q.test ? "模擬試題錯題" : q.tag)}${q.variant ? "・🧬 變形題（同觀念、換句子）" : q.ai ? "・🤖 AI 題" : ""}</p>
         ${q.part !== 2 ? `${q.group && (q.part === 3 || q.part === 4) ? `<div class="tc-p2"><button type="button" class="tc-play" data-gplay="1">🔊 播放${q.part === 3 ? "對話" : "獨白"}</button></div>` : ""}${q.ctx || ""}<p class="tc-q">${esc(q.q).replace(/-{3,}/, '<span class="tc-blank">_______</span>')}</p>${q.o.map((o, k) => `<button type="button" class="nb-opt" data-k="${k}">(${"ABCD"[k]}) ${esc(o)}</button>`).join("")}`
           : `<div class="tc-p2"><button type="button" class="tc-play" data-play="1">🔊 播放題目</button><p class="tr-note">只用聽的！題目和三個回答都會念一次，聽完選最合適的回應。</p></div><div class="tc-abcs">${q.o.map((_, k) => `<button type="button" class="tc-abc" data-k="${k}">${"ABC"[k]}</button>`).join("")}</div>`}
         <div class="tc-fb"></div></div>`;
@@ -324,7 +414,7 @@
         ${q.part === 2 ? `<p class="tc-tr">🗣️ ${esc(q.q)}<br>${q.o.map((o, j) => `<span class="${j === q.a ? "up" : ""}">(${"ABC"[j]}) ${esc(o)}</span>`).join("<br>")}</p>` : ""}
         <p>🈶 ${esc(q.zh)}</p><p>💡 ${esc(q.why)}</p>${tip ? `<p class="tc-tip">⚡ 秒殺技巧：${esc(tip.tip)}</p>` : ""}<div class="tc-ai"></div></div>
         ${ok ? "" : `<div class="tt-rs"><small>❓ 錯在哪？</small>${REASONS.map(r => `<button type="button" class="tr-chip sm" data-rs="${r}">${r}</button>`).join("")}</div>`}
-        <div class="tr-row">${ok ? "" : `<button type="button" class="btn btn-small" data-ai="1">🤖 為什麼？</button>`}${q.part === 2 ? `<button type="button" class="btn btn-small" data-play="1">🔊 再聽一次</button>` : ""}${q.ai ? `<button type="button" class="btn btn-small" data-flag="1">🚩 這題怪怪的</button>` : ""}<button type="button" class="btn btn-primary" data-next="1" style="margin-left:auto">${i + 1 < qs.length ? "下一題 →" : "看結果"}</button></div>`;
+        <div class="tr-row">${ok ? "" : `<button type="button" class="btn btn-small" data-ai="1">🤖 為什麼？</button>`}${!ok && (q.part === 2 || q.part === 5) && !q.variant ? `<button type="button" class="btn btn-small" data-var="1">🧬 變形題</button>` : ""}${q.part === 2 ? `<button type="button" class="btn btn-small" data-play="1">🔊 再聽一次</button>` : ""}${q.ai ? `<button type="button" class="btn btn-small" data-flag="1">🚩 這題怪怪的</button>` : ""}<button type="button" class="btn btn-primary" data-next="1" style="margin-left:auto">${i + 1 < qs.length ? "下一題 →" : "看結果"}</button></div>`;
     }
     function next() { i++; if (i < qs.length) draw(); else finish(); }
     async function finish() {
@@ -346,6 +436,9 @@
       const rs = e.target.closest("[data-rs]"); if (rs) { const q = qs[i]; m.querySelectorAll("[data-rs]").forEach(x => x.classList.toggle("on", x === rs)); db.from("toeic_reasons").insert({ qid: q.id, part: q.part, tag: q.tag, reason: rs.dataset.rs }).then(() => {}); T.reasons.unshift({ reason: rs.dataset.rs, part: q.part, tag: q.tag, day: todayStr() }); return; }
       const k = e.target.closest("[data-k]"); if (k && !answered) return feedback(Number(k.dataset.k));
       if (e.target.closest("[data-next]")) return next();
+      const vb = e.target.closest("[data-var]"); if (vb) { vb.disabled = true; vb.textContent = "🧬 AI 出題中…"; const cur = qs[i];
+        try { const v = await makeVariant(cur); qs.splice(i + 1, 0, v); vb.textContent = "🧬 下一題就是變形題"; const nb = m.querySelector("[data-next]"); if (nb) nb.textContent = "下一題 →"; }
+        catch (err) { vb.disabled = false; vb.textContent = "🧬 變形題"; toast("😵 " + err.message); } return; }
       if (e.target.closest("[data-flag]")) { const q = qs[i]; await db.from("toeic_qbank").update({ flagged: true }).eq("id", q.id); const x = T.ai.find(a => a.id === q.id); if (x) x.flagged = true; toast("🚩 謝謝回報，這題之後不會再出現"); return; }
       if (e.target.closest("[data-ai]")) { const q = qs[i], box = m.querySelector(".tc-ai"), b = e.target.closest("[data-ai]"); b.disabled = true; box.innerHTML = `<p class="tr-note">🤖 老師想一下…</p>`;
         const pickd = res[res.length - 1]; const { data, error } = await db.functions.invoke("toeic", { body: { action: "explain", q: { part: q.part, question: q.q, options: q.o, correct: q.o[q.a], chosen: q.o[(m.querySelector(".no") || {}).dataset ? Number(m.querySelector(".no").dataset.k) : q.a], zh: q.zh, ok: pickd && pickd.ok } } });
@@ -377,7 +470,7 @@
       if (e.target.closest("[data-save]")) {
         const row = { exam_date: m.querySelector("#tc-date").value || null, target: Number(m.querySelector("#tc-target").value) || 650, start_score: Number(m.querySelector("#tc-start").value) || 400, daily_min: Number(m.querySelector("#tc-min").value), voice: m.querySelector("#tc-voice").value, updated_at: new Date().toISOString() };
         const { error } = await db.from("toeic_settings").upsert(row, { onConflict: "user_id" }); if (error) return toast(error.message);
-        T.set = row; m.remove(); render(); renderToday(); toast("⚙️ 設定好了");
+        T.set = Object.assign({}, T.set, row); m.remove(); render(); renderToday(); toast("⚙️ 設定好了");
       }
     });
     document.body.appendChild(m);
@@ -391,9 +484,10 @@
     if (a === "tips") tipsModal();
     if (a === "boss") { const { data, error } = await db.rpc("toeic_boss_claim"); if (error) return toast(error.message); T.boss = data; render(); toast("🏆 擊敗 Boss！普通召喚券 +1、星屑 +200"); }
     if (a === "tip") tipModal(Number(b.dataset.part), b.dataset.v);
+    if (a === "words") wordsModal(b.dataset.v);
   }
   function onChange() {}
-  document.addEventListener("click", e => { const b = e.target.closest("[data-tcg]"); if (!b) return; if (b.dataset.tcg === "vocab") return showPage("vocab"); if (b.dataset.tcg === "tips") return tipsModal(); session(b.dataset.tcg); });
+  document.addEventListener("click", e => { const b = e.target.closest("[data-tcg]"); if (!b) return; if (b.dataset.tcg === "vocab") return showPage("vocab"); if (b.dataset.tcg === "tips") return tipsModal(); if (b.dataset.tcg === "commute") return window.ToeicCommute ? window.ToeicCommute.open() : toast("通勤模式載入中，稍等一下"); session(b.dataset.tcg); });
 
   const css = document.createElement("style");
   css.textContent = `
@@ -422,6 +516,13 @@
     .tc-boss { background: linear-gradient(160deg, rgba(248,81,73,.1), rgba(124,92,255,.08)); } .tc-boss.dead h2 { text-decoration: line-through; opacity: .7; }
     .tc-hp { position: relative; height: 22px; border-radius: 12px; background: rgba(127,127,127,.2); overflow: hidden; margin: 8px 0; } .tc-hp i { display: block; height: 100%; background: linear-gradient(90deg, #f85149, #ff9f43); transition: width .5s; } .tc-hp span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
     .tt-rs { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 8px 0; } .tt-rs small { opacity: .7; margin-right: 4px; }
+    .tc-h3 { font-size: 15px; margin: 6px 0 4px; } .tc-h3 small { font-weight: 400; font-size: 11px; opacity: .6; } .tc-h4 { font-weight: 700; font-size: 13.5px; margin: 10px 0 2px; } .tc-ul { margin: 0; padding-left: 20px; font-size: 13.5px; line-height: 1.6; }
+    .tc-heat { border-collapse: separate; border-spacing: 3px; font-size: 12px; width: 100%; } .tc-heat th { font-weight: 500; font-size: 11px; opacity: .75; white-space: nowrap; } .tc-heat tr th:first-child { text-align: left; font-size: 12.5px; opacity: 1; }
+    .tc-heat td { text-align: center; border-radius: 6px; padding: 5px 2px; color: #fff; font-weight: 700; min-width: 30px; text-shadow: 0 1px 1px rgba(0,0,0,.35); } .tc-heat td.nil { background: rgba(127,127,127,.08); color: inherit; opacity: .4; font-weight: 400; text-shadow: none; } .tc-heat tr[data-tc] { cursor: pointer; }
+    .tc-topics { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; } .tc-topic { font: inherit; color: inherit; border: 1px solid rgba(127,127,127,.25); border-radius: 12px; padding: 8px 4px; background: rgba(127,127,127,.05); cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .tc-topic span { font-size: 22px; } .tc-topic b { font-size: 13px; } .tc-topic small { font-size: 11px; opacity: .6; } .tc-topic.done { background: rgba(63,185,80,.15); border-color: rgba(63,185,80,.5); } .tc-topic.half { background: rgba(255,213,74,.12); }
+    .tc-wl { width: 100%; border-collapse: collapse; font-size: 13.5px; } .tc-wl td { padding: 6px 4px; border-bottom: 1px solid rgba(127,127,127,.12); vertical-align: top; cursor: pointer; } .tc-wl td:first-child { width: 48%; } .tc-wl small { opacity: .55; } .tc-ex { font-size: 12.5px; margin-top: 4px; opacity: .85; }
+    .tc-cmb { width: 100%; margin-top: 8px; }
     .tc-wr { font-size: 13px; border-bottom: 1px solid rgba(127,127,127,.15); padding: 6px 0; margin: 0; }`;
   document.head.appendChild(css);
 
@@ -429,5 +530,5 @@
   function boot() { try { ensurePage(); } catch (e) { console.warn(e); } }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
   (function wait2(n) { if (!hasDb()) { if (n < 60) setTimeout(() => wait2(n + 1), 1000); return; } load(); })(0);
-  window.ToeicSys = { session, load, plan, estimate };
+  window.ToeicSys = { session, load, plan, estimate, variantSession, qById, todayStr, get state() { return T; }, tagName: (p, t) => { const d = (p === 5 ? B().TAGS5 : B().TAGS2)[t]; return d ? d.name : t; } };
 })();

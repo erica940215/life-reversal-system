@@ -36,8 +36,9 @@ const VOICES: Record<string, [string, string]> = { // 代號 → [Gemini 聲音,
   uk_m: ["Charon", "a British male voice"], uk_f: ["Aoede", "a British female voice"],
   au_m: ["Fenrir", "an Australian male voice"], ca_f: ["Leda", "a Canadian female voice"]
 };
-async function tts(text: string, voice: string, duo?: string[]) {
-  text = String(text || "").slice(0, duo ? 3000 : 600); const vv = VOICES[voice] || VOICES.us_f;
+async function tts(text: string, voice: string, duo?: string[], study = false) {
+  text = String(text || "").slice(0, duo || study ? 3000 : 600); const vv = VOICES[voice] || VOICES.us_f;
+  if (study) { duo = undefined; voice = "study:" + voice; }
   if (duo) voice = "duo:" + duo.join(",");
   const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(TTS_MODEL + "|" + voice + "|" + text)))).map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
   const sb = admin(), path = `v1/${hash}.wav`, url = sb.storage.from("toeic-audio").getPublicUrl(path).data.publicUrl;
@@ -48,6 +49,8 @@ async function tts(text: string, voice: string, duo?: string[]) {
           generationConfig: { responseModalities: ["AUDIO"], speechConfig: duo.length > 1
             ? { multiSpeakerVoiceConfig: { speakerVoiceConfigs: [{ speaker: "Man", voiceConfig: { prebuiltVoiceConfig: { voiceName: (VOICES[duo[0]] || VOICES.us_m)[0] } } }, { speaker: "Woman", voiceConfig: { prebuiltVoiceConfig: { voiceName: (VOICES[duo[1]] || VOICES.uk_f)[0] } } }] } }
             : { voiceConfig: { prebuiltVoiceConfig: { voiceName: (VOICES[duo[0]] || VOICES.us_f)[0] } } } } }
+      : study ? { contents: [{ parts: [{ text: `You are reading a study audio track for a Taiwanese learner preparing for TOEIC. Read English parts naturally and clearly in ${vv[1]}; read Chinese parts in natural Taiwanese Mandarin. Leave a short pause between items. Text:\n${text}` }] }],
+          generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: vv[0] } } } } }
       : { contents: [{ parts: [{ text: `Read this TOEIC listening test line clearly at a normal exam pace, in ${vv[1]}: ${text}` }] }],
           generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: vv[0] } } } } }) });
   if (!r.ok) { const t = await r.text(); console.error("TTS", r.status, t); throw new Error(`語音服務出錯（${r.status}）`); }
@@ -86,6 +89,37 @@ async function gen(b: any, uid: string) {
   return { items: rows, dropped: out.length - ok.length };
 }
 async function gen1(sys: string, user: string, schema: unknown) { const r = await gemini(sys, user, schema, 0.9); return Array.isArray(r.items) ? r.items : []; }
+
+/* ---------- 錯題變形題：同一個觀念、換一個句子 ---------- */
+async function variant(b: any, uid: string) {
+  const part = b.part === 2 ? 2 : 5, src = { q: String(b.q || "").slice(0, 400), o: (b.o || []).slice(0, 4).map(String), a: Number(b.a), why: String(b.why || "").slice(0, 300) }, tag = String(b.tag || "").slice(0, 20);
+  const sys = part === 5
+    ? `You are a TOEIC teacher. The learner got this Part 5 item wrong. Write ONE NEW original Part 5 item that tests EXACTLY the same grammar/vocabulary concept (same trap), but with a different business sentence and different words. One blank "-------", 4 options (o), answer index (a), Traditional Chinese translation of the full correct sentence (zh), and a short Traditional Chinese explanation (why) that points out it is the same concept as the original. Exactly one option must be correct.`
+    : `You are a TOEIC teacher. The learner got this Part 2 item wrong. Write ONE NEW original Part 2 item (question q, three spoken responses o, answer index a) that tests EXACTLY the same question type and the same kind of trap, but with a different situation and words. Give a Traditional Chinese translation of q (zh) and a short Traditional Chinese explanation (why) that points out the same trap.`;
+  for (let k = 0; k < 2; k++) {
+    const r = await gemini(sys, JSON.stringify(src), part === 5 ? P5 : P2, 0.9), x = (r.items || [])[0];
+    if (!x || !Array.isArray(x.o) || x.o.length !== (part === 5 ? 4 : 3) || !(x.a >= 0 && x.a < x.o.length)) continue;
+    const chk = await gemini("You are a strict TOEIC answer checker. Pick the single best option index. If two options could both be correct, answer -1.", JSON.stringify({ q: x.q, o: x.o }), { type: "OBJECT", properties: { ans: { type: "INTEGER" } }, required: ["ans"] }, 0);
+    if (chk.ans !== x.a) continue;
+    const row = { id: `ai${part}-${crypto.randomUUID().slice(0, 12)}`, part, tag, data: { q: x.q, o: x.o, a: x.a, zh: x.zh, why: x.why, variant_of: String(b.id || "").slice(0, 60) }, user_id: uid };
+    const { error } = await admin().from("toeic_qbank").insert(row); if (error) throw new Error(error.message);
+    return { item: row };
+  }
+  throw new Error("AI 這次出的題目沒通過檢查，再按一次試試");
+}
+
+/* ---------- 模考 AI 診斷：看哪裡失分、下週怎麼練，並給每日練習的調整比例 ---------- */
+async function diagnose(b: any) {
+  const sys = `你是很懂多益的家教，學生是台灣大學生。根據他這次模擬試題的數據，用繁體中文寫一份短診斷，口語、具體、不要空話。
+summary：2～3 句總評（先講好的，再講最大的問題）。
+losses：最多 3 點「分數主要掉在哪」，每點要引用數據（例如 Part 3 正確率 48%、時態 2/6）。
+plan：下週 3～4 個具體練法（每天做什麼、做多少），要能在系統裡做到：每日 Part 2／Part 5 練習、錯題複習、弱點專練（某個文法類型）、Part 3/4 逐句跟讀、Part 7 計時閱讀、通勤純聽、單字。
+調整每日練習比例：p2（Part 2 聽力題量倍率）、p5（Part 5 文法題量倍率）、review（錯題複習量倍率），都在 0.7～1.5 之間，弱的多、強的少；focus：要加重的 Part 5 文法類型代號（從 pos,tense,voice,prep,conj,pron,rel,comp,vocab,part 挑 0～3 個）。`;
+  const schema = { type: "OBJECT", properties: { summary: STR, losses: ARR(STR), plan: ARR(STR), p2: { type: "NUMBER" }, p5: { type: "NUMBER" }, review: { type: "NUMBER" }, focus: ARR(STR) }, required: ["summary", "losses", "plan", "p2", "p5", "review", "focus"] };
+  const r = await gemini(sys, JSON.stringify(b).slice(0, 6000), schema, 0.4);
+  const cl = (v: number) => Math.max(0.7, Math.min(1.5, Math.round((Number(v) || 1) * 10) / 10));
+  return { summary: String(r.summary || ""), losses: (r.losses || []).slice(0, 3).map(String), plan: (r.plan || []).slice(0, 4).map(String), p2: cl(r.p2), p5: cl(r.p5), review: cl(r.review), focus: (r.focus || []).filter((t: string) => TAGS5.split(",").includes(t)).slice(0, 3) };
+}
 
 /* ---------- 完整模擬試題：一次產生一回的一個 Part（或一段） ---------- */
 const S = (props: Record<string, unknown>, req: string[]) => ({ type: "OBJECT", properties: props, required: req });
@@ -158,7 +192,9 @@ Deno.serve(async (req) => {
     const b = await req.json();
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } });
     const { data: u } = await sb.auth.getUser(); if (!u?.user) return j({ error: "請先登入" }, 401);
-    if (b.action === "tts") return j(await tts(b.text, b.voice, Array.isArray(b.duo) ? b.duo.slice(0, 2).map(String) : undefined));
+    if (b.action === "tts") return j(await tts(b.text, b.voice, Array.isArray(b.duo) ? b.duo.slice(0, 2).map(String) : undefined, !!b.study));
+    if (b.action === "variant") return j(await variant(b, u.user.id));
+    if (b.action === "diagnose") return j(await diagnose(b));
     if (b.action === "test_chunk") return j(await testChunk(b, u.user.id));
     if (b.action === "image") return j(await image(b.prompt));
     if (b.action === "explain") return j(await explain(b.q));

@@ -175,11 +175,19 @@
       if (b) { b.style.width = Math.min(100, used / lim * 100) + "%"; b.style.background = used > lim ? "#f85149" : ""; }
       if (used > lim && !g.warned) { g.warned = true; toast("⏱️ 這組超過建議時間了：先選最有把握的答案，往下做"); }
     }, 1000);
+    /* 📖 Part 7：從看到文章到全部選完，算每分鐘讀幾個字 */
+    function readDone(g) {
+      if (g.p !== 7 || !g.t0 || g.tDone || !g.qs.every((_, qi) => ans[`${g.id}#${qi}`] != null)) return;
+      g.tDone = Date.now(); const words = g.it.docs.reduce((a, d) => a + (String(d.text).match(/[A-Za-z0-9'’-]+/g) || []).length, 0), secs = Math.max(1, Math.round((g.tDone - g.t0) / 1000));
+      const correct = g.qs.filter((q, qi) => ans[`${g.id}#${qi}`] === q.a).length, wpm = Math.round(words / secs * 60);
+      g.read = { gid: g.id, words, secs, wpm, correct, total: g.qs.length }; if (secs >= 15) db.from("toeic_reading").insert(g.read).then(() => {});
+      if (!exam && secs >= 15) toast(`📖 這組 ${words} 字，用了 ${Math.floor(secs / 60)} 分 ${secs % 60} 秒（每分鐘 ${wpm} 字）`);
+    }
     function reveal(g) { return reveal0(g) + tools(g); }
     function tools(g) {
       const wrong = g.qs.some((q, qi) => ans[`${g.id}#${qi}`] !== q.a);
       return `<div class="tt-tools">${wrong ? `<div class="tt-rs"><small>❓ 這組錯在哪？</small>${REASONS.map(r => `<button type="button" class="tr-chip sm ${g.reason === r ? "on" : ""}" data-rs="${r}">${r}</button>`).join("")}</div>` : ""}
-        <div class="tr-row">${g.p === 3 || g.p === 4 ? `<button type="button" class="btn btn-small" data-shadow="1">🎧 逐句跟讀</button>` : ""}<button type="button" class="btn btn-small" data-vocab="1">📚 收集生字</button></div></div>`;
+        <div class="tr-row">${wrong && (g.p === 2 || g.p === 5) && window.ToeicSys ? `<button type="button" class="btn btn-small" data-var="1">🧬 變形題</button>` : ""}${g.p === 3 || g.p === 4 ? `<button type="button" class="btn btn-small" data-shadow="1">🎧 逐句跟讀</button>` : ""}<button type="button" class="btn btn-small" data-vocab="1">📚 收集生字</button></div></div>`;
     }
     function reveal0(g) {
       const it = g.it;
@@ -202,7 +210,7 @@
       const by = {}; let lR = 0, lN = 0, rR = 0, rN = 0;
       G.forEach(g => g.qs.forEach((q, qi) => { const ok = ans[`${g.id}#${qi}`] === q.a; by[g.p] = by[g.p] || [0, 0]; by[g.p][1]++; if (ok) by[g.p][0]++; if (g.p <= 4) { lN++; if (ok) lR++; } else { rN++; if (ok) rR++; } }));
       const r5 = v => Math.max(5, Math.min(495, Math.round(v / 5) * 5)), Ls = lN ? r5(lR / lN * 520 - 15) : null, Rs = rN ? r5(rR / rN * 530 - 40) : null, est = Ls != null && Rs != null ? Ls + Rs : null;
-      db.from("toeic_mocks").insert({ l_acc: lN ? lR / lN : null, r_acc: rN ? rR / rN : null, est: est || Ls || Rs, detail: { test_id: t.id, parts, by, mode } }).then(() => {});
+      const detail = { test_id: t.id, parts, by, mode }, mockP = db.from("toeic_mocks").insert({ l_acc: lN ? lR / lN : null, r_acc: rN ? rR / rN : null, est: est || Ls || Rs, detail }).select("id").single().then(r => r, e => ({ error: e }));
       const rows = []; G.forEach(g => g.qs.forEach((q, qi) => rows.push({ qid: `${g.id}#${qi}`, part: g.p, tag: g.p === 2 || g.p === 5 ? (g.it.tag || "test") : "test", correct: ans[`${g.id}#${qi}`] === q.a, mode: "test" })));
       if (rows.length) db.from("toeic_answers").insert(rows).then(() => {});
       /* 答錯的題目放進錯題本，跟每日練習一起照遺忘曲線複習 */
@@ -214,19 +222,22 @@
         <div class="tr-scroll"><table class="tr-cmp"><tr><th>Part</th><th>答對</th><th>正確率</th></tr>${Object.entries(by).map(([p, [o, n]]) => `<tr><td>${PARTS[p].name}</td><td>${o}/${n}</td><td class="${o / n >= 0.7 ? "up" : o / n < 0.5 ? "dn" : ""}">${Math.round(o / n * 100)}%</td></tr>`).join("")}</table></div>
         <p class="tr-note">${(() => { const w = Object.entries(by).sort((a, b) => a[1][0] / a[1][1] - b[1][0] / b[1][1])[0]; return w ? `最弱的是 ${PARTS[w[0]].name}（${Math.round(w[1][0] / w[1][1] * 100)}%），下次可以只挑這個 Part 再練一次。` : ""; })()}${parts.length < 7 ? "只練部分 Part 時，分數是用這幾個 Part 推估的。" : ""}換算是粗估，正式考試的分數表會依難度調整。</p>
         ${G.some(g => g.qs.some((q, qi) => ans[`${g.id}#${qi}`] !== q.a)) ? `<p class="tr-note">❌ 答錯的題目已放進錯題本，明天開始會在「🔁 錯題複習」再出現。</p>` : ""}
+        ${lN + rN >= 20 ? `<div class="tt-diag" id="tt-diag"><p class="tr-note">🤖 AI 正在看你的作答，寫診斷中…（約 10–20 秒）</p></div>` : ""}
         ${exam ? `<button type="button" class="btn" data-review="1" style="width:100%">🔍 一題一題看答案與解析</button>` : ""}
         <button type="button" class="btn btn-primary" data-x="1" style="width:100%;margin-top:6px">完成</button></div>`;
       m.dataset.fin = "1"; load();
+      if (lN + rN >= 20) diagnose({ t, G, ans, by, Ls, Rs, est, rows, mode, mockP, detail, box: () => m.querySelector("#tt-diag") });
     }
     m.addEventListener("click", e => {
       if (e.target.closest("[data-x]")) { if (!m.dataset.fin && done() && !confirm("中途離開，這次的作答不會計分。確定嗎？")) return; clearInterval(timer); stop(); m.remove(); return; }
       if (e.target.closest("[data-play]")) return doPlay(G[gi]);
-      const a = e.target.closest("[data-a]"); if (a && !(G[gi].checked && !exam)) { ans[a.dataset.a] = Number(a.dataset.k); return draw(); }
+      const a = e.target.closest("[data-a]"); if (a && !(G[gi].checked && !exam)) { ans[a.dataset.a] = Number(a.dataset.k); readDone(G[gi]); return draw(); }
       if (e.target.closest("[data-check]")) { G[gi].checked = true; stop(); return draw(); }
       if (e.target.closest("[data-next]")) { stop(); if (gi + 1 < G.length) { gi++; goReading(); draw(); } else if (m.dataset.fin) { m.remove(); } else finish(); return; }
       if (e.target.closest("[data-prev]")) { stop(); gi--; return draw(); }
       const rs = e.target.closest("[data-rs]"); if (rs) { const g = G[gi]; g.reason = rs.dataset.rs; saveReasons(g, ans, g.reason); toast("📝 記下來了，週報會幫你統計"); return draw(); }
       if (e.target.closest("[data-shadow]")) return shadow(G[gi]);
+      if (e.target.closest("[data-var]")) { const g = G[gi], q = g.qs[0]; return window.ToeicSys.variantSession({ id: `${g.id}#0`, part: g.p, tag: g.it.tag || "test", q: q.q, o: q.o, a: q.a, why: q.why }); }
       if (e.target.closest("[data-vocab]")) return vocabPick(G[gi]);
       if (e.target.closest("[data-review]")) { G.forEach(g => { g.checked = true; g.played = true; }); gi = 0; exam = false; deadline = null; return draw(); }
     });
@@ -288,6 +299,36 @@
     });
     document.body.appendChild(m);
   }
+  /* 🤖 模考 AI 診斷：把這次的數據交給 AI，寫診斷並調整每日練習 7 天 */
+  async function diagnose(o) {
+    const S = window.ToeicSys ? window.ToeicSys.state : null, set = (S && S.set) || {}, nm = (p, t) => window.ToeicSys ? window.ToeicSys.tagName(p, t) : t;
+    const tagAcc = {}; o.rows.filter(r => r.part === 5 || r.part === 2).forEach(r => { const k = `Part ${r.part} ${nm(r.part, r.tag)}`; tagAcc[k] = tagAcc[k] || [0, 0]; tagAcc[k][1]++; if (r.correct) tagAcc[k][0]++; });
+    const reasons = {}; o.G.forEach(g => { if (g.reason) reasons[g.reason] = (reasons[g.reason] || 0) + 1; });
+    const rd = o.G.filter(g => g.read).map(g => g.read), wpm = rd.length ? Math.round(rd.reduce((a, r) => a + r.words, 0) / rd.reduce((a, r) => a + r.secs, 0) * 60) : null;
+    const past = ((S && S.mocks) || []).filter(m => m.est).slice(0, 5).map(m => ({ est: m.est, date: String(m.created_at).slice(0, 10) }));
+    const daysLeft = set.exam_date ? Math.round((new Date(set.exam_date) - Date.now()) / 864e5) : null;
+    const payload = { action: "diagnose", mode: o.mode, parts: Object.fromEntries(Object.entries(o.by).map(([p, [c, n]]) => [PARTS[p].name, `${c}/${n}（${Math.round(c / n * 100)}%）`])),
+      listening: o.Ls, reading: o.Rs, estimate: o.est, tag_accuracy: Object.fromEntries(Object.entries(tagAcc).map(([k, [c, n]]) => [k, `${c}/${n}`])), wrong_reasons: reasons,
+      part7_words_per_minute: wpm, target: set.target, start_score: set.start_score, days_to_exam: daysLeft, daily_minutes: set.daily_min, previous_estimates: past };
+    const box = o.box();
+    try {
+      const { data, error } = await db.functions.invoke("toeic", { body: payload });
+      if (error || !data || data.error) throw new Error((data && data.error) || (error && error.message) || "AI 沒回應");
+      const until = (() => { const d = new Date(Date.now() + 8 * 3600e3 - 6 * 3600e3 + 7 * 864e5); return d.toISOString().slice(0, 10); })();
+      const adj = { p2: data.p2, p5: data.p5, review: data.review, focus: data.focus, until };
+      const mk = await o.mockP; if (mk.data) await db.from("toeic_mocks").update({ detail: Object.assign({}, o.detail, { diag: data }) }).eq("id", mk.data.id);
+      await db.from("toeic_settings").upsert({ plan_adj: adj }, { onConflict: "user_id" });
+      if (window.ToeicSys) window.ToeicSys.load();
+      const b = o.box(); if (b) b.innerHTML = `<p class="tc-h4">🤖 AI 診斷</p><p>${esc(data.summary)}</p>${data.losses.length ? `<p class="tc-h4">📉 分數掉在哪</p><ul class="tc-ul">${data.losses.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+        ${data.plan.length ? `<p class="tc-h4">🗓️ 下週這樣練</p><ul class="tc-ul">${data.plan.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}<p class="tr-note">📐 接下來 7 天的每日練習已經照這份診斷自動調整（Part 2 ×${data.p2}、Part 5 ×${data.p5}、錯題 ×${data.review}）。</p>`;
+    } catch (err) { const b = o.box(); if (b) b.innerHTML = `<p class="tr-note dn">😵 AI 診斷暫時寫不出來：${esc(err.message)}。成績已經存好了。</p>`; }
+  }
+  /* 🚇 通勤純聽用：每天輪替幾組 Part 3／4 */
+  function listenGroups(n) {
+    const all = []; X.tests.filter(t => t.parts).forEach(t => [3, 4].forEach(p => PARTS[p].chunks.forEach(c => (t.parts[c] || []).forEach((it, i) => { if ((it.qs || []).length) all.push({ id: `t${t.id}-${c}-${i}`, p, it, qs: it.qs }); }))));
+    if (!all.length) return []; const day = Math.floor((Date.now() + 2 * 3600e3) / 864e5), st = (day * n) % all.length;
+    return Array.from({ length: Math.min(n, all.length) }, (_, k) => all[(st + k * 7) % all.length]);
+  }
   /* 給每日練習的錯題複習用：用題號把模擬試題的題目找回來 */
   function getQ(qid) {
     const m = /^t(.+)-(p\d[a-z]?)-(\d+)#(\d+)$/.exec(qid); if (!m) return null;
@@ -302,7 +343,7 @@
     if (p === 7) ctx = it.docs.map(d => `<div class="tt-doc"><b>${esc(d.title)}</b><p>${esc(d.text).replace(/\n/g, "<br>")}</p></div>`).join("");
     return { id: qid, part: p, tag: it.tag || "test", q: p === 1 ? "Which statement best describes the photo?" : q.q, o: q.o, a: q.a, zh: it.zh || "", why: q.why || "", ctx, test: true, group: { id: `t${t.id}-${m[2]}-${m[3]}`, p, it } };
   }
-  window.ToeicTest = { getQ, load, play: (g, cb) => play(g, cb), ensure: async () => { if (!X.tests.length) await load(); return X.tests.length; } };
+  window.ToeicTest = { getQ, load, play: (g, cb) => play(g, cb), audioOf, clip, listenGroups, ensure: async () => { if (!X.tests.length) await load(); return X.tests.length; } };
 
   document.addEventListener("click", e => {
     const b = e.target.closest("[data-tt]"); if (!b) return; const id = /^\d+$/.test(b.dataset.v || "") ? Number(b.dataset.v) : b.dataset.v;
@@ -326,6 +367,7 @@
     .tt-p7 { padding: 8px 10px; border-radius: 10px; background: rgba(124,92,255,.08); margin: 8px 0; font-size: 12.5px; } .tt-p7 small { display: block; opacity: .7; margin-top: 4px; }
     .tt-tools { border-top: 1px dashed rgba(127,127,127,.3); margin-top: 10px; padding-top: 8px; } .tt-rs { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; } .tt-rs small { opacity: .7; margin-right: 4px; }
     .tt-sl { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid rgba(127,127,127,.12); } .tt-sl p { margin: 2px 0; font-size: 14px; cursor: pointer; transition: filter .2s; } .tt-sl small { font-size: 11px; opacity: .6; }
+    .tt-diag { margin: 10px 0; padding: 10px 12px; border-radius: 12px; background: rgba(124,92,255,.08); font-size: 13.5px; } .tt-diag p { margin: 4px 0; }
     .tt-sl p.blur { filter: blur(6px); user-select: none; } .tt-sl.on .tc-abc { border-color: #7c5cff; background: rgba(124,92,255,.2); }`;
   document.head.appendChild(css);
 
