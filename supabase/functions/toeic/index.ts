@@ -11,13 +11,14 @@ const G = "https://generativelanguage.googleapis.com/v1beta";
 async function gemini(sys: string, user: string, schema?: unknown, temp = 0.7) {
   /* 忙線（429／5xx）就等一下再試，最後換備用模型 */
   let r: Response | null = null;
-  for (const [i, model] of [TEXT_MODEL, TEXT_MODEL, "gemini-3.8-flash-lite"].entries()) {
-    if (i) await new Promise(ok => setTimeout(ok, 1200 * i));
+  for (const [i, model] of [TEXT_MODEL, TEXT_MODEL, TEXT_MODEL].entries()) {
+    if (i) await new Promise(ok => setTimeout(ok, 2500 * i + Math.random() * 1500));
     r = await fetch(`${G}/models/${model}:generateContent`, { method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": KEY() },
       body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: "user", parts: [{ text: user }] }], generationConfig: schema ? { responseMimeType: "application/json", responseSchema: schema, temperature: temp } : { temperature: temp } }) });
     if (r.ok || !(r.status === 429 || r.status >= 500)) break;
+    console.error("Gemini retry", model, r.status);
   }
-  if (!r || !r.ok) { console.error("Gemini", r?.status, await r?.text()); throw new Error(`AI 服務暫時出錯（${r?.status}），請稍後再試`); }
+  if (!r || !r.ok) { console.error("Gemini", r?.status, await r?.text()); throw new Error(`${r?.status === 429 ? "AI 今天的免費額度用完了或太多人在用（429）" : "AI 服務暫時出錯（" + r?.status + "）"}，請稍後再試`); }
   const p: any = await r.json();
   const t = (p?.candidates?.[0]?.content?.parts ?? []).filter((x: any) => !x.thought).map((x: any) => x.text ?? "").join("");
   return schema ? JSON.parse(t) : t;
@@ -155,7 +156,6 @@ Deno.serve(async (req) => {
   try {
     if (!KEY()) return j({ error: "伺服器尚未設定 GEMINI_API_KEY" }, 500);
     const b = await req.json();
-    if (b.test === "q7Lx2") { const uid = "503367b6-4365-428a-84d2-567a66e8bca8"; if (b.action === "test_chunk") return j(await testChunk(b, uid)); if (b.action === "image") return j(await image(b.prompt)); if (b.action === "tts") return j(await tts(b.text, b.voice, b.duo)); }
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } });
     const { data: u } = await sb.auth.getUser(); if (!u?.user) return j({ error: "請先登入" }, 401);
     if (b.action === "tts") return j(await tts(b.text, b.voice, Array.isArray(b.duo) ? b.duo.slice(0, 2).map(String) : undefined));

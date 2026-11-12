@@ -50,8 +50,13 @@
     let fail = 0;
     for (const [i, c] of miss.entries()) {
       X.gen.msg = `正在出 ${c.toUpperCase()}（${i + 1}/${miss.length}）…可以先去做別的，完成會通知你`; render();
-      const { data, error } = await db.functions.invoke("toeic", { body: { action: "test_chunk", test_id: id, chunk: c, theme: t.theme } });
-      if (error || (data && data.error)) fail++;
+      let ok = false;
+      for (let k = 0; k < 3 && !ok; k++) { /* AI 忙線就等一下再試 */
+        if (k) { X.gen.msg = `AI 有點忙，${k * 20} 秒後重試 ${c.toUpperCase()}…`; render(); await new Promise(r => setTimeout(r, k * 20000)); }
+        const { data, error } = await db.functions.invoke("toeic", { body: { action: "test_chunk", test_id: id, chunk: c, theme: t.theme } });
+        ok = !error && !(data && data.error);
+      }
+      if (!ok) fail++;
     }
     X.gen = null; await load();
     toast(fail ? `📝 ${t.title} 有 ${fail} 段沒產生成功，再按一次會補上` : `📝 ${t.title} 題目都產生好了！`);
