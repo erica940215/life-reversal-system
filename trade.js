@@ -171,6 +171,7 @@
       </div>
       <p class="tr-desc">${st.desc}</p>
       <div class="tr-row"><button type="button" class="btn btn-primary" data-tr="run">▶️ 回測</button><button type="button" class="btn" data-tr="cmp">⚖️ 所有策略比一比</button><button type="button" class="btn" data-tr="fwd">🔒 從今天開始往後模擬</button></div>
+      <div class="tr-row"><button type="button" class="btn btn-primary tr-ai" data-tr="ai">🤖 AI 挑選：全部交給我</button></div>
       <div id="tr-out"></div>
       <p class="tr-note small">⚠️ 這是用過去資料做的模擬，不代表未來會一樣，也不是投資建議。真實交易還有滑價、稅、流動性等成本。</p></section>
       <section class="card"><h2>🔒 往後模擬</h2><p class="tr-note">建立時把策略和參數鎖住，從起始日開始照公式自動買賣。不能事後改參數，所以成績是真的「沒看答案」。</p><div id="tr-runs">${runs.length ? "" : `<p class="tr-note">還沒有。設定好策略後按「🔒 從今天開始往後模擬」。</p>`}</div></section>`;
@@ -259,6 +260,62 @@
     toast("🔒 開始往後模擬了，之後回來看成績"); loadRuns();
   }
 
+  /* ---------- 🤖 AI 挑選：在這個市場的每一檔 × 每一種策略 × 一整組參數裡找最好的
+     為了不「看答案」：前 70% 的資料拿來挑（訓練），後 30% 是挑完才第一次看的考試（驗證）。
+     分數＝報酬取 log 再扣掉回撤的懲罰，避免挑到賺很多但中途差點歸零的組合。 */
+  const GRID = {
+    buyhold: [{}],
+    sma: [5, 10, 20, 30, 50].flatMap(f => [20, 50, 100, 150, 200].filter(s => s > f * 1.5).map(s => ({ fast: f, slow: s }))),
+    rsi: [7, 14, 21].flatMap(n => [20, 25, 30, 35].flatMap(lo => [65, 70, 75, 80].map(hi => ({ n, lo, hi })))),
+    boll: [10, 20, 30].flatMap(n => [1.5, 2, 2.5].map(k => ({ n, k }))),
+    macd: [8, 12].flatMap(f => [21, 26, 34].flatMap(sl => [5, 9].map(g => ({ f, s: sl, g })))),
+    breakout: [10, 20, 40, 55, 100].flatMap(n => [5, 10, 20, 30].filter(m => m < n).map(m => ({ n, m })))
+  };
+  const score = r => Math.log(Math.max(r.final, 1) / 1e5) + 1.5 * Math.log(1 + r.mdd);
+  let AI = null;
+
+  async function aiPick() {
+    readForm(); const out = document.getElementById("tr-out");
+    const syms = [...new Set(MARKETS[S.mk].list.map(x => x[0]).concat(S.sym))];
+    const res = [];
+    for (const [i, sym] of syms.entries()) {
+      out.innerHTML = `<p class="tr-note">🤖 正在研究 ${esc(sym)}（${i + 1}/${syms.length}）…</p>`;
+      let d; try { d = await bars(sym, S.range); } catch (e) { continue; }
+      const b = d.bars, split = Math.floor(b.length * 0.7); if (split < 120) continue;
+      const train = b.slice(0, split);
+      let best = null, tried = 0;
+      for (const k of Object.keys(GRID)) for (const p of GRID[k]) {
+        const r = simulate(train, k, p, 1e5, S.fee); tried++;
+        if (k !== "buyhold" && r.trades.length < 3) continue;
+        const sc = score(r); if (!best || sc > best.sc) best = { k, p, sc, tr: r };
+      }
+      if (!best) continue;
+      const test = simulate(b, best.k, best.p, 1e5, S.fee, split - 1), full = simulate(b, best.k, best.p, S.cap, S.fee);
+      res.push({ sym, name: d.name, d, split, tried, ...best, test, full });
+      await new Promise(r => setTimeout(r, 0));
+    }
+    if (!res.length) { out.innerHTML = `<p class="tr-note dn">😵 拿不到這個市場的行情</p>`; return; }
+    /* 最後的冠軍：看訓練分數，但考試（後 30%）也必須沒有輸給買進持有太多 */
+    res.forEach(x => { x.final = score(x.tr) + (x.test.ret - x.test.bh >= -0.05 ? 0.3 : -0.3) + (x.test.ret > 0 ? 0.2 : -0.2); });
+    res.sort((a, b) => b.final - a.final);
+    AI = res[0]; const w = AI, pstr = Object.entries(w.p).map(([k, v]) => `${(STRATS[w.k].params.find(q => q[0] === k) || [, k])[1]} ${v}`).join("、") || "不用參數";
+    const passed = w.test.ret - w.test.bh >= -0.05 && w.test.ret > 0;
+    out.innerHTML = `<div class="tr-ai-box"><div class="tr-head"><b>🤖 AI 的選擇：${esc(w.name)}・${STRATS[w.k].name}</b><small>${esc(w.sym)}・參數：${esc(pstr)}・共試了 ${res.reduce((s, x) => s + x.tried, 0)} 種組合</small></div>
+      <p class="tr-verdict">${passed ? "✅ 這組在「沒看過的後 30%」也表現得不錯，代表不只是剛好貼合過去。" : "⚠️ 這組在前 70% 很漂亮，但在沒看過的後 30% 表現普通，可能只是剛好貼合過去。建議用往後模擬再觀察。"}</p>
+      <div class="tr-scroll"><table class="tr-cmp"><tr><th></th><th>總報酬</th><th>買進持有</th><th>勝率</th><th>次數</th><th>最大回撤</th></tr>
+        ${[["📚 訓練（前 70%）", w.tr], ["📝 考試（後 30%）", w.test], ["📅 整段", w.full]].map(([n, r]) => `<tr><td>${n}</td><td class="${cls(r.ret)}">${pct(r.ret)}</td><td class="${cls(r.bh)}">${pct(r.bh)}</td><td>${r.win == null ? "—" : Math.round(r.win * 100) + "%"}</td><td>${r.trades.length}</td><td class="dn">${pct(r.mdd)}</td></tr>`).join("")}</table></div>
+      ${chart(w.d.bars, w.full, 0, S.cap)}${stats(w.full, S.cap)}${tradeList(w.full)}
+      <div class="tr-row"><button type="button" class="btn btn-primary" data-tr="ailock">🔒 讓 AI 從今天開始往後模擬這組</button></div>
+      <details class="tr-list"><summary>📋 每一檔的最佳組合</summary><div class="tr-scroll"><table class="tr-cmp"><tr><th>標的</th><th>策略</th><th>考試報酬</th><th>考試持有</th><th>整段</th></tr>
+        ${res.map((x, i) => `<tr><td>${i === 0 ? "🥇 " : ""}${esc(x.name)}</td><td>${STRATS[x.k].name}</td><td class="${cls(x.test.ret)}">${pct(x.test.ret)}</td><td class="${cls(x.test.bh)}">${pct(x.test.bh)}</td><td class="${cls(x.full.ret)}">${pct(x.full.ret)}</td></tr>`).join("")}</table></div></details></div>`;
+  }
+
+  async function aiLock() {
+    if (!AI) return;
+    S.sym = AI.sym; S.st = AI.k; S.params[AI.k] = AI.p; save(); render();
+    await createRun();
+  }
+
   async function onClick(e) {
     const b = e.target.closest("[data-tr]"); if (!b || busy) return;
     const a = b.dataset.tr, v = b.dataset.v;
@@ -267,7 +324,7 @@
     if (a === "pick") { S.st = v; save(); render(); return runOne(); }
     if (a === "del") { if (!confirm("刪除這個往後模擬？")) return; const { error } = await db.from("trade_runs").delete().eq("id", v); if (error) return toast(error.message); runs = runs.filter(r => r.id !== v); return renderRuns(); }
     busy = true;
-    try { if (a === "run") await runOne(); else if (a === "cmp") await compare(); else if (a === "fwd") await createRun(); } finally { busy = false; }
+    try { if (a === "run") await runOne(); else if (a === "cmp") await compare(); else if (a === "fwd") await createRun(); else if (a === "ai") await aiPick(); else if (a === "ailock") await aiLock(); } finally { busy = false; }
   }
   function onChange(e) { if (e.target.id === "tr-st") { readForm(); render(); } }
 
@@ -297,6 +354,8 @@
     .tr-cmp tr[data-tr] { cursor: pointer; } .tr-cmp tr[data-tr]:hover td { background: rgba(127,127,127,.08); }
     .tr-run { border: 1px solid rgba(127,127,127,.25); border-radius: 12px; padding: 10px; margin: 8px 0; }
     .tr-run-h { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; } .tr-run-h small { opacity: .65; font-size: 11.5px; flex: 1; }
+    .tr-ai { background: linear-gradient(90deg, #7c5cff, #2fb8ff) !important; color: #fff !important; border: 0 !important; width: 100%; }
+    .tr-ai-box { border: 1px solid rgba(124,92,255,.45); border-radius: 12px; padding: 10px; margin-top: 10px; background: rgba(124,92,255,.06); }
     .tr-x { border: 0; background: none; color: inherit; opacity: .5; cursor: pointer; font-size: 14px; }`;
   document.head.appendChild(css);
 
