@@ -88,6 +88,7 @@
     const weak = K.points.filter(p => p.learned_at && cardsOfPt(p.id).some(c => c.reps)).map(p => [p, ptM(p)]).sort((a, b) => a[1] - b[1]).slice(0, 5);
     return `<section class="card kb-hero"><div class="kb-top"><div><h2 style="margin:0">🧠 複習</h2><p class="tr-note">導入講義、筆記、照片，我幫你拆成由簡單到難的知識點，做成各種題目，照遺忘曲線排複習。</p></div></div>
         <div class="tc-score"><div><small>今天到期</small><b>${due}</b><small>張卡</small></div><div><small>可學新卡</small><b>${nw}</b><small>每天上限 ${NEW_PER_DAY}</small></div><div><small>今天做了</small><b>${K.todayN}</b><small>${K.todayN >= 10 ? "✅ 任務完成" : "做滿 10 張有星屑"}</small></div></div>
+        <p class="tr-note" style="margin:4px 0 8px">AI 額度用完也能導入：<a href="#" data-kb="fmt">📐 固定格式＋免費 AI 聊天提示詞</a></p>
         <div class="tr-row"><button type="button" class="btn btn-primary" data-kb="review" style="flex:2" ${due + nw ? "" : "disabled"}>▶️ 開始今日複習（${due + nw}）</button><button type="button" class="btn" data-kb="import" style="flex:1">＋ 導入資料</button></div></section>
       ${K.sources.length ? `<section class="card"><h2>📚 我的資料</h2>${subs.length > 2 ? `<div class="tr-row kb-subs">${subs.map(s => `<button type="button" class="tr-chip sm ${K.subj === s ? "on" : ""}" data-kb="subj" data-v="${esc(s)}">${esc(s)}</button>`).join("")}</div>` : ""}
         ${list.map(srcRow).join("")}</section>` : `<section class="card"><h2>📥 從這裡開始</h2><p>按「＋ 導入資料」，貼上一段筆記，或上傳 PDF 講義、課本照片、Word、PPT。</p>
@@ -119,7 +120,7 @@
           <button type="button" class="btn" data-kb="exam" data-v="${sid}" ${learned ? "" : "disabled"}>🎯 綜合測驗</button></div></section>
       <section class="card"><h2>🗺️ 知識地圖</h2><p class="tr-note">由上到下＝由簡單到難。顏色是熟練度：灰＝還沒學、橘＝剛開始、黃＝有印象、綠＝記牢了。點任一個可以看比喻和重點。</p>
         <div class="kb-map"><div class="kb-root">${esc(s.title)}</div><ul>${secs.map(([k, arr]) => `<li><span class="kb-sec">${esc(k)}</span><ul>${arr.map(p => { const m = ptM(p); return `<li><button type="button" class="kb-pt ${p.learned_at ? "" : "new"}" data-kb="pt" data-v="${p.id}"><span class="kb-dot" style="background:${p.learned_at ? mColor(m) : "rgba(127,127,127,.35)"}"></span>${esc(p.title)} <small>L${p.level}</small></button></li>`; }).join("")}</ul></li>`).join("")}</ul></div></section>
-      <section class="card"><details><summary>⚙️ 管理</summary><div class="tr-row" style="margin-top:8px"><button type="button" class="btn btn-small" data-kb="rename" data-v="${sid}">改名／改科目</button><button type="button" class="btn btn-small" data-kb="del" data-v="${sid}">🗑️ 刪除這份資料</button><button type="button" class="btn btn-small" data-kb="redo" data-v="${sid}">🤖 用 AI 重新整理</button></div></details></section>`;
+      <section class="card"><details><summary>⚙️ 管理</summary><div class="tr-row" style="margin-top:8px"><button type="button" class="btn btn-small" data-kb="rename" data-v="${sid}">改名／改科目</button><button type="button" class="btn btn-small" data-kb="del" data-v="${sid}">🗑️ 刪除這份資料</button><button type="button" class="btn btn-small" data-kb="redo" data-v="${sid}">🤖 用 AI 重新整理</button><button type="button" class="btn btn-small" data-kb="export" data-v="${sid}">📤 匯出成序光格式</button></div></details></section>`;
   }
 
   function renderToday() {
@@ -144,6 +145,7 @@
         : `<label class="kb-drop"><input type="file" id="kb-file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.heic,.heif,.docx,.pptx,.txt,.md,.csv,image/*,application/pdf"><span>📎 選擇檔案<br><small>PDF、照片／截圖（可以多張）、Word（.docx）、PPT（.pptx）、文字檔</small></span></label>
           ${files.length ? `<ul class="kb-files">${files.map((f, i) => `<li>${esc(f.name)} <small>${(f.size / 1048576).toFixed(1)} MB</small> <button type="button" class="tr-x" data-rm="${i}">✕</button></li>`).join("")}</ul>` : ""}`}
       <label class="kb-n">整理方式<select id="kb-mode"><option value="ai">🤖 AI 整理（有比喻、9 種題型，推薦）</option><option value="local">⚡ 快速模式（不用 AI，適合條列式筆記）</option></select></label>
+      <p class="kb-fmt">💡 AI 額度用完也能做出完整題卡：照「📐 序光格式」寫，或把提示詞貼給任何免費 AI 聊天（ChatGPT、Claude…）轉好再貼回來，系統會自動認出來、直接匯入。<button type="button" class="btn btn-small" data-fmt="1">📐 格式說明＋AI 提示詞</button></p>
       <label class="kb-n">知識點數量<select id="kb-n"><option value="10">精簡（約 10 個）</option><option value="18" selected>標準（約 18 個）</option><option value="28">詳細（約 28 個）</option></select></label>
       <p class="tr-note">整理大約要 1～3 分鐘，可以關掉這個視窗去做別的，完成會通知你。</p>
       <button type="button" class="btn btn-primary" data-go="1" style="width:100%">✨ 開始整理</button><button type="button" class="btn" data-vx="1" style="width:100%;margin-top:6px">取消</button></div>`;
@@ -153,6 +155,7 @@
     m.addEventListener("click", async e => {
       if (e.target === m || e.target.closest("[data-vx]")) return m.remove();
       const tb = e.target.closest("[data-tab]"); if (tb) { keep(); tab = tb.dataset.tab; return draw(); }
+      if (e.target.closest("[data-fmt]")) { keep(); return formatHelp(t => { m._text = t; tab = "text"; draw(); }); }
       const rm = e.target.closest("[data-rm]"); if (rm) { e.preventDefault(); keep(); files.splice(Number(rm.dataset.rm), 1); return draw(); }
       if (e.target.closest("[data-go]")) {
         keep(); const sub = (m._sub || "").trim() || "其他", title = (m._title || "").trim(), n = Number(m.querySelector("#kb-n").value);
@@ -203,6 +206,10 @@
   /* 整理流程：① AI 拆知識點 → ② 每 4 個知識點做一批題卡（兩批同時做） */
   const isQuota = m => /429|額度|忙不過來|quota/i.test(String(m || ""));
   async function ingest(subject, title, n, input, local) {
+    /* 照固定格式寫的資料、兩欄表格：不用 AI，直接匯入 */
+    const F = window.KBFormat;
+    if (F && input.text && F.isFormat(input.text)) return formatIngest(subject, title, input);
+    if (F && input.text && !input.files.length && F.isTable(input.text)) { toast("📊 偵測到兩欄表格，直接做成題卡（不用 AI）"); return localIngest(subject, title, Object.assign({}, input, { text: F.tableToText(input.text) })); }
     if (local) return localIngest(subject, title, input);
     const tmp = "tmp" + Date.now(); K.busy[tmp] = "AI 正在讀資料、拆知識點…"; toast("✨ 開始整理，大約 1～3 分鐘，可以先去做別的");
     K.sources.unshift({ id: tmp, subject, title: title || "（整理中）", kind: input.kind, status: "outline" }); K.view = null; render();
@@ -223,6 +230,76 @@
       if (isQuota(err.message)) { toast("🛟 AI 額度暫時用完，改用快速模式整理（不用 AI）"); return localIngest(subject, title, input); }
       toast("😵 整理失敗：" + err.message);
     }
+  }
+  /* ---------- 📐 序光格式匯入 ---------- */
+  async function formatIngest(subject, title, input) {
+    const P = window.KBFormat.parse(input.text);
+    if (!P.points.length) return toast("😵 格式裡找不到知識點：每個知識點要用「### 名稱」開頭");
+    const cardN = P.points.reduce((a, p) => a + p.cards.length, 0);
+    const sr = await db.from("kb_sources").insert({ subject: P.subject || subject, title: title || P.title || "未命名", kind: input.kind || "text", summary: `📐 序光格式匯入：${P.points.length} 個知識點、${cardN} 張題卡。`, raw: input.text.slice(0, 60000), status: "ready" }).select().single();
+    if (sr.error) return toast(sr.error.message);
+    const pr = await db.from("kb_points").insert(P.points.map((p, i) => ({ source_id: sr.data.id, pos: i, section: p.section, title: p.title, level: p.level, summary: p.summary, analogy: p.analogy || null, key_terms: p.key_terms, excerpt: p.excerpt, cards_ready: true }))).select();
+    if (pr.error) return toast(pr.error.message);
+    const rows = []; pr.data.forEach((row, i) => { const cs = P.points[i].cards.length ? P.points[i].cards.map(c => ({ point_id: row.id, ...c })) : localCards(row, pr.data); cs.forEach(c => rows.push(Object.assign({ source_id: sr.data.id }, c))); });
+    const cr = rows.length ? await db.from("kb_cards").insert(rows).select("id, point_id, source_id, type, level, data, reps, lapses, ease, ivl, due, suspended") : { data: [] };
+    if (cr.error) return toast(cr.error.message);
+    K.sources.unshift(sr.data); K.points = K.points.concat(pr.data); K.cards = K.cards.concat(cr.data || []); K.view = sr.data.id; render(); renderToday();
+    db.rpc("kb_done", { p_task: "import" }).then(r => { if (r.data && r.data.granted) toast(`✨ 第一次導入資料，星屑 +${r.data.amount}`); });
+    toast(`📐 照格式匯入：${P.points.length} 個知識點、${rows.length} 張題卡${P.warn.length ? `（${P.warn.length} 行看不懂已略過）` : ""}`);
+    if (P.warn.length) showWarn(P.warn);
+  }
+  function showWarn(w) {
+    const m = document.createElement("div"); m.className = "vg-modal";
+    m.innerHTML = `<div class="vg-card"><div class="vg-title">⚠️ 有 ${w.length} 個地方格式不對，已略過</div><ul class="tc-ul">${w.slice(0, 20).map(x => `<li>${esc(x)}</li>`).join("")}</ul><p class="tr-note">其他內容都匯入了。要補的話，可以在「⚙️ 管理 → 📤 匯出」改好再匯入一次。</p><button type="button" class="btn btn-primary" data-vx="1" style="width:100%">知道了</button></div>`;
+    m.addEventListener("click", e => { if (e.target === m || e.target.closest("[data-vx]")) m.remove(); }); document.body.appendChild(m);
+  }
+  const copy = async (t, msg) => { try { await navigator.clipboard.writeText(t); toast(msg); } catch (_) { const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); toast(msg); } catch (_) { toast("複製失敗，請長按文字自己複製"); } ta.remove(); } };
+  function formatHelp(useExample) {
+    const F = window.KBFormat, m = document.createElement("div"); m.className = "vg-modal kb-modal";
+    m.innerHTML = `<div class="vg-card" style="max-height:90vh;overflow:auto"><div class="vg-title">📐 序光格式：不用 AI 也有完整題卡</div>
+      <p class="tc-h4">方法一：讓免費 AI 聊天幫你轉（最推薦）</p>
+      <ol class="tc-ul"><li>按下面「📋 複製 AI 提示詞」</li><li>打開 ChatGPT、Claude、Gemini App 等任何 AI 聊天，貼上提示詞，再把講義文字、PDF 或<b>照片</b>一起丟給它</li><li>把它回覆的內容整段複製，回來「導入資料」貼上 → 系統認出格式，直接匯入，<b>完全不用這裡的 AI 額度</b></li></ol>
+      <button type="button" class="btn btn-primary" data-cp="prompt" style="width:100%">📋 複製 AI 提示詞</button>
+      <p class="tc-h4">方法二：自己照格式寫（上課邊聽邊打也可以）</p>
+      <div class="tr-scroll"><table class="kb-cmp kb-syn"><tr><th>寫法</th><th>變成</th></tr>
+        <tr><td><code># 科目：資料結構</code><br><code># 標題：第三章</code></td><td>科目、標題（可省略）</td></tr>
+        <tr><td><code>## 章節名稱</code></td><td>知識地圖的分支</td></tr>
+        <tr><td><code>### 知識點｜L1</code></td><td>知識點，L1～L5 是難度（可省略）</td></tr>
+        <tr><td><code>重點：</code> <code>比喻：</code> <code>關鍵詞：</code></td><td>學習時看的內容</td></tr>
+        <tr><td><code>Q：</code>＋<code>A：</code></td><td>🃏 問答卡</td></tr>
+        <tr><td><code>填空：Stack 是 {{LIFO}}</code></td><td>✂️ 填空（{{ }} 是答案）</td></tr>
+        <tr><td><code>是非：敘述 ⭕</code> 或 <code>❌</code></td><td>⭕ 是非題</td></tr>
+        <tr><td><code>選擇：題目</code><br><code>- 選項 ✓</code><br><code>- 選項</code></td><td>✅ 選擇題（✓ 標正解）</td></tr>
+        <tr><td><code>比喻題：生活比喻</code>＋選項（✓ 標正解）</td><td>🧩 比喻題</td></tr>
+        <tr><td><code>配對：</code><br><code>- 名詞 = 解釋</code></td><td>🔗 配對</td></tr>
+        <tr><td><code>排序：一 > 二 > 三</code></td><td>🔢 排順序</td></tr>
+        <tr><td><code>比較：A vs B</code><br><code>- 面向 | A | B</code></td><td>⚖️ 比較表</td></tr>
+        <tr><td><code>簡答：問題</code><br><code>- 得分重點</code><br><code>參考：答案</code></td><td>📝 簡答</td></tr>
+        <tr><td><code>解析：</code></td><td>接在選擇／是非／比喻題後面</td></tr></table></div>
+      <p class="tr-note">每張卡也可以自己指定難度，例如 <code>選擇｜L4：…</code>。沒寫題目的知識點，系統會用「重點」自動做基本卡。</p>
+      <div class="tr-row"><button type="button" class="btn btn-small" data-cp="ex">📋 複製範例</button><button type="button" class="btn btn-small" data-use="1">✍️ 把範例放進輸入框試試</button></div>
+      <p class="tc-h4">方法三：兩欄表格</p>
+      <p class="tr-note">從 Excel／Google 試算表複製兩欄（左：名詞、右：解釋），或 Quizlet 匯出的「名詞<Tab>解釋」，直接貼上就會做成問答、填空、選擇、配對卡。</p>
+      <p class="tc-h4">方法四：條列筆記</p>
+      <p class="tr-note">「標題＋條列」或「名詞：解釋」的筆記，選「⚡ 快速模式」也能整理（題型比較少）。</p>
+      <button type="button" class="btn" data-vx="1" style="width:100%;margin-top:8px">關閉</button></div>`;
+    m.addEventListener("click", e => {
+      if (e.target === m || e.target.closest("[data-vx]")) return m.remove();
+      const c = e.target.closest("[data-cp]"); if (c) return copy(c.dataset.cp === "prompt" ? F.PROMPT : F.EXAMPLE, c.dataset.cp === "prompt" ? "📋 提示詞複製好了，貼到 AI 聊天，再附上你的資料" : "📋 範例複製好了");
+      if (e.target.closest("[data-use]")) { m.remove(); if (useExample) useExample(F.EXAMPLE); }
+    });
+    document.body.appendChild(m);
+  }
+  function exportModal(sid) {
+    const s = srcById(sid), t = window.KBFormat.exportText(s, ptsOf(sid), pid => cardsOfPt(pid)), m = document.createElement("div"); m.className = "vg-modal kb-modal";
+    m.innerHTML = `<div class="vg-card"><div class="vg-title">📤 匯出成序光格式</div><p class="tr-note">可以修改後重新「導入資料」貼上，或傳給同學一起用。</p><textarea rows="14" readonly>${esc(t)}</textarea>
+      <div class="tr-row"><button type="button" class="btn btn-primary" data-cpx="1" style="flex:1">📋 複製</button><button type="button" class="btn" data-dl="1" style="flex:1">💾 下載 .txt</button></div><button type="button" class="btn" data-vx="1" style="width:100%;margin-top:6px">關閉</button></div>`;
+    m.addEventListener("click", e => {
+      if (e.target === m || e.target.closest("[data-vx]")) return m.remove();
+      if (e.target.closest("[data-cpx]")) return copy(t, "📋 複製好了");
+      if (e.target.closest("[data-dl]")) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([t], { type: "text/plain;charset=utf-8" })); a.download = `${s.title}.txt`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
+    });
+    document.body.appendChild(m);
   }
   /* ---------- ⚡ 快速模式：不用 AI，從筆記的結構（標題、「名詞：解釋」、條列、步驟）直接做題卡 ---------- */
   async function localIngest(subject, title, input) {
@@ -526,6 +603,8 @@
     if (a === "exam") exam(id);
     if (a === "pt") pointModal(id);
     if (a === "resume") makeCards(id);
+    if (a === "export") exportModal(id);
+    if (a === "fmt") e.preventDefault(), formatHelp(t => { importModal(); setTimeout(() => { const ta = document.querySelector("#kb-text"); if (ta) ta.value = t; }, 50); });
     if (a === "redo") { const s = srcById(id); const { data } = await db.from("kb_sources").select("raw").eq("id", id).maybeSingle();
       if (!data || !data.raw) return toast("這份資料沒有存原始文字（PDF／照片），請重新導入一次檔案");
       if (!confirm(`用 AI 重新整理「${s.title}」？會新增一份 AI 版本，原本這份和它的複習紀錄會保留，確認沒問題再自己刪掉舊的。`)) return;
@@ -579,6 +658,8 @@
     .kb-modal textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 14px; padding: 8px; border-radius: 10px; margin: 8px 0; }
     .kb-drop { display: block; border: 2px dashed rgba(124,92,255,.5); border-radius: 14px; padding: 18px; text-align: center; cursor: pointer; margin: 8px 0; } .kb-drop input { display: none; } .kb-drop small { opacity: .65; font-size: 11.5px; }
     .kb-files { list-style: none; padding: 0; margin: 0 0 8px; font-size: 13px; } .kb-files li { display: flex; gap: 6px; align-items: center; padding: 3px 0; } .kb-files small { opacity: .6; }
+    .kb-fmt { font-size: 12.5px; padding: 8px 10px; border-radius: 10px; background: rgba(124,92,255,.1); margin: 8px 0; } .kb-fmt .btn { margin-top: 6px; display: block; }
+    .kb-syn code { font-size: 12px; white-space: nowrap; } .kb-syn td { font-size: 12.5px; }
     .kb-n { display: flex; gap: 8px; align-items: center; font-size: 13px; margin: 6px 0; }
     .kb-lvres { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 6px; margin: 8px 0; } .kb-lvres > div { text-align: center; padding: 8px 4px; border-radius: 10px; background: rgba(127,127,127,.08); } .kb-lvres b { display: block; font-size: 18px; margin-top: 4px; }`;
   document.head.appendChild(css);
