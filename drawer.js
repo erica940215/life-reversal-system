@@ -117,6 +117,6 @@ function makeDrawer(CFG) {
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", startAll); else startAll();
 }
-makeDrawer({ id: "today-drawer", key: "drawerOrder", title: "🗂️ 今日小抽屜", name: "抽屜", members: ["fn-today", "vg-today", "de-today", "dr-today", "ae-today", "tw-today", "tc-today", "tr-today", "nb-today", "tp-hub"] });
+makeDrawer({ id: "today-drawer", key: "drawerOrder", title: "🗂️ 今日小抽屜", name: "抽屜", members: ["fn-today", "vg-today", "de-today", "dr-today", "ae-today", "tw-today", "tc-today", "kb-today", "tr-today", "nb-today", "tp-hub"] });
 makeDrawer({ id: "today-checkin", key: "checkinOrder", title: "✅ 打卡", name: "打卡", members: ["morning-card", "im-today", "today-life"] });
 })();
