@@ -18,7 +18,7 @@
     render();
     if (document.querySelector('.page[data-page="improve"]') && isOn("improve")) loadHist();
   }
-  const isOn = p => { const el = document.querySelector(`.page[data-page="${p}"]`); return el && el.style.display !== "none" && el.offsetParent !== null; };
+  const isOn = p => { const el = document.querySelector(`.page[data-page="${p}"]`); return !!el && (el.classList.contains("active") || el.offsetParent !== null); };
 
   /* ---------- 今日頁：改善打卡 ---------- */
   function render() {
@@ -64,7 +64,7 @@
     let page = document.querySelector('.page[data-page="improve"]');
     if (!page) {
       const c = document.querySelector("#app-section > .container"); if (!c) return null;
-      page = document.createElement("div"); page.className = "page"; page.dataset.page = "improve"; page.style.display = "none"; c.appendChild(page);
+      page = document.createElement("div"); page.className = "page"; page.dataset.page = "improve"; c.appendChild(page);
       page.innerHTML = `<div id="im-root"><section class="card"><p class="tb-note">載入中…</p></section></div>`;
     }
     if (typeof PAGES !== "undefined" && Array.isArray(PAGES) && !PAGES.includes("improve")) PAGES.push("improve");
