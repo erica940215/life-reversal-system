@@ -89,7 +89,8 @@
     return `<section class="card kb-hero"><div class="kb-top"><div><h2 style="margin:0">🧠 複習</h2><p class="tr-note">導入講義、筆記、照片，我幫你拆成由簡單到難的知識點，做成各種題目，照遺忘曲線排複習。</p></div></div>
         <div class="tc-score"><div><small>今天到期</small><b>${due}</b><small>張卡</small></div><div><small>可學新卡</small><b>${nw}</b><small>每天上限 ${NEW_PER_DAY}</small></div><div><small>今天做了</small><b>${K.todayN}</b><small>${K.todayN >= 10 ? "✅ 任務完成" : "做滿 10 張有星屑"}</small></div></div>
         <p class="tr-note" style="margin:4px 0 8px">AI 額度用完也能導入：<a href="#" data-kb="fmt">📐 固定格式＋免費 AI 聊天提示詞</a></p>
-        <div class="tr-row"><button type="button" class="btn btn-primary" data-kb="review" style="flex:2" ${due + nw ? "" : "disabled"}>▶️ 開始今日複習（${due + nw}）</button><button type="button" class="btn" data-kb="import" style="flex:1">＋ 導入資料</button></div></section>
+        <div class="tr-row"><button type="button" class="btn btn-primary" data-kb="review" style="flex:2" ${due + nw ? "" : "disabled"}>▶️ 開始今日複習（${due + nw}）</button><button type="button" class="btn" data-kb="import" style="flex:1">＋ 導入資料</button></div>
+        ${K.cards.length ? `<button type="button" class="btn" data-kb="listen" style="width:100%;margin-top:6px">🎧 聽著複習（念問題 → 停 3 秒 → 念答案，可以關螢幕）</button>` : ""}</section>
       ${K.sources.length ? `<section class="card"><h2>📚 我的資料</h2>${subs.length > 2 ? `<div class="tr-row kb-subs">${subs.map(s => `<button type="button" class="tr-chip sm ${K.subj === s ? "on" : ""}" data-kb="subj" data-v="${esc(s)}">${esc(s)}</button>`).join("")}</div>` : ""}
         ${list.map(srcRow).join("")}</section>` : `<section class="card"><h2>📥 從這裡開始</h2><p>按「＋ 導入資料」，貼上一段筆記，或上傳 PDF 講義、課本照片、Word、PPT。</p>
           <p class="tr-note">AI 會做這些事：<br>① 拆成 10～30 個知識點，從「認識名詞」排到「綜合應用」<br>② 每個知識點配一個生活比喻＋重點<br>③ 做成問答、填空、選擇、是非、配對、排順序、比喻、比較表、簡答 9 種題目<br>④ 你一次學 3 個知識點、學完小測驗，之後每天照遺忘曲線複習</p>
@@ -117,7 +118,8 @@
         <div class="kb-acts">
           <button type="button" class="btn btn-primary" data-kb="learn" data-v="${sid}" ${unit.length ? "" : "disabled"}>📖 ${unit.length ? `學下一個單元（${unit.length} 個知識點）` : learned === ps.length && ps.length ? "全部學完了 🎉" : "等題卡產生完就能學"}</button>
           <button type="button" class="btn" data-kb="review" data-v="${sid}" ${due + nw ? "" : "disabled"}>🔁 複習這份（${due + nw}）</button>
-          <button type="button" class="btn" data-kb="exam" data-v="${sid}" ${learned ? "" : "disabled"}>🎯 綜合測驗</button></div></section>
+          <button type="button" class="btn" data-kb="exam" data-v="${sid}" ${learned ? "" : "disabled"}>🎯 綜合測驗</button>
+          <button type="button" class="btn" data-kb="listen" data-v="${sid}" ${K.cards.some(c => c.source_id === sid) ? "" : "disabled"}>🎧 聽這份（走路、搭車用）</button></div></section>
       <section class="card"><h2>🗺️ 知識地圖</h2><p class="tr-note">由上到下＝由簡單到難。顏色是熟練度：灰＝還沒學、橘＝剛開始、黃＝有印象、綠＝記牢了。點任一個可以看比喻和重點。</p>
         <div class="kb-map"><div class="kb-root">${esc(s.title)}</div><ul>${secs.map(([k, arr]) => `<li><span class="kb-sec">${esc(k)}</span><ul>${arr.map(p => { const m = ptM(p); return `<li><button type="button" class="kb-pt ${p.learned_at ? "" : "new"}" data-kb="pt" data-v="${p.id}"><span class="kb-dot" style="background:${p.learned_at ? mColor(m) : "rgba(127,127,127,.35)"}"></span>${esc(p.title)} <small>L${p.level}</small></button></li>`; }).join("")}</ul></li>`).join("")}</ul></div></section>
       <section class="card"><details><summary>⚙️ 管理</summary><div class="tr-row" style="margin-top:8px"><button type="button" class="btn btn-small" data-kb="rename" data-v="${sid}">改名／改科目</button><button type="button" class="btn btn-small" data-kb="del" data-v="${sid}">🗑️ 刪除這份資料</button><button type="button" class="btn btn-small" data-kb="redo" data-v="${sid}">🤖 用 AI 重新整理</button><button type="button" class="btn btn-small" data-kb="export" data-v="${sid}">📤 匯出成序光格式</button></div></details></section>`;
@@ -130,7 +132,7 @@
     const due = dueCards().length, nw = Math.min(newLeft(), newCards(null, 99).length), un = K.sources.map(s => nextUnit(s.id)).find(u => u.length);
     box.innerHTML = `<h2>🧠 今日複習 ${due + nw ? `<small class="nb-prog">${due + nw} 張</small>` : K.sources.length ? "✅" : ""}</h2>
       ${!K.sources.length ? `<p class="tr-note">導入講義或筆記，AI 幫你做成題目、排好複習。</p><button type="button" class="btn" style="width:100%" data-kbg="import">＋ 導入資料</button>`
-        : `<p class="tr-note">到期 ${due} 張・新卡 ${nw} 張・今天做了 ${K.todayN} 張</p>${due + nw ? `<button type="button" class="btn btn-primary" style="width:100%" data-kbg="review">▶️ 開始複習</button>` : `<p>🎉 今天的複習都完成了！</p>`}${un ? `<button type="button" class="btn" style="width:100%;margin-top:6px" data-kbg="learn" data-v="${un[0].source_id}">📖 學下一個單元：${esc(un[0].title)}…</button>` : ""}`}`;
+        : `<p class="tr-note">到期 ${due} 張・新卡 ${nw} 張・今天做了 ${K.todayN} 張</p>${due + nw ? `<button type="button" class="btn btn-primary" style="width:100%" data-kbg="review">▶️ 開始複習</button>` : `<p>🎉 今天的複習都完成了！</p>`}<button type="button" class="btn" style="width:100%;margin-top:6px" data-kbg="listen">🎧 聽著複習</button>${un ? `<button type="button" class="btn" style="width:100%;margin-top:6px" data-kbg="learn" data-v="${un[0].source_id}">📖 學下一個單元：${esc(un[0].title)}…</button>` : ""}`}`;
   }
 
   /* ---------- 導入 ---------- */
@@ -527,6 +529,50 @@
   }
   const pointCard = (p, small) => `<div class="kb-pcard ${small ? "small" : ""}">${p.analogy ? `<p class="kb-ana">💡 <b>比喻</b>　${fmt(p.analogy)}</p>` : ""}<p>📌 ${fmt(p.summary)}</p>${(p.key_terms || []).length ? `<p class="kb-terms">${p.key_terms.map(t => `<span>${esc(t)}</span>`).join("")}</p>` : ""}</div>`;
 
+  /* ---------- 🎧 聽著複習：念問題 → 停幾秒想一想 → 念答案（可以關螢幕） ---------- */
+  const plain = t => String(t == null ? "" : t).replace(/`([^`]+)`/g, "$1").replace(/\*\*/g, "").replace(/\{\{(.+?)\}\}/g, "$1");
+  const ABC = "ABCDEF";
+  function sayCard(c) {
+    const d = c.data, why = d.why ? `。${plain(d.why)}` : "";
+    switch (c.type) {
+      case "flash": return [plain(d.q), plain(d.a)];
+      case "cloze": return [`填空：${plain(String(d.text).replace(/\{\{.+?\}\}/g, "空格"))}`, `答案：${plain(d.text)}`];
+      case "tf": return [`是非題：${plain(d.s)}。對還是錯？`, `${d.t ? "對" : "錯"}${why}`];
+      case "mcq": return [`${plain(d.q)}\n${d.o.map((o, i) => `${ABC[i]}，${plain(o)}`).join("。\n")}`, `答案是 ${ABC[d.ans]}，${plain(d.o[d.ans])}${why}`];
+      case "analogy": return [`這個比喻在講哪個觀念？${plain(d.analogy)}`, `${plain(d.o[d.ans])}${why}`];
+      case "match": return [`說出這些名詞的意思：${d.pairs.map(p => plain(p.l)).join("、")}`, d.pairs.map(p => `${plain(p.l)}：${plain(p.r)}`).join("。\n")];
+      case "order": return [`依序說出：${plain(d.q)}`, d.items.map((x, i) => `第 ${i + 1}，${plain(x)}`).join("。\n")];
+      case "compare": return [`${plain(d.q || "比較 " + d.cols.join(" 和 "))}，想想它們在${d.rows.map(r => plain(r.d)).join("、")}上有什麼不同`, d.rows.map(r => `${plain(r.d)}：${d.cols.map((c2, j) => `${plain(c2)} 是 ${plain(r.v[j])}`).join("，")}`).join("。\n")];
+      case "short": return [plain(d.q), `重點有：${d.points.map(plain).join("；")}${d.model ? "。參考答案：" + plain(d.model) : ""}`];
+    }
+    return [plain(d.q || ""), plain(d.a || "")];
+  }
+  function listen(sid) {
+    if (!window.Commute) return toast("播放器載入中，稍等一下");
+    const title = sid ? srcById(sid).title : "今日複習";
+    window.Commute.open(async () => {
+      /* 選卡：到期的 → 學過但還不熟的（間隔短的先）→ 都沒有就預習還沒學的簡單卡 */
+      const ok = c => !c.suspended && (!sid || c.source_id === sid), seen = new Set(), pick = [];
+      const add = arr => arr.forEach(c => { if (pick.length < 15 && !seen.has(c.id)) { seen.add(c.id); pick.push(c); } });
+      add(dueCards(sid));
+      add(K.cards.filter(c => ok(c) && c.reps && (ptById(c.point_id) || {}).learned_at).sort((a, b) => a.ivl - b.ivl || a.level - b.level));
+      let preview = false;
+      if (!pick.length) { add(K.cards.filter(c => ok(c) && c.level <= 2).sort((a, b) => (ptById(a.point_id) || {}).pos - (ptById(b.point_id) || {}).pos)); preview = pick.length > 0; }
+      const list = [];
+      pick.forEach((c, k) => {
+        const [q, a] = sayCard(c), p = ptById(c.point_id) || {}, v = k % 2 ? "us_m" : "us_f", think = ["order", "compare", "short", "match"].includes(c.type) ? 6 : 3;
+        list.push({ label: `❓ ${k + 1}. ${p.title || ""}`, words: TY[c.type], card: c, body: { study: true, voice: v, text: q } });
+        list.push({ label: `🤔 想一想…（${think} 秒）`, words: p.title, card: c, silence: think });
+        list.push({ label: `💡 ${k + 1}. 答案`, words: p.title, card: c, body: { study: true, voice: v, text: a } });
+      });
+      if (preview) toast("還沒有學過的卡，先用預習模式念這份資料的基本題");
+      return list;
+    }, { icon: "🎧", name: `聽著複習・${title}`, endMsg: "🎧 這輪聽完了！標了「😵」的卡，下次複習會先出現",
+      emptyMsg: "沒有可以聽的卡：先導入資料或學一個單元吧",
+      startMsg: L => `🎧 ${L.length / 3} 張卡：念問題 → 停幾秒想 → 念答案。可以關螢幕；聽到不熟的按 😵`,
+      onMark: c => { const t = todayStr(), row = { due: t, ivl: 0 }; Object.assign(c, row); db.from("kb_cards").update(row).eq("id", c.id).then(() => {}); render(); renderToday(); } });
+  }
+
   /* 今日複習：到期卡＋新卡（由簡單到難） */
   function review(sid) {
     const due = dueCards(sid).slice(0, 60), nw = newCards(sid, newLeft());
@@ -604,6 +650,7 @@
     if (a === "pt") pointModal(id);
     if (a === "resume") makeCards(id);
     if (a === "export") exportModal(id);
+    if (a === "listen") listen(id || null);
     if (a === "fmt") e.preventDefault(), formatHelp(t => { importModal(); setTimeout(() => { const ta = document.querySelector("#kb-text"); if (ta) ta.value = t; }, 50); });
     if (a === "redo") { const s = srcById(id); const { data } = await db.from("kb_sources").select("raw").eq("id", id).maybeSingle();
       if (!data || !data.raw) return toast("這份資料沒有存原始文字（PDF／照片），請重新導入一次檔案");
@@ -616,7 +663,7 @@
       K.sources = K.sources.filter(x => x.id !== id); K.points = K.points.filter(x => x.source_id !== id); K.cards = K.cards.filter(x => x.source_id !== id); K.view = null; render(); renderToday(); toast("🗑️ 刪掉了"); }
   }
   document.addEventListener("click", e => { const b = e.target.closest("[data-kbg]"); if (!b) return; const a = b.dataset.kbg;
-    if (a === "import") importModal(); if (a === "review") review(null); if (a === "learn") learn(Number(b.dataset.v)); });
+    if (a === "import") importModal(); if (a === "review") review(null); if (a === "listen") listen(null); if (a === "learn") learn(Number(b.dataset.v)); });
 
   const css = document.createElement("style");
   css.textContent = `

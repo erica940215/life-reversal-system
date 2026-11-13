@@ -5,12 +5,21 @@
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const toast = m => (typeof showToast === "function" ? showToast(m) : console.log(m));
   const hasDb = () => typeof db !== "undefined" && db && typeof currentUser !== "undefined" && currentUser;
-  const P = { list: [], i: 0, au: null, bar: null, playing: false, rate: 1 };
+  const P = { list: [], i: 0, au: null, bar: null, playing: false, rate: 1, opt: {} };
   try { P.rate = Number(localStorage.getItem("tcCommuteRate")) || 1; } catch (_) {}
 
   /* 每一首：{ label, kind, key, body } → 用 edge function 拿到 mp3/wav 網址 */
   const URLS = {};
+  /* 靜音（給「停幾秒想一想」用）：在手機上直接產生一段無聲的 wav，不用 AI */
+  const SIL = {};
+  function silence(sec) {
+    if (SIL[sec]) return SIL[sec];
+    const rate = 8000, n = rate * sec, b = new Uint8Array(44 + n), v = new DataView(b.buffer), w = (o, t) => { for (let i = 0; i < t.length; i++) b[o + i] = t.charCodeAt(i); };
+    w(0, "RIFF"); v.setUint32(4, 36 + n, true); w(8, "WAVEfmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true); v.setUint32(28, rate, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, "data"); v.setUint32(40, n, true); b.fill(128, 44);
+    return (SIL[sec] = URL.createObjectURL(new Blob([b], { type: "audio/wav" })));
+  }
   function urlOf(it) {
+    if (it.silence) return Promise.resolve(silence(it.silence));
     if (it.key && window.ToeicTest && it.group) return window.ToeicTest.clip(it.key, it.body);
     const k = JSON.stringify(it.body);
     if (!URLS[k]) { URLS[k] = db.functions.invoke("toeic", { body: Object.assign({ action: "tts" }, it.body) }).then(r => { if (r.error || !r.data || !r.data.url) throw new Error((r.data && r.data.error) || "語音失敗"); return r.data.url; }); URLS[k].catch(() => delete URLS[k]); }
@@ -65,7 +74,7 @@
   function meta() {
     if (!("mediaSession" in navigator)) return; const it = P.list[P.i]; if (!it) return;
     try {
-      navigator.mediaSession.metadata = new MediaMetadata({ title: it.label.replace(/^\S+\s/, ""), artist: `多益通勤純聽 ${P.i + 1}/${P.list.length}`, album: "序光計畫" });
+      navigator.mediaSession.metadata = new MediaMetadata({ title: it.label.replace(/^\S+\s/, ""), artist: `${P.opt.name || "多益通勤純聽"} ${P.i + 1}/${P.list.length}`, album: "序光計畫" });
       navigator.mediaSession.setActionHandler("play", () => P.au && P.au.play());
       navigator.mediaSession.setActionHandler("pause", () => P.au && P.au.pause());
       navigator.mediaSession.setActionHandler("nexttrack", () => go(P.i + 1));
@@ -85,7 +94,7 @@
   let seq = 0;
   async function go(i) {
     const a = ensureAudio(), my = ++seq;
-    if (i >= P.list.length) { P.i = P.list.length; P.playing = false; paint(); toast("🚇 今天的通勤清單聽完了！"); ms("none"); return; }
+    if (i >= P.list.length) { P.i = P.list.length; P.playing = false; paint(); toast(P.opt.endMsg || "🚇 今天的通勤清單聽完了！"); ms("none"); return; }
     P.i = i; paint("load"); meta();
     try {
       const u = await urlOf(P.list[i]); if (my !== seq) return;
@@ -95,28 +104,34 @@
       /* AI 語音暫時不能用（例如額度用完）：改用手機內建語音念，但要保持螢幕開著 */
       if (!P.warned) { P.warned = true; toast("AI 語音暫時不能用，先改用手機內建語音（這時要保持螢幕開著）"); }
       P.list[i].fallback = true; P.playing = true; paint();
-      await speakLocal(P.list[i].body.text); if (my === seq) go(i + 1); return;
+      if (P.list[i].silence) await new Promise(r => setTimeout(r, P.list[i].silence * 1000 / P.rate)); else await speakLocal(P.list[i].body.text);
+      if (my === seq) go(i + 1); return;
     }
-    /* 預先準備下兩首，播完就能接著放 */
-    P.list.slice(i + 1, i + 3).forEach(n => urlOf(n).catch(() => {}));
+    /* 預先準備後面幾首，播完就能接著放 */
+    P.list.slice(i + 1, i + 5).forEach(n => urlOf(n).catch(() => {}));
   }
 
   /* ---------- 底部播放列 ---------- */
   function paint(state) {
     const b = P.bar; if (!b) return; const it = P.list[P.i], n = P.list.length, fin = P.i >= n;
     b.querySelector(".cm-t").innerHTML = fin ? "✅ 聽完了" : `${state === "load" ? "⏳ " : ""}${esc(it.label)}${it.words ? `<small>${esc(it.words)}</small>` : ""}`;
+    const mk = b.querySelector("[data-cm=mark]"); if (mk) { mk.hidden = !(P.opt.onMark && it && it.card); mk.textContent = it && it.card && it.card._marked ? "✓" : "😵"; }
     b.querySelector(".cm-n").textContent = `${Math.min(P.i + 1, n)}/${n}`;
     b.querySelector("[data-cm=play]").textContent = P.playing ? "⏸" : "▶️";
     b.querySelector(".cm-p i").style.width = (Math.min(P.i, n) / Math.max(1, n) * 100) + "%";
     b.querySelector("[data-cm=rate]").textContent = P.rate + "x";
     const ul = b.querySelector(".cm-list"); if (ul && !ul.hidden) ul.innerHTML = P.list.map((x, k) => `<li class="${k === P.i ? "on" : ""} ${x.bad ? "bad" : ""}" data-go="${k}">${esc(x.label)}${x.fallback ? "（手機內建語音）" : ""}</li>`).join("");
   }
-  async function open() {
+  /* open()：多益通勤清單；open(builder, opt)：別的功能自己給清單（例如 🧠 複習系統的「聽著複習」）
+     opt：{ icon, name, emptyMsg, startMsg, endMsg, onMark(card) } */
+  async function open(builder, opt) {
     if (!hasDb()) return toast("請先登入");
+    if (typeof builder !== "function") { builder = build; opt = {}; }
+    P.opt = opt || {}; if (P.bar) { seq++; try { speechSynthesis.cancel(); } catch (_) {} if (P.au) P.au.pause(); P.bar.remove(); P.bar = null; }
     if (!P.bar) {
       const b = document.createElement("div"); b.className = "tc-cm"; P.bar = b;
-      b.innerHTML = `<div class="cm-p"><i></i></div><div class="cm-row"><span class="cm-ic">🚇</span><div class="cm-t">準備清單中…</div><span class="cm-n"></span>
-        <button type="button" data-cm="prev" title="上一首">⏮</button><button type="button" data-cm="play">▶️</button><button type="button" data-cm="next" title="下一首">⏭</button>
+      b.innerHTML = `<div class="cm-p"><i></i></div><div class="cm-row"><span class="cm-ic">${P.opt.icon || "🚇"}</span><div class="cm-t">準備清單中…</div><span class="cm-n"></span>
+        <button type="button" data-cm="mark" title="這張不熟，等一下複習時再出現" hidden>😵</button><button type="button" data-cm="prev" title="上一首">⏮</button><button type="button" data-cm="play">▶️</button><button type="button" data-cm="next" title="下一首">⏭</button>
         <button type="button" data-cm="rate" title="語速">1x</button><button type="button" data-cm="list" title="清單">☰</button><button type="button" data-cm="x" title="關閉">✕</button></div><ul class="cm-list" hidden></ul>`;
       b.addEventListener("click", e => {
         const c = e.target.closest("[data-cm]"), g = e.target.closest("[data-go]");
@@ -124,6 +139,7 @@
         if (!c) return; const k = c.dataset.cm, a = ensureAudio();
         if (k === "play" && P.list[P.i] && P.list[P.i].fallback) { try { if (speechSynthesis.paused) { speechSynthesis.resume(); P.playing = true; } else { speechSynthesis.pause(); P.playing = false; } } catch (_) {} return paint(); }
         if (k === "play") { if (P.i >= P.list.length) return go(0); if (!a.src) return go(P.i); a.paused ? a.play() : a.pause(); }
+        if (k === "mark") { const it = P.list[P.i]; if (it && it.card && !it.card._marked && P.opt.onMark) { it.card._marked = true; P.opt.onMark(it.card); toast("😵 記下來了，下次複習會先出這張"); paint(); } return; }
         if (k === "next") go(P.i + 1);
         if (k === "prev") go(Math.max(0, P.i - 1));
         if (k === "rate") { P.rate = P.rate === 1 ? 0.85 : P.rate === 0.85 ? 1.15 : 1; a.playbackRate = P.rate; try { localStorage.setItem("tcCommuteRate", P.rate); } catch (_) {} paint(); }
@@ -134,12 +150,13 @@
     }
     /* 這次點擊就先「解鎖」播放器，之後換歌才不會被瀏覽器擋 */
     const a = ensureAudio(); try { a.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA="; a.play().catch(() => {}); } catch (_) {}
-    P.list = await build(); P.i = 0;
-    if (!P.list.length) { P.bar.querySelector(".cm-t").textContent = "今天沒有可以聽的內容：先做幾題或加入單字吧"; return; }
-    toast(`🚇 通勤清單 ${P.list.length} 首：可以關螢幕，用耳機按鍵切下一首`);
+    P.list = await builder(); P.i = 0; P.warned = false;
+    if (!P.list.length) { P.bar.querySelector(".cm-t").textContent = P.opt.emptyMsg || "今天沒有可以聽的內容：先做幾題或加入單字吧"; return; }
+    toast(P.opt.startMsg ? P.opt.startMsg(P.list) : `🚇 通勤清單 ${P.list.length} 首：可以關螢幕，用耳機按鍵切下一首`);
     go(0);
   }
-  window.ToeicCommute = { open };
+  window.ToeicCommute = { open: () => open() };
+  window.Commute = { open };
 
   const css = document.createElement("style");
   css.textContent = `
@@ -148,7 +165,7 @@
     .cm-row { display: flex; align-items: center; gap: 4px; padding: 8px 8px; } .cm-ic { font-size: 20px; }
     .cm-t { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .cm-t small { display: block; font-weight: 400; font-size: 11px; opacity: .6; overflow: hidden; text-overflow: ellipsis; }
     .cm-n { font-size: 11px; opacity: .6; margin-right: 2px; }
-    .cm-row button { font: inherit; font-size: 16px; border: 0; background: rgba(127,127,127,.12); color: inherit; border-radius: 10px; min-width: 34px; height: 34px; cursor: pointer; padding: 0 6px; } .cm-row button[data-cm=rate] { font-size: 11.5px; } .cm-row button[data-cm=play] { background: #7c5cff; color: #fff; }
+    .cm-row button { font: inherit; font-size: 16px; border: 0; background: rgba(127,127,127,.12); color: inherit; border-radius: 10px; min-width: 34px; height: 34px; cursor: pointer; padding: 0 6px; } .cm-row button[data-cm=rate] { font-size: 11.5px; } .cm-row button[data-cm=play] { background: #7c5cff; color: #fff; } .cm-row button[hidden] { display: none; }
     .cm-list { list-style: none; margin: 0; padding: 0 8px 8px; max-height: 40vh; overflow: auto; font-size: 13px; } .cm-list li { padding: 7px 6px; border-radius: 8px; cursor: pointer; } .cm-list li.on { background: rgba(124,92,255,.18); font-weight: 600; } .cm-list li.bad { opacity: .45; }`;
   document.head.appendChild(css);
 })();
