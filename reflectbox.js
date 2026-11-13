@@ -16,7 +16,7 @@
     m.innerHTML = `<div class="vg-card"><div class="vg-title">${learn ? "📘 今天學到什麼" : "🪞 每日反省"}</div>
       ${learn ? `<p class="vg-note">一句話也可以：一個觀念、一個單字、一個發現。</p><textarea id="rb-a" rows="4" maxlength="500" placeholder="今天我學到…">${esc(r.learned)}</textarea>`
         : `<p class="vg-note">今天哪裡做得好、哪裡可以更好？</p><label class="tw-lab">今天的反省<textarea id="rb-a" rows="3" maxlength="500" placeholder="今天…">${esc(r.reflection)}</textarea></label>
-          <label class="tw-lab">明天要改善<textarea id="rb-b" rows="3" maxlength="300" placeholder="一行寫一個方法，明天會變成打卡項目&#10;例如：&#10;鬧鐘放在牙刷旁邊&#10;兩點半準時上床">${esc(r.improvement)}</textarea></label>`}
+          <label class="tw-lab">明天要改善<textarea id="rb-b" rows="3" maxlength="300" placeholder="一行寫一個方法，會加進改善清單，每天打卡直到你真的改掉&#10;例如：&#10;鬧鐘放在牙刷旁邊&#10;兩點半準時上床">${esc(r.improvement)}</textarea></label>`}
       <div style="display:flex;gap:6px;margin-top:8px"><button type="button" class="btn" data-rbx="1" style="flex:1">先不寫</button><button type="button" class="btn btn-primary" data-rbs="1" style="flex:1">儲存</button></div></div>`;
     m.addEventListener("click", async e => {
       if (e.target === m || e.target.closest("[data-rbx]")) return m.remove();
@@ -26,7 +26,7 @@
       if (learn) row.learned = a; else { row.reflection = a; row.improvement = b; }
       const { error } = await db.from("daily_reflections").upsert(row, { onConflict: "user_id,reflect_date" });
       if (error) return toast("儲存失敗：" + error.message);
-      m.remove(); toast(learn ? "📘 記下來了" : "🪞 反省寫好了，改善方法明天會變成打卡項目");
+      m.remove(); toast(learn ? "📘 記下來了" : "🪞 反省寫好了，改善方法明天會加進改善清單");
       if (window.ImproveBox) window.ImproveBox.load();
       if (typeof loadReflections === "function") loadReflections();
     });

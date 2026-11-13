@@ -9,12 +9,12 @@
     { key: "today", pages: ["today"] },
     { key: "tasks", pages: ["tasks", "calendar", "projects"] },
     { key: "focus", pages: ["focus", "vocab", "toeic", "kb"] },
-    { key: "life", pages: ["life", "records", "ideas", "trade", "stock"] },
+    { key: "life", pages: ["life", "records", "improve", "ideas", "trade", "stock"] },
     { key: "game", icon: "🎮", label: "遊戲", pages: ["rpg", "farm", "doom"] }
   ];
   const LABEL = {
     today: "🏠 今日", tasks: "📋 任務", calendar: "📅 日曆", projects: "🎯 專案",
-    focus: "⏱️ 專注", vocab: "📖 單字", toeic: "🎯 多益", kb: "🧠 複習", life: "🌿 生活", records: "📊 紀錄",
+    focus: "⏱️ 專注", vocab: "📖 單字", toeic: "🎯 多益", kb: "🧠 複習", life: "🌿 生活", records: "📊 紀錄", improve: "🎯 改善",
     ideas: "💡 想法", trade: "📈 模擬交易", stock: "🔎 股票分析", rpg: "⚔️ 冒險", farm: "🏝️ 星露島", doom: "☢️ 末世"
   };
   const groupOf = p => GROUPS.find(g => g.pages.includes(p));
