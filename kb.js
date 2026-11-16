@@ -91,6 +91,7 @@
         <p class="tr-note" style="margin:4px 0 8px">AI 額度用完也能導入：<a href="#" data-kb="fmt">📐 固定格式＋免費 AI 聊天提示詞</a></p>
         <div class="tr-row"><button type="button" class="btn btn-primary" data-kb="review" style="flex:2" ${due + nw ? "" : "disabled"}>▶️ 開始今日複習（${due + nw}）</button><button type="button" class="btn" data-kb="import" style="flex:1">＋ 導入資料</button></div>
         ${K.cards.length ? `<button type="button" class="btn" data-kb="listen" style="width:100%;margin-top:6px">🎧 聽著複習（念問題 → 停 3 秒 → 念答案，可以關螢幕）</button>` : ""}</section>
+      ${window.KBPlan ? window.KBPlan.html() : ""}
       ${K.sources.length ? `<section class="card"><h2>📚 我的資料</h2>${subs.length > 2 ? `<div class="tr-row kb-subs">${subs.map(s => `<button type="button" class="tr-chip sm ${K.subj === s ? "on" : ""}" data-kb="subj" data-v="${esc(s)}">${esc(s)}</button>`).join("")}</div>` : ""}
         ${list.map(srcRow).join("")}</section>` : `<section class="card"><h2>📥 從這裡開始</h2><p>按「＋ 導入資料」，貼上一段筆記，或上傳 PDF 講義、課本照片、Word、PPT。</p>
           <p class="tr-note">AI 會做這些事：<br>① 拆成 10～30 個知識點，從「認識名詞」排到「綜合應用」<br>② 每個知識點配一個生活比喻＋重點<br>③ 做成問答、填空、選擇、是非、配對、排順序、比喻、比較表、簡答 9 種題目<br>④ 你一次學 3 個知識點、學完小測驗，之後每天照遺忘曲線複習</p>
@@ -601,7 +602,7 @@
         if (++i < unit.length) return draw();
         m.remove();
         const quiz = unit.flatMap(p => cardsOfPt(p.id).filter(c => c.level <= 2 && !c.reps).sort((a, b) => a.level - b.level).slice(0, 2)).map(c => ({ card: c, mode: "new" }));
-        const markLearned = async () => { const now = new Date().toISOString(); unit.forEach(p => { p.learned_at = now; }); await db.from("kb_points").update({ learned_at: now }).in("id", unit.map(p => p.id));
+        const markLearned = async () => { const now = new Date().toISOString(); unit.forEach(p => { p.learned_at = now; }); await db.from("kb_points").update({ learned_at: now }).in("id", unit.map(p => p.id)); if (window.Dash) window.Dash.load();
           const { data } = await db.rpc("kb_done", { p_task: "learn" }); if (data && data.granted) toast(`📖 學完一個單元，星屑 +${data.amount}`); };
         if (!quiz.length) { await markLearned(); render(); renderToday(); return toast("📖 學完了！這幾個知識點會進入每日複習"); }
         runCards(shuffle(quiz), { title: "✏️ 單元小測驗", onEnd: async () => { await markLearned(); return `<p class="tr-note">✅ 這 ${unit.length} 個知識點學完了！剛剛的卡會照遺忘曲線排進每日複習；較難的卡（比較、應用、綜合）會在簡單的卡都做過後，一張張解鎖。</p>`; } });
