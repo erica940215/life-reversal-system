@@ -112,5 +112,14 @@
   (function boot(n) { if (!hasDb() || !document.querySelector('.page[data-page="today"]')) { if (n < 60) setTimeout(() => boot(n + 1), 1000); return; }
     load(); hookCheckin(0); document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); }); })(0);
   if (typeof window.applyPage === "function") { const base = window.applyPage; window.applyPage = function (name) { const r = base.apply(this, arguments); if (name === "today" || name === "tasks") setTimeout(render, 0); return r; }; }
+  /* ⏭️ 延期到明天（任務列表每個沒完成的任務旁邊） */
+  window.postponeTask = async function (id) {
+    const t = typeof currentTasks !== "undefined" && Array.isArray(currentTasks) ? currentTasks.find(x => String(x.id) === String(id)) : null;
+    if (!confirm(`把「${t ? t.title : "這個任務"}」延期到明天？`)) return;
+    const { data, error } = await db.rpc("task_postpone", { p_id: Number(id) });
+    if (error) return toast(error.message);
+    if (typeof loadTasks === "function") { try { await loadTasks(); } catch (_) {} }
+    load(); toast(data && data.merged ? "⏭️ 明天本來就有這個重複任務，今天這個先拿掉了" : "⏭️ 延期到明天了，今天先專心做別的");
+  };
   window.DayPlan = { load, open };
 })();

@@ -1985,6 +1985,13 @@ function renderTasks() {
 
             <div class="task-actions">
 
+              ${task.completed ? "" : `<button
+                title="延期到明天"
+                onclick="postponeTask('${task.id}')"
+              >
+                ⏭️
+              </button>`}
+
               <button
                 title="編輯"
                 onclick="editTask('${task.id}')"
