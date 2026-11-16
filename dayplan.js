@@ -26,7 +26,15 @@
       b.innerHTML = `<b>📋 今天的預設任務還沒選</b><span>${s.templates.length} 個重複任務等你決定今天要不要做${s.yesterday && s.yesterday.n ? `（昨天 ${s.yesterday.n} 個任務完成 ${s.yesterday.done} 個）` : ""}</span><button type="button" class="btn btn-primary btn-small" data-dp="open">選擇</button>`;
     });
     const tp = document.querySelector('.page[data-page="tasks"]');
-    if (tp) { let c = tp.querySelector(".dp-chg"); if (s.decided && s.templates.length) { if (!c) { c = document.createElement("p"); c.className = "dp-chg"; tp.prepend(c); } const k = s.templates.filter(t => t.kept || t.completed).length; c.innerHTML = `📋 今天的預設任務：留了 ${k}/${s.templates.length} 個 <a href="#" data-dp="open">改</a>`; } else if (c) c.remove(); }
+    /* 選完之後：今天沒加的重複任務還可以隨時「＋ 加入」 */
+    ["today", "tasks"].forEach(pg => {
+      const page = document.querySelector(`.page[data-page="${pg}"]`); if (!page) return;
+      let c = page.querySelector(".dp-chg");
+      if (!(s.decided && s.templates.length)) { if (c) c.remove(); return; }
+      if (!c) { c = document.createElement("div"); c.className = "dp-chg"; page.prepend(c); }
+      const k = s.templates.filter(t => t.kept || t.completed), rest = s.templates.filter(t => !t.kept && !t.completed);
+      c.innerHTML = `<span>📋 今天的預設任務：${k.length}/${s.templates.length} 個 <a href="#" data-dp="open">調整</a></span>${rest.length ? `<span class="dp-more">還想多做？${rest.map(t => `<button type="button" class="tr-chip sm" data-dpadd="${t.id}">＋ ${esc(t.title)}</button>`).join("")}</span>` : ""}`;
+    });
   }
 
   async function open() {
@@ -65,6 +73,16 @@
     draw(); document.body.appendChild(m);
   }
   document.addEventListener("click", e => { const b = e.target.closest("[data-dp]"); if (!b) return; e.preventDefault(); open(); });
+  /* ＋ 加入：在今天已選的之外，再加一個重複任務 */
+  document.addEventListener("click", async e => {
+    const b = e.target.closest("[data-dpadd]"); if (!b || !D.s) return; b.disabled = true;
+    const id = Number(b.dataset.dpadd), keep = D.s.templates.filter(t => t.kept || t.completed).map(t => t.id).concat(id);
+    const { error } = await db.rpc("day_plan_set", { p_keep: keep });
+    if (error) { b.disabled = false; return toast(error.message); }
+    const t = D.s.templates.find(x => x.id === id); await load();
+    if (typeof loadTasks === "function") { try { await loadTasks(); } catch (_) {} }
+    toast(`＋ 加入「${t ? t.title : "任務"}」，加油！`);
+  });
 
   /* 簽到之後順便問今天要做哪些 */
   function hookCheckin(n) {
@@ -79,7 +97,7 @@
   st.textContent = `
     .dp-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; border: 1px solid rgba(124,92,255,.5); background: rgba(124,92,255,.08); }
     .dp-banner b { font-size: 15px; } .dp-banner span { flex: 1 1 200px; font-size: 12.5px; opacity: .8; }
-    .dp-chg { font-size: 12.5px; opacity: .75; margin: 0 0 8px; } .dp-chg a { color: inherit; }
+    .dp-chg { font-size: 12.5px; margin: 0 0 8px; display: flex; flex-direction: column; gap: 6px; } .dp-chg > span:first-child { opacity: .75; } .dp-chg a { color: inherit; } .dp-more { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; opacity: .9; }
     .dp-modal .vg-card { max-height: 90vh; overflow-y: auto; }
     .dp-tip { font-size: 13px; line-height: 1.6; padding: 8px 10px; border-radius: 10px; background: rgba(255,213,74,.12); }
     .dp-quick { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
