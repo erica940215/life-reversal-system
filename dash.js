@@ -14,7 +14,7 @@
   const md = s => String(s).slice(5).replace("-", "/");
   const hm = m => m >= 60 ? `${Math.floor(m / 60)} 小時 ${Math.round(m % 60)} 分` : `${Math.round(m)} 分`;
   const UNIT = 3;
-  const PAGE_NAME = { today: "🏠 今日", tasks: "📋 任務", calendar: "📅 日曆", projects: "🎯 專案", focus: "⏱️ 專注", vocab: "📖 單字", toeic: "🎯 多益", kb: "🧠 複習", dash: "📊 儀表板",
+  const PAGE_NAME = { today: "🏠 今日", tasks: "📋 任務", calendar: "📅 日曆", projects: "🎯 專案", focus: "⏱️ 專注", vocab: "📖 單字", toeic: "🎯 多益", kb: "🧠 複習", wrong: "📝 錯題本", dash: "📊 儀表板",
     life: "🌿 生活", records: "📊 紀錄", improve: "🎯 改善", ideas: "💡 想法", trade: "📈 模擬交易", stock: "🔎 股票分析", rpg: "⚔️ 冒險", farm: "🏝️ 星露島", doom: "☢️ 末世" };
   const D = { loaded: false, err: null };
 

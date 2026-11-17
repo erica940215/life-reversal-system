@@ -502,7 +502,7 @@
         <div class="tc-bar"><i style="width:${i / q.length * 100}%"></i></div>
         <p class="kb-meta">${esc(s.title || "")}・${esc(p.title || "")}　${lvTag(c.level)} <span>${TY[c.type] || c.type}</span>${it.mode === "new" ? " <span class='kb-new'>新</span>" : ""}</p>
         <div class="kb-body">${R[c.type].html(c)}</div>
-        <div class="kb-foot"><button type="button" class="btn btn-small" data-hint="1">💡 看這個知識點的重點</button><button type="button" class="btn btn-small" data-sus="1" title="這張題目有問題，不要再出現">🚩</button></div><div class="kb-hintbox"></div></div>`;
+        <div class="kb-foot"><button type="button" class="btn btn-small" data-hint="1">💡 看這個知識點的重點</button><span><button type="button" class="btn btn-small" data-edit="1" title="修改這張題卡">✏️</button> <button type="button" class="btn btn-small" data-sus="1" title="這張題目有問題，不要再出現">🚩</button></span></div><div class="kb-hintbox"></div></div>`;
       bind(c, m.querySelector(".kb-body"), g => {
         res.push({ c: it.src, g, mode: it.mode });
         if (!opt.exam) schedule(it.src, g, it.mode);
@@ -524,6 +524,7 @@
     m.addEventListener("click", async e => {
       if (e.target === m || e.target.closest("[data-x]")) { if (!m.dataset.fin && res.length && res.length < q.length && !confirm("中途離開？做過的卡會保留紀錄。")) return; m.remove(); render(); renderToday(); return; }
       if (e.target.closest("[data-hint]")) { const p = ptById(q[i].c.point_id); if (p) m.querySelector(".kb-hintbox").innerHTML = pointCard(p, true); return; }
+      if (e.target.closest("[data-edit]")) { const it = q[i]; return editCard(it.src, () => { it.c = prep(Object.assign(Object.create(null), it.src, { _ans: 0, _m: null, _s: null, _sel: null })); draw(); }); }
       if (e.target.closest("[data-sus]")) { if (!confirm("這張題目有問題？之後不會再出現。")) return; const c = q[i].src; c.suspended = true; db.from("kb_cards").update({ suspended: true }).eq("id", c.id).then(() => {}); toast("🚩 這張卡已經停用"); i++; i < q.length ? draw() : finish(); }
     });
     draw(); document.body.appendChild(m); focusOn(m);
@@ -622,18 +623,43 @@
       return `<div class="kb-lvres">${Object.entries(L).map(([l, [o, n]]) => `<div>${lvTag(Number(l))}<b>${o}/${n}</b></div>`).join("")}</div><p class="tr-note">測驗不會改變複習排程。分數從哪一級開始掉，就是你目前卡住的地方。</p>`;
     } });
   }
+  /* ---------- ✏️ 修改題卡：用序光格式的文字直接改（題型也可以換） ---------- */
+  const cardText = c => { const d = c.data; return String(d.q || d.text || d.s || d.analogy || (d.pairs || []).map(x => x.l).join("、") || "").replace(/\{\{(.+?)\}\}/g, "$1").slice(0, 60); };
+  function cardSrc(c) { const t = window.KBFormat.exportText({ subject: "", title: "" }, [{ id: 0, title: "x", level: c.level, section: "" }], () => [c]); return t.slice(t.indexOf("\n", t.indexOf("### ")) + 1).trim(); }
+  function editCard(c, onDone) {
+    if (!window.KBFormat) return toast("編輯工具載入中，稍等一下");
+    const m = document.createElement("div"); m.className = "vg-modal kb-modal"; m.style.zIndex = 10001;
+    m.innerHTML = `<div class="vg-card"><div class="vg-title">✏️ 修改題卡</div><p class="tr-note">直接改文字就好。符號有意義：<code>{{ }}</code> 是填空答案、<code>✓</code> 是正解、<code>⭕／❌</code> 是對錯、<code>｜L3</code> 是難度。</p>
+      <textarea rows="9">${esc(cardSrc(c))}</textarea><p class="tr-note dn kb-eerr"></p>
+      <div class="tr-row"><button type="button" class="btn btn-primary" data-sv="1" style="flex:2">儲存</button><button type="button" class="btn" data-vx="1" style="flex:1">取消</button></div>
+      <p class="tr-note">複習進度（下次什麼時候出現）不會被重設。</p></div>`;
+    m.addEventListener("click", async e => {
+      if (e.target === m || e.target.closest("[data-vx]")) return m.remove();
+      if (!e.target.closest("[data-sv]")) return;
+      const P = window.KBFormat.parse("### x\n" + m.querySelector("textarea").value), n = P.points[0] && P.points[0].cards[0], err = m.querySelector(".kb-eerr");
+      if (!n) { err.textContent = "😵 格式不對，存不了：" + (P.warn[0] || "看不出是哪一種題型（第一行要是「Q：」「選擇：」「填空：」這類開頭，選擇題要用 ✓ 標正解）"); return; }
+      if (P.points[0].cards.length > 1) { err.textContent = "😵 這裡一次只能改一張卡，多的請刪掉"; return; }
+      const row = { type: n.type, level: n.level, data: n.data }, { error } = await db.from("kb_cards").update(row).eq("id", c.id);
+      if (error) { err.textContent = error.message; return; }
+      Object.assign(c, row); m.remove(); toast("✏️ 題卡改好了"); if (onDone) onDone();
+    });
+    document.body.appendChild(m);
+  }
   function pointModal(pid) {
-    const p = ptById(pid); if (!p) return; const cs = cardsOfPt(pid), m = document.createElement("div"); m.className = "vg-modal";
+    const p = ptById(pid); if (!p) return; const cs = cardsOfPt(pid), all = K.cards.filter(c => c.point_id === pid).sort((a, b) => a.level - b.level), m = document.createElement("div"); m.className = "vg-modal";
     const byT = {}; cs.forEach(c => { byT[c.type] = (byT[c.type] || 0) + 1; });
     m.innerHTML = `<div class="vg-card"><div class="vg-title">${esc(p.title)}</div><p class="kb-meta">${esc(p.section || "")}　${lvTag(p.level)}　${p.learned_at ? `熟練度 ${Math.round(ptM(p) * 100)}%` : "還沒學"}</p>${pointCard(p)}
       ${p.excerpt ? `<details class="tr-list"><summary>📄 原始資料這段怎麼寫</summary><p class="kb-ex">${fmt(p.excerpt)}</p></details>` : ""}
       <p class="tr-note">${cs.length} 張題卡：${Object.entries(byT).map(([t, n]) => `${TY[t] || t} ×${n}`).join("、") || "還沒產生"}</p><div class="kb-ai"></div>
+      ${all.length ? `<details class="tr-list"><summary>✏️ 檢視／修改題卡（${all.length}）</summary><div class="kb-clist">${all.map(c => `<div class="kb-crow ${c.suspended ? "off" : ""}"><span>${TY[c.type] || c.type}・L${c.level}${c.suspended ? "・已停用" : ""}<br><small>${esc(cardText(c))}</small></span><button type="button" class="btn btn-small" data-ce="${c.id}">✏️</button><button type="button" class="btn btn-small" data-cs="${c.id}">${c.suspended ? "↩️" : "🚩"}</button></div>`).join("")}</div></details>` : ""}
       <div class="tr-row"><button type="button" class="btn btn-small" data-exp="1">🤖 換個比喻</button>${cs.length ? `<button type="button" class="btn btn-small btn-primary" data-drill="1">🎯 練這個知識點</button>` : ""}</div><button type="button" class="btn" data-vx="1" style="width:100%;margin-top:6px">關閉</button></div>`;
     m.addEventListener("click", async e => {
       if (e.target === m || e.target.closest("[data-vx]")) return m.remove();
       if (e.target.closest("[data-exp]")) { const b = e.target.closest("[data-exp]"), box = m.querySelector(".kb-ai"); b.disabled = true; box.innerHTML = `<p class="tr-note">🤖 換個方式講…</p>`;
         const { data, error } = await db.functions.invoke("kb", { body: { action: "explain", title: p.title, summary: p.summary, analogy: p.analogy, excerpt: p.excerpt } });
         box.innerHTML = error || !data || data.error ? `<p class="tr-note dn">😵 ${esc((data && data.error) || "AI 沒回應")}</p>` : `<p class="kb-aitext">🤖 ${fmt(data.text)}</p>`; return; }
+      const ce = e.target.closest("[data-ce]"); if (ce) { const c = K.cards.find(x => x.id === Number(ce.dataset.ce)); return editCard(c, () => { m.remove(); pointModal(pid); }); }
+      const cx = e.target.closest("[data-cs]"); if (cx) { const c = K.cards.find(x => x.id === Number(cx.dataset.cs)); c.suspended = !c.suspended; await db.from("kb_cards").update({ suspended: c.suspended }).eq("id", c.id); m.remove(); render(); return pointModal(pid); }
       if (e.target.closest("[data-drill]")) { m.remove(); runCards(cs.slice().sort((a, b) => a.level - b.level).map(c => ({ card: c, mode: "exam" })), { title: "🎯 " + p.title, exam: true }); }
     });
     document.body.appendChild(m);
@@ -708,6 +734,7 @@
     .kb-files { list-style: none; padding: 0; margin: 0 0 8px; font-size: 13px; } .kb-files li { display: flex; gap: 6px; align-items: center; padding: 3px 0; } .kb-files small { opacity: .6; }
     .kb-fmt { font-size: 12.5px; padding: 8px 10px; border-radius: 10px; background: rgba(124,92,255,.1); margin: 8px 0; } .kb-fmt .btn { margin-top: 6px; display: block; }
     .kb-syn code { font-size: 12px; white-space: nowrap; } .kb-syn td { font-size: 12.5px; }
+    .kb-clist { margin-top: 6px; } .kb-crow { display: flex; gap: 6px; align-items: center; padding: 6px 0; border-top: 1px solid rgba(127,127,127,.15); font-size: 12.5px; } .kb-crow > span { flex: 1; min-width: 0; } .kb-crow small { opacity: .7; } .kb-crow.off { opacity: .5; }
     .kb-n { display: flex; gap: 8px; align-items: center; font-size: 13px; margin: 6px 0; }
     .kb-lvres { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 6px; margin: 8px 0; } .kb-lvres > div { text-align: center; padding: 8px 4px; border-radius: 10px; background: rgba(127,127,127,.08); } .kb-lvres b { display: block; font-size: 18px; margin-top: 4px; }`;
   document.head.appendChild(css);
@@ -716,5 +743,5 @@
   function boot() { try { ensurePage(); } catch (e) { console.warn(e); } }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
   (function wait2(n) { if (!hasDb()) { if (n < 60) setTimeout(() => wait2(n + 1), 1000); return; } load(); })(0);
-  window.KB = { load, review, learn };
+  window.KB = { load, review, learn, drill: (ids, title) => runCards(ids.map(id => K.cards.find(c => c.id === id)).filter(c => c && !c.suspended).map(c => ({ card: c, mode: "review" })), { title }) };
 })();
