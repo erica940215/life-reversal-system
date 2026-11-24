@@ -42,7 +42,8 @@
       if (!D.planned[t]) b.innerHTML = `<b>☀️ 今天還沒列要完成的事</b><span>花幾分鐘想清楚今天要做什麼，比系統自動塞任務有用</span><button type="button" class="btn btn-primary btn-small" data-dp="today">列出來</button>`;
       else b.innerHTML = `<b>📝 今天：${done}/${n} 件完成</b><span>${n > SUGGEST ? "今天的事有點多，先挑最重要的做" : done === n && n ? "🎉 全部完成了！" : "一件一件來"}</span><button type="button" class="btn btn-small" data-dp="today">＋ 再加</button>`;
       if (isEvening()) b.innerHTML += `<button type="button" class="btn btn-small ${D.planned[tm] ? "" : "btn-primary"}" data-dp="tomorrow">${D.planned[tm] ? `🌙 明天已列 ${D.tomorrowTasks.length} 件（改）` : "🌙 先列明天的任務"}</button>`;
-      page.prepend(b);
+      const anchor = page.querySelector(":scope > .game-mode-bar") || page.querySelector(":scope > .page-title") || page.querySelector(":scope > .subnav");
+      anchor ? anchor.after(b) : page.prepend(b);
     });
   }
 
