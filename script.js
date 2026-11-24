@@ -6972,14 +6972,29 @@ function renderIdeas() {
 
   const closed = visible.filter(idea => idea.status !== "inbox");
 
+  const byDate = rows => {
+    const groups = [];
+    rows.forEach(idea => {
+      const d = idea.idea_date || "";
+      let g = groups.find(x => x.d === d);
+      if (!g) { g = { d, rows: [] }; groups.push(g); }
+      g.rows.push(idea);
+    });
+    groups.sort((a, b) => (a.d < b.d ? 1 : a.d > b.d ? -1 : 0));
+    return groups.map(g => {
+      const md = g.d ? `${Number(g.d.slice(5, 7))}/${Number(g.d.slice(8, 10))}` : "未標日期";
+      return `<div class="idea-date-head">📅 ${md}<span class="small-note"> ${g.rows.length} 則</span></div>${g.rows.map(renderIdea).join("")}`;
+    }).join("");
+  };
+
   const section = (title, rows) => rows.length === 0 ? "" : `
     <div class="idea-section-title">${title}<span class="small-note"> ${rows.length}</span></div>
-    ${rows.map(renderIdea).join("")}
+    ${byDate(rows)}
   `;
 
   list.innerHTML = ideaStatusFilter === "all"
     ? section("📥 待處理", open) + section("✅ 已處理 / 已轉任務", closed)
-    : visible.map(renderIdea).join("");
+    : byDate(visible);
 
 }
 
@@ -13422,3 +13437,5 @@ Object.assign(window, {
 
 
 console.log("✅ 習慣圖表 / 每日抽籤 載入完成");
+
+(function () { const st = document.createElement("style"); st.textContent = ".idea-date-head{margin:12px 0 4px;padding:3px 10px;border-left:3px solid #7c5cff;font-size:13px;font-weight:600;opacity:.85}"; document.head.appendChild(st); })();
