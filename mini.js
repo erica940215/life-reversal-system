@@ -5,7 +5,7 @@
 (function () {
   const LS = "miniMode";
   const ALLOW = new Set(["today", "stats", "tasks", "focus", "toeic", "vocab", "kb", "wrong", "dash", "life", "improve"]);
-  const TODAY_KEEP = [".page-title", ".game-mode-bar", ".subnav", ".dp-banner", "#mini-hub", "#morning-card", "#habits-card", "#tasks-card", "#health-card", "#wrapup-card"];
+  const TODAY_KEEP = [".page-title", ".game-mode-bar", ".subnav", ".dp-banner", "#mini-hub", "#morning-card", "#today-checkin", "#today-life", "#im-today", "#habits-card", "#tasks-card", "#health-card", "#wrapup-card"];
   const hasDb = () => typeof db !== "undefined" && db && typeof currentUser !== "undefined" && currentUser;
   const toast = m => (typeof showToast === "function" ? showToast(m) : console.log(m));
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
