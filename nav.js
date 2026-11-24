@@ -49,6 +49,7 @@
 
   function available(p) {
     return typeof PAGES !== "undefined" && PAGES.includes(p) &&
+      !(window.Features && window.Features.isOff(p)) &&
       document.querySelector(`.page[data-page="${p}"]`);
   }
 
@@ -73,6 +74,8 @@
 
   function decorate(name) {
     ensureGameBtn();
+    const gb = document.querySelector('.tab-nav .tab-btn[data-group="game"]');
+    if (gb) gb.style.display = GROUPS[4].pages.some(available) ? "" : "none";
     wireLeaders();
     const g = groupOf(name);
     document.querySelectorAll(".tab-nav .tab-btn[data-group]").forEach(b =>
@@ -126,4 +129,5 @@
   else setTimeout(init, 0);
   /* farm / rpg 的頁面可能晚一點才建好，再補一次 */
   setTimeout(init, 1500);
+  window.NavGroups = { GROUPS, LABEL, refresh: init };
 })();
