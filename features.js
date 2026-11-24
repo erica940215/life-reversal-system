@@ -11,7 +11,7 @@
   const CARDS = [
     { key: "card:energy", label: "⚡ 今日精力卡", sel: "#en-today, #en-analysis, #en-week" },
     { key: "card:dayplan", label: "☀️ 今日任務規劃提示", sel: ".dp-banner" },
-    { key: "card:gamemode", label: "🎲 遊戲模式按鈕", sel: ".game-mode-bar" }
+    { key: "card:gamemode", label: "🎲 遊戲模式按鈕", sel: "#game-mode-toggle" }
   ];
   const GROUP_NAME = { today: "🏠 今日", tasks: "📋 任務", focus: "⏱️ 專注", life: "🌿 生活", game: "🎮 遊戲" };
 
@@ -77,12 +77,13 @@
   }
 
   function addButton() {
-    const bar = document.querySelector(".game-mode-bar"); const host = bar && bar.parentNode;
-    if (!host || document.getElementById("ft-open")) return;
-    const wrap = document.createElement("div"); wrap.style.cssText = "display:flex;justify-content:flex-end;margin:4px 0";
-    wrap.innerHTML = `<button id="ft-open" type="button" class="game-mode-toggle ft-btn">🧩 功能開關</button>`;
-    wrap.firstChild.addEventListener("click", openPanel);
-    host.insertBefore(wrap, bar);
+    const bar = document.querySelector(".game-mode-bar");
+    if (!bar || document.getElementById("ft-open")) return;
+    bar.style.gap = "8px";
+    const b = document.createElement("button");
+    b.id = "ft-open"; b.type = "button"; b.className = "game-mode-toggle"; b.textContent = "🧩 功能開關";
+    b.addEventListener("click", openPanel);
+    bar.insertBefore(b, bar.firstChild);
   }
 
   applyCss();
