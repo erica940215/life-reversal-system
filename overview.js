@@ -131,7 +131,8 @@
       </div>
       <div class="ov-box"><div class="ov-sec">每天專注・任務完成率・簽到</div><div class="ov-chart">${bars}</div>
         <p class="ov-note">${best && best.focus ? `最認真的一天是週${DAY[days.indexOf(best)]}（${hm(best.focus)}）。` : ""}平均每天 ${hm(Math.round(tf / past))}。${words}</p></div>
-      <div class="ov-box"><div class="ov-sec">各科目專注時間</div>${subjHtml}</div>`;
+      <div class="ov-box"><div class="ov-sec">各科目專注時間</div>${subjHtml}</div>
+      ${window.Energy && days[0] ? window.Energy.weekHtml(days[0].day) : ""}`;
   }
 
   /* 🗓️ 年度熱力圖：一年 365 格，專注越久越亮 */
