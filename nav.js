@@ -6,14 +6,14 @@
 ========================================================= */
 (function () {
   const GROUPS = [
-    { key: "today", pages: ["today"] },
+    { key: "today", pages: ["today", "stats"] },
     { key: "tasks", pages: ["tasks", "calendar", "projects"] },
     { key: "focus", pages: ["focus", "vocab", "toeic", "kb", "wrong", "dash"] },
     { key: "life", pages: ["life", "records", "improve", "ideas", "trade", "stock"] },
     { key: "game", icon: "🎮", label: "遊戲", pages: ["rpg", "farm", "doom"] }
   ];
   const LABEL = {
-    today: "🏠 今日", tasks: "📋 任務", calendar: "📅 日曆", projects: "🎯 專案",
+    today: "🏠 今日", stats: "📊 數據", tasks: "📋 任務", calendar: "📅 日曆", projects: "🎯 專案",
     focus: "⏱️ 專注", vocab: "📖 單字", toeic: "🎯 多益", kb: "🧠 複習", wrong: "📝 錯題本", dash: "📊 儀表板", life: "🌿 生活", records: "📊 紀錄", improve: "🎯 改善",
     ideas: "💡 想法", trade: "📈 模擬交易", stock: "🔎 股票分析", rpg: "⚔️ 冒險", farm: "🏝️ 星露島", doom: "☢️ 末世"
   };
@@ -91,7 +91,8 @@
     if (!bar) {
       bar = document.createElement("div");
       bar.className = "subnav";
-      page.prepend(bar);
+      const title = name === "today" && page.querySelector(":scope > .page-title");
+      title ? title.after(bar) : page.prepend(bar);
     }
     bar.innerHTML = members.map(p =>
       `<button type="button" data-sub="${p}" class="${p === name ? "on" : ""}">${LABEL[p] || p}</button>`).join("");

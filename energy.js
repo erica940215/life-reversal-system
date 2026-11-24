@@ -108,7 +108,7 @@
   /* 一天第一次打開今日頁：主動問一次（等其他視窗關掉才問，不打斷） */
   function maybeAsk(n) {
     const t = today(); n = n || 0;
-    if (E.err || E.logs[t] || ls.get(ASKED) === t || ls.get(HIDE)) return;
+    if (document.body.classList.contains("mini-on") || E.err || E.logs[t] || ls.get(ASKED) === t || ls.get(HIDE)) return;
     const tp = document.querySelector('.page[data-page="today"]'); if (!tp || !tp.classList.contains("active")) return;
     if (document.querySelector(".vg-modal, .dp-modal, .tc-modal, .kb-run")) { if (n < 120) setTimeout(() => maybeAsk(n + 1), 2000); return; }
     ls.set(ASKED, t); const s = E.sleep[t];

@@ -15,7 +15,7 @@
   ];
   const GROUP_NAME = { today: "🏠 今日", tasks: "📋 任務", focus: "⏱️ 專注", life: "🌿 生活", game: "🎮 遊戲" };
 
-  const isOff = k => k !== "today" && off[k] === true;
+  const isOff = k => k !== "today" && (off[k] === true || !!(window.Mini && window.Mini.blocks(k)));
   window.Features = { isOff, open: () => openPanel() };
 
   const style = document.createElement("style");
@@ -43,6 +43,8 @@
     if (isOff(cur) && typeof showPage === "function") showPage("today");
     else if (window.NavGroups) window.NavGroups.refresh();
   }
+
+  window.Features.refresh = refresh;
 
   async function loadRemote() {
     if (!hasDb()) return;
