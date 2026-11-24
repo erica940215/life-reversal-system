@@ -7,7 +7,7 @@
 ================================================== */
 (function () {
   const KEY = "foldedCards";
-  const HEAD = ":scope > .card-head, :scope > h2, :scope > h3, :scope > .vg-h, :scope > .card-title, :scope > .lf-head";
+  const HEAD = ":scope > .card-head, :scope > h2, :scope > h3, :scope > .vg-h, :scope > .card-title, :scope > .lf-head, :scope > .im-head";
 
   const folded = (() => {
     try {
