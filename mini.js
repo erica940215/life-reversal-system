@@ -4,7 +4,7 @@
    另外新增「📊 數據」頁（今日 → 📊 數據），一般模式也看得到 */
 (function () {
   const LS = "miniMode";
-  const ALLOW = new Set(["today", "stats", "tasks", "focus", "toeic", "vocab", "kb", "wrong", "dash", "life", "improve"]);
+  const ALLOW = new Set(["today", "stats", "progress", "tasks", "focus", "toeic", "vocab", "kb", "wrong", "dash", "life", "improve"]);
   const TODAY_KEEP = [".page-title", ".game-mode-bar", ".subnav", ".dp-banner", "#mini-hub", "#morning-card", "#today-checkin", "#today-life", "#im-today", "#habits-card", "#tasks-card", "#health-card", "#wrapup-card"];
   const hasDb = () => typeof db !== "undefined" && db && typeof currentUser !== "undefined" && currentUser;
   const toast = m => (typeof showToast === "function" ? showToast(m) : console.log(m));
@@ -81,7 +81,7 @@
   }
   async function loadHub() {
     const hub = ensureHub(); if (!hub) return;
-    const go = [["focus", "⏱️ 專注", ""], ["improve", "🎯 改善", ""], ["stats", "📊 數據", ""], ["kb", "🧠 複習卡", "kb"], ["vocab", "📖 單字", "vocab"], ["toeic", "🎯 多益", "toeic"]];
+    const go = [["focus", "⏱️ 專注", ""], ["improve", "🎯 改善", ""], ["stats", "📊 數據", ""], ["progress", "📈 推甄進度", ""], ["kb", "🧠 複習卡", "kb"], ["vocab", "📖 單字", "vocab"], ["toeic", "🎯 多益", "toeic"]];
     const render = due => { hub.innerHTML = `<h2 style="margin:0 0 10px">🎯 今天</h2><div class="mh-grid">${go.map(([p, l, k]) => `<button type="button" data-mini-go="${p}">${l}${k ? `<small>${due[k] == null ? "…" : due[k] ? `到期 ${due[k]}` : "今天清空 ✓"}</small>` : ""}</button>`).join("")}</div>`; };
     render({});
     if (!hasDb()) return;
