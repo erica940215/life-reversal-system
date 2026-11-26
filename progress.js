@@ -132,14 +132,22 @@
     [T.items, P.items || []].forEach(arr => { const it = arr.find(x => x.id === id); if (it) Object.assign(it, patch); });
     return true;
   }
+  /* 勾／取消一個推甄項目，同名的今日任務一起同步（今日卡、一鍵收尾共用） */
+  async function syncItem(id, on) {
+    if (!T.items.length || !T.items.some(i => i.id === id)) await loadToday();
+    const it = T.items.find(i => i.id === id);
+    if (!(await setItem(id, on))) return false;
+    const tk = it && matchTask(it, T.tasks);
+    if (tk && !!tk.completed !== on && window.__pgToggle) { tk.completed = on; await window.__pgToggle(tk.id, on); }
+    renderToday(); if (P.items) render();
+    toast(on ? `📈 ${it ? it.title : ""} 完成${tk ? "，任務也一起勾了" : ""}` : "已取消完成");
+    return true;
+  }
   document.addEventListener("change", async e => {
     const c = e.target.closest("[data-pgt]"); if (!c) return;
-    const id = Number(c.dataset.pgt), on = c.checked, it = T.items.find(i => i.id === id); c.disabled = true;
-    if (!(await setItem(id, on))) { c.checked = !on; c.disabled = false; return; }
-    const tk = it && matchTask(it, T.tasks);
-    if (tk && !!tk.completed !== on && typeof window.toggleTask === "function") { tk.completed = on; await window.__pgToggle(tk.id, on); }
-    c.disabled = false; renderToday(); if (P.items) render();
-    toast(on ? `📈 ${it ? it.title : ""} 完成${tk ? "，任務也一起勾了" : ""}` : "已取消完成");
+    const on = c.checked; c.disabled = true;
+    if (!(await syncItem(Number(c.dataset.pgt), on))) c.checked = !on;
+    c.disabled = false;
   });
   document.addEventListener("click", e => { if (e.target.closest("[data-pgt-go]") && typeof showPage === "function") showPage("progress"); });
 
@@ -185,5 +193,5 @@
   document.head.appendChild(st);
   if (typeof window.applyPage === "function") { const base = window.applyPage; window.applyPage = function (name) { const r = base.apply(this, arguments); if (name === "progress") setTimeout(load, 0); if (name === "today") setTimeout(loadToday, 0); return r; }; }
   (function boot(n) { if (!hasDb()) { if (n < 60) setTimeout(() => boot(n + 1), 1000); return; } ensurePage(); loadToday(); })(0);
-  window.StudyProgress = { load, loadToday, dueFor: async day => { const { data } = await db.from("study_items").select("id, subject, title, plan_date").eq("done", false).lte("plan_date", day).order("plan_date").order("sort").limit(60); return data || []; } };
+  window.StudyProgress = { load, loadToday, syncItem, todayItems: async () => { await loadToday(); return T.items; }, dueFor: async day => { const { data } = await db.from("study_items").select("id, subject, title, plan_date").eq("done", false).lte("plan_date", day).order("plan_date").order("sort").limit(60); return data || []; } };
 })();
