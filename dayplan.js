@@ -20,7 +20,7 @@
     const t = today(), y = addDays(t, -1), tm = addDays(t, 1);
     const [pl, tk, yl, tp] = await Promise.all([
       db.from("task_day_plan").select("day").in("day", [t, tm]),
-      db.from("tasks").select("id, title, completed, task_date").in("task_date", [t, tm]),
+      db.from("tasks").select("id, title, completed, task_date, study_item_id").in("task_date", [t, tm]),
       db.from("tasks").select("id, title, category, difficulty").eq("task_date", y).eq("completed", false),
       db.from("task_templates").select("title, category, difficulty").order("updated_at", { ascending: false }).limit(60)]);
     D.planned = {}; (pl.data || []).forEach(r => { D.planned[r.day] = true; });
@@ -56,6 +56,8 @@
     day = day || today(); const t = today(), isTm = day !== t, have = isTm ? D.tomorrowTasks : D.todayTasks;
     const cats = catOptions(), rows = [{ title: "", difficulty: "normal", category: cats[0][0] }];
     const moveIds = new Set();
+    let study = [];
+    try { if (window.StudyProgress && window.StudyProgress.dueFor) { const linked = new Set(have.map(x => x.study_item_id).filter(Boolean)); study = (await window.StudyProgress.dueFor(day)).filter(x => !linked.has(x.id)); } } catch (_) {}
     const m = document.createElement("div"); m.className = "vg-modal dp-modal";
     const rowHtml = (r, i) => `<div class="dp-row"><input data-r="${i}" data-f="title" maxlength="80" placeholder="${i === 0 ? "例如：計概小學堂 1 小時" : "下一件事"}" value="${esc(r.title)}">
       <select data-r="${i}" data-f="difficulty">${DIFF.map(([k, n]) => `<option value="${k}" ${r.difficulty === k ? "selected" : ""}>${n}</option>`).join("")}</select>
@@ -67,6 +69,7 @@
         <p class="dp-tip">一行寫一件事，越具體越好（「計概小學堂 1 小時」比「讀計概」好）。<b>建議 3～5 件</b>，做得完比列得多重要。</p>
         ${have.length ? `<p class="dp-have">${isTm ? "明天" : "今天"}已經有：${have.map(x => `<span class="${x.completed ? "ok" : ""}">${x.completed ? "✅" : "•"} ${esc(x.title)}</span>`).join("")}</p>` : ""}
         ${!isTm && D.yesterdayLeft.length ? `<p class="tc-h4">↪️ 昨天沒做完的（點了就搬到今天）</p><div class="dp-chips">${D.yesterdayLeft.map(x => `<button type="button" class="tr-chip sm ${moveIds.has(x.id) ? "on" : ""}" data-mv="${x.id}">${moveIds.has(x.id) ? "✓ " : ""}${esc(x.title)}</button>`).join("")}</div>` : ""}
+        ${study.length ? `<p class="tc-h4">📈 推甄進度（預計到${isTm ? "明天" : "今天"}還沒完成，點了就加入）</p><div class="dp-chips">${study.map(x => { const on = rows.some(r => r.sid === x.id); return `<button type="button" class="tr-chip sm ${on ? "on" : ""}" data-sid="${x.id}">${on ? "✓ " : ""}${x.plan_date < t ? "⏰ " : ""}${esc(x.subject)} ${esc(x.title)}</button>`; }).join("")}</div>` : ""}
         <p class="tc-h4">✍️ 新增</p>${rows.map(rowHtml).join("")}
         <button type="button" class="btn btn-small" data-add="1">＋ 再加一件</button>
         ${D.tpl.length ? `<details class="dp-tpl"><summary>💡 從以前的任務挑（點一下加入）</summary><div class="dp-chips">${D.tpl.map((x, i) => `<button type="button" class="tr-chip sm" data-tp="${i}">${esc(x.title)}</button>`).join("")}</div></details>` : ""}
@@ -83,13 +86,17 @@
       if (e.target.closest("[data-add]")) { rows.push({ title: "", difficulty: "normal", category: rows[rows.length - 1].category }); m._focused = 0; return draw(); }
       const rm = e.target.closest("[data-rm]"); if (rm) { rows.splice(Number(rm.dataset.rm), 1); if (!rows.length) rows.push({ title: "", difficulty: "normal", category: cats[0][0] }); return draw(); }
       const mv = e.target.closest("[data-mv]"); if (mv) { const id = Number(mv.dataset.mv); moveIds.has(id) ? moveIds.delete(id) : moveIds.add(id); return draw(); }
+      const sd = e.target.closest("[data-sid]"); if (sd) { const id = Number(sd.dataset.sid), x = study.find(s => s.id === id), at = rows.findIndex(r => r.sid === id);
+        if (at >= 0) { rows.splice(at, 1); if (!rows.length) rows.push({ title: "", difficulty: "normal", category: cats[0][0] }); return draw(); }
+        const cat = (cats.find(c => c[0] === "study") || cats[0])[0], r = { title: `${x.subject} ${x.title}`, difficulty: "normal", category: cat, sid: id }, empty = rows.find(r => !r.title.trim());
+        empty ? Object.assign(empty, r) : rows.push(r); return draw(); }
       const tp = e.target.closest("[data-tp]"); if (tp) { const x = D.tpl[Number(tp.dataset.tp)], empty = rows.find(r => !r.title.trim()), r = { title: x.title, difficulty: x.difficulty || "normal", category: x.category || cats[0][0] };
         empty ? Object.assign(empty, r) : rows.push(r); return draw(); }
       const ok = e.target.closest("[data-ok]"); if (!ok) return; ok.disabled = true;
       const list = rows.filter(r => r.title.trim());
       try {
         if (list.length) { const ins = list.map(r => { const rw = typeof getTaskReward === "function" ? getTaskReward(r.difficulty) : { exp: 20, gold: 15 };
-            return { user_id: currentUser.id, title: r.title.trim(), category: r.category, difficulty: r.difficulty, exp_reward: rw.exp, gold_reward: rw.gold, task_date: day, completed: false }; });
+            return { user_id: currentUser.id, title: r.title.trim(), category: r.category, difficulty: r.difficulty, exp_reward: rw.exp, gold_reward: rw.gold, task_date: day, completed: false, ...(r.sid ? { study_item_id: r.sid } : {}) }; });
           const { error } = await db.from("tasks").insert(ins); if (error) throw error; }
         if (moveIds.size) { const { error } = await db.from("tasks").update({ task_date: day }).in("id", [...moveIds]); if (error) throw error; }
         await db.from("task_day_plan").upsert({ user_id: currentUser.id, day, keep: [] }, { onConflict: "user_id,day" });

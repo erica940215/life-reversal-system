@@ -89,6 +89,83 @@
     upd(id, { [k]: v });
   });
 
+
+  /* ---------- 今日頁「📈 今天的推甄項目」＋ 跟任務雙向同步 ---------- */
+  const T = { items: [], tasks: [] };
+  const dayOfTs = ts => ts ? new Date(new Date(ts).getTime() + 2 * 3600e3).toISOString().slice(0, 10) : "";
+  /* 任務 → 推甄項目：有 study_item_id 就用它，沒有就看任務標題有沒有包含項目名稱（取最長的） */
+  function matchItem(task, items) {
+    if (task.study_item_id) return items.find(i => i.id === task.study_item_id) || null;
+    const tt = String(task.title || "");
+    return items.filter(i => i.title.length >= 4 && tt.includes(i.title)).sort((a, b) => b.title.length - a.title.length)[0] || null;
+  }
+  function matchTask(item, tasks) {
+    return tasks.find(t => t.study_item_id === item.id) || tasks.find(t => !t.study_item_id && matchItem(t, [item]));
+  }
+  async function loadToday() {
+    if (!hasDb()) return; const t = todayStr();
+    const [a, b] = await Promise.all([
+      db.from("study_items").select("id, subject, title, plan_date, done, done_at, sort").lte("plan_date", t).order("plan_date").limit(500),
+      db.from("tasks").select("id, title, completed, task_date, study_item_id").eq("task_date", t).limit(200)]);
+    if (a.error) return;
+    T.items = (a.data || []).filter(i => !i.done || dayOfTs(i.done_at) === t);
+    T.tasks = b.error ? [] : (b.data || []);
+    renderToday();
+  }
+  function renderToday() {
+    const tp = document.querySelector('.page[data-page="today"]'); if (!tp) return;
+    let box = document.getElementById("pg-today");
+    if (!T.items.length) { if (box) box.remove(); return; }
+    if (!box) { box = document.createElement("section"); box.className = "card"; box.id = "pg-today";
+      const ref = document.getElementById("tasks-card"); ref && ref.parentElement === tp ? ref.before(box) : tp.appendChild(box); }
+    const t = todayStr(), done = T.items.filter(i => i.done).length;
+    box.innerHTML = `<h2>📈 今天的推甄項目 <small style="font-size:13px;opacity:.7">${done}/${T.items.length}</small></h2>
+      <p class="small-note" style="margin:0 0 4px">預計到今天的項目。勾一次，推甄進度和同名的今日任務會一起完成。</p>
+      ${T.items.map(i => { const tk = matchTask(i, T.tasks); return `<label class="pg-it ${i.done ? "on" : ""} ${!i.done && i.plan_date < t ? "late" : ""}"><input type="checkbox" data-pgt="${i.id}" ${i.done ? "checked" : ""}>
+        <span><b style="font-weight:600;opacity:.7;font-size:12px">${esc(i.subject)}</b> ${esc(i.title)}</span><small>${tk ? "🔗 任務" : i.plan_date < t ? "預計 " + md(i.plan_date) : "今天"}</small></label>`; }).join("")}
+      <p style="margin:6px 0 0"><button type="button" class="chip" data-pgt-go="1">看全部進度 →</button></p>`;
+  }
+  async function setItem(id, on) {
+    const patch = { done: on, done_at: on ? new Date().toISOString() : null };
+    const { error } = await db.from("study_items").update(patch).eq("id", id);
+    if (error) { toast("推甄進度儲存失敗：" + error.message); return false; }
+    [T.items, P.items || []].forEach(arr => { const it = arr.find(x => x.id === id); if (it) Object.assign(it, patch); });
+    return true;
+  }
+  document.addEventListener("change", async e => {
+    const c = e.target.closest("[data-pgt]"); if (!c) return;
+    const id = Number(c.dataset.pgt), on = c.checked, it = T.items.find(i => i.id === id); c.disabled = true;
+    if (!(await setItem(id, on))) { c.checked = !on; c.disabled = false; return; }
+    const tk = it && matchTask(it, T.tasks);
+    if (tk && !!tk.completed !== on && typeof window.toggleTask === "function") { tk.completed = on; await window.__pgToggle(tk.id, on); }
+    c.disabled = false; renderToday(); if (P.items) render();
+    toast(on ? `📈 ${it ? it.title : ""} 完成${tk ? "，任務也一起勾了" : ""}` : "已取消完成");
+  });
+  document.addEventListener("click", e => { if (e.target.closest("[data-pgt-go]") && typeof showPage === "function") showPage("progress"); });
+
+  /* 在任務清單勾任務 → 對應的推甄項目也跟著勾 */
+  function hookToggle(n) {
+    if (typeof window.toggleTask !== "function") { if (n < 30) setTimeout(() => hookToggle(n + 1), 500); return; }
+    if (window.toggleTask.__pg) return;
+    const base = window.toggleTask;
+    window.__pgToggle = (id, on) => base(id, on);
+    const wrapped = async function (taskId, completed, checkbox) {
+      const r = await base.apply(this, arguments);
+      try {
+        const { data: tk } = await db.from("tasks").select("id, title, completed, study_item_id").eq("id", Number(taskId)).maybeSingle();
+        if (tk && tk.completed === !!completed) {
+          const { data: items } = await db.from("study_items").select("id, subject, title, plan_date, done, done_at, sort").limit(2000);
+          const it = matchItem(tk, items || []);
+          if (it && it.done !== !!completed) { await setItem(it.id, !!completed); toast(`📈 推甄進度「${it.title}」也${completed ? "勾了" : "取消了"}`); }
+        }
+      } catch (_) {}
+      loadToday(); if (P.items) load();
+      return r;
+    };
+    wrapped.__pg = true; window.toggleTask = wrapped;
+  }
+  hookToggle(0);
+
   const st = document.createElement("style");
   st.textContent = `
     .pg-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -106,7 +183,7 @@
     .pg-dt { width: 140px; padding: 5px; border-radius: 8px; border: 1px solid rgba(127,127,127,.3); background: transparent; color: inherit; }
     .pg-del { border: 0; background: transparent; cursor: pointer; font-size: 13px; color: inherit; }`;
   document.head.appendChild(st);
-  if (typeof window.applyPage === "function") { const base = window.applyPage; window.applyPage = function (name) { const r = base.apply(this, arguments); if (name === "progress") setTimeout(load, 0); return r; }; }
-  (function boot(n) { if (!hasDb()) { if (n < 60) setTimeout(() => boot(n + 1), 1000); return; } ensurePage(); })(0);
-  window.StudyProgress = { load };
+  if (typeof window.applyPage === "function") { const base = window.applyPage; window.applyPage = function (name) { const r = base.apply(this, arguments); if (name === "progress") setTimeout(load, 0); if (name === "today") setTimeout(loadToday, 0); return r; }; }
+  (function boot(n) { if (!hasDb()) { if (n < 60) setTimeout(() => boot(n + 1), 1000); return; } ensurePage(); loadToday(); })(0);
+  window.StudyProgress = { load, loadToday, dueFor: async day => { const { data } = await db.from("study_items").select("id, subject, title, plan_date").eq("done", false).lte("plan_date", day).order("plan_date").order("sort").limit(60); return data || []; } };
 })();

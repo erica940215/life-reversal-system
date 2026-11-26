@@ -10,6 +10,7 @@
 
   const CARDS = [
     { key: "card:energy", label: "⚡ 今日精力卡", sel: "#en-today, #en-analysis, #en-week" },
+    { key: "card:progress", label: "📈 今天的推甄項目", sel: "#pg-today" },
     { key: "card:dayplan", label: "☀️ 今日任務規劃提示", sel: ".dp-banner" },
     { key: "card:gamemode", label: "🎲 遊戲模式按鈕", sel: "#game-mode-toggle" }
   ];
