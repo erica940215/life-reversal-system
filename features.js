@@ -56,7 +56,7 @@
   }
   async function save() {
     if (!hasDb()) return;
-    const features = {}; Object.keys(off).forEach(k => { if (off[k]) features[k] = false; });
+    const features = {}; Object.keys(off).forEach(k => { if (off[k] && k !== "douluo_on") features[k] = false; }); try { if (localStorage.getItem("douluoOn") === "1") features.douluo_on = true; } catch (_) {}
     const { error } = await db.from("user_settings").upsert({ user_id: currentUser.id, features, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
     if (error) toast("功能設定同步失敗，這台裝置仍會記住：" + error.message);
   }
