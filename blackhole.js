@@ -286,6 +286,12 @@
   const RADIO = [
     { k: "rain", n: "🌧️ 雨聲", h: 0 }, { k: "wave", n: "🌊 海浪", h: 5 }, { k: "fire", n: "🔥 壁爐", h: 15 },
     { k: "cafe", n: "☕ 咖啡廳", h: 30 }, { k: "wind", n: "🌲 森林風", h: 50 }, { k: "space", n: "🌌 宇宙低鳴", h: 100 }];
+  /* ⚔️ 斗羅模式開著才出現的修煉背景音；lv = 斗羅等級解鎖 */
+  const DL_RADIO = [
+    { k: "dl_fall", n: "💦 瀑布修煉", lv: 1 }, { k: "dl_forest", n: "🌳 星斗大森林", lv: 1 },
+    { k: "dl_icefire", n: "❄️🔥 冰火兩儀眼", lv: 31 }, { k: "dl_sea", n: "🔱 海神島", lv: 71 }];
+  const dlOn = () => { try { return !!(window.Douluo && window.Douluo.isOn && window.Douluo.isOn()); } catch (_) { return false; } };
+  const dlLv = () => { try { return (window.Douluo && window.Douluo.level && window.Douluo.level()) || 1; } catch (_) { return 1; } };
   const RA = { ctx: null, nodes: [], cur: null, hours: 0, vol: .5 };
   function noise(ctx, type) {
     const len = ctx.sampleRate * 4, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
@@ -313,6 +319,18 @@
     if (k === "fire") { add("brown", "lowpass", 500, .7, .9); blips(() => pop(1200 + Math.random() * 2500, .02 + Math.random() * .05, .6), 110); }
     if (k === "cafe") { add("pink", "bandpass", 500, .6, .9); const g = add("brown", "bandpass", 300, 1.5, .5); lfo(g.gain, .3, .2); blips(() => pop(4000 + Math.random() * 2000, .12, .08), 1500); }
     if (k === "wind") { const g = add("pink", "bandpass", 700, .8, .7); lfo(g.gain, .06, .4); blips(() => pop(2500 + Math.random() * 1000, .08, .06), 400); }
+    const tone = (f0, f1, dur, g, type) => { const o = ctx.createOscillator(), e = ctx.createGain(), t = ctx.currentTime; o.type = type || "sine"; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur); e.gain.setValueAtTime(.0001, t); e.gain.exponentialRampToValueAtTime(g, t + Math.min(.03, dur / 3)); e.gain.exponentialRampToValueAtTime(.0001, t + dur); o.connect(e).connect(out); o.start(t); o.stop(t + dur + .05); };
+    if (k === "dl_fall") { add("pink", "lowpass", 3200, .6, 1.1); const g = add("brown", "lowpass", 420, .7, .9); lfo(g.gain, .15, .15); add("white", "highpass", 6000, .4, .05); }
+    if (k === "dl_forest") { const g = add("pink", "bandpass", 650, .7, .55); lfo(g.gain, .05, .3); add("brown", "lowpass", 250, .7, .25);
+      blips(() => { const f = 2400 + Math.random() * 1800, n = 1 + Math.floor(Math.random() * 3); for (let i = 0; i < n; i++) setTimeout(() => tone(f, f * (1.2 + Math.random() * .4), .09 + Math.random() * .06, .05), i * 140); }, 1900);
+      }
+    if (k === "dl_icefire") { add("brown", "lowpass", 300, .8, .8); add("pink", "bandpass", 900, .9, .2);
+      blips(() => { const r = Math.random();
+        if (r < .5) tone(180 + Math.random() * 150, 500 + Math.random() * 400, .07 + Math.random() * .05, .12);
+        else if (r < .8) pop(1400 + Math.random() * 2000, .03, .35);
+        else tone(2600 + Math.random() * 2200, 2400 + Math.random() * 1800, .5, .025); }, 260); }
+    if (k === "dl_sea") { const g = add("brown", "lowpass", 800, .7, .9); g.gain.value = .55; lfo(g.gain, .07, .5); add("pink", "highpass", 1600, .5, .06);
+      blips(() => { if (Math.random() < .25) tone(70 + Math.random() * 30, 140 + Math.random() * 60, 3.5, .06, "triangle"); }, 6000); }
     if (k === "space") { add("brown", "lowpass", 160, 2, 1.2); [55, 82.5].forEach(f => { const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = f; g.gain.value = .05; o.connect(g).connect(out); o.start(); RA.nodes.push(o); lfo(g.gain, .05, .04); }); }
     RA.cur = k;
     try { localStorage.setItem("radioStation", k); } catch (_) {}
@@ -329,7 +347,8 @@
     let box = document.getElementById("ra-box");
     if (!box) { box = document.createElement("div"); box.id = "ra-box"; card.appendChild(box); }
     box.innerHTML = `<div class="ra-h">📻 白噪音電台<small>累積專注 ${RA.hours} 小時</small>${RA.cur ? `<input type="range" min="0" max="1" step=".05" value="${RA.vol}" data-ra="vol" aria-label="音量">` : ""}</div>
-      <div class="ra-list">${RADIO.map(r => RA.hours >= r.h ? `<button type="button" class="${RA.cur === r.k ? "on" : ""}" data-ra="${r.k}">${r.n}</button>` : `<button type="button" disabled title="專注滿 ${r.h} 小時解鎖">🔒 ${r.h}h</button>`).join("")}</div>`;
+      <div class="ra-list">${RADIO.map(r => RA.hours >= r.h ? `<button type="button" class="${RA.cur === r.k ? "on" : ""}" data-ra="${r.k}">${r.n}</button>` : `<button type="button" disabled title="專注滿 ${r.h} 小時解鎖">🔒 ${r.h}h</button>`).join("")}</div>
+      ${dlOn() ? `<div class="ra-h" style="margin-top:8px">⚔️ 修煉背景音<small>斗羅模式</small></div><div class="ra-list">${DL_RADIO.map(r => dlLv() >= r.lv ? `<button type="button" class="${RA.cur === r.k ? "on" : ""}" data-ra="${r.k}">${r.n}</button>` : `<button type="button" disabled title="斗羅 ${r.lv} 級解鎖">🔒 ${r.n.split(" ")[0]} Lv${r.lv}</button>`).join("")}</div>` : ""}`;
   }
 
   /* ---------- 點擊 ---------- */
@@ -356,6 +375,7 @@
       } else if (b.dataset.eg === "check") toast("🥚 蛋暖了一點 ✨ +5");
     }
   });
+  document.addEventListener("douluo:change", () => { try { renderRadio(); } catch (_) {} });
   document.addEventListener("input", e => { if (e.target.dataset && e.target.dataset.ra === "vol") { RA.vol = Number(e.target.value); if (RA.out) RA.out.gain.value = RA.vol; } });
 
   const st = document.createElement("style");

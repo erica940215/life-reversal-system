@@ -30,6 +30,20 @@
     { lv: 91, n: "封號鬥羅・雙神之戰", t: "封號鬥羅。走到這裡的人很少，最後一段路靠的不是天分，是你每天沒有斷掉的那些小事。" },
     { lv: 100, n: "成神", t: "百級，成神。我們一路走過來了。神位不是終點，是你終於成為了自己想成為的那個人。" }
   ];
+  /* 每章一個小事件（條件在 sql/2026-11-27_斗羅章節事件.sql 的 douluo_events，只算這章事件開始之後的紀錄；完成送仙草 1 株） */
+  const EV = [
+    { n: "覺醒儀式", d: "某一天專注滿 60 分鐘", u: "分鐘", ok: "素雲濤的手按在你頭上，光亮起來了。你的武魂，醒了。" },
+    { n: "史萊克入學考核", d: "連續 3 天，每天至少完成 1 件任務", u: "天", ok: "弗蘭德院長點點頭：「怪物，收了。」" },
+    { n: "走出星斗大森林", d: "連續 3 天，每天專注滿 2 小時", u: "天", ok: "森林的霧散了。你沒有迷路，因為每天都往同一個方向走。" },
+    { n: "冰火兩儀眼採仙草", d: "累積 3 天專注滿 3 小時", u: "天", ok: "冰與火之間，你找到了適合自己的那株仙草。" },
+    { n: "魂師大賽晉級賽", d: "完成 5 件困難以上的任務", u: "件", ok: "晉級了。觀眾席很吵，但你只聽得到自己的心跳。" },
+    { n: "殺戮之都・地獄路", d: "連續 7 天，每天專注滿 1 小時", u: "天", ok: "地獄路的盡頭沒有掌聲，只有你自己。殺神領域，成了。" },
+    { n: "唐門五堂", d: "連續 5 天，每天完成 3 件以上任務", u: "天", ok: "力、敏、禦、藥、機關，五堂都立起來了。從今天起，你靠的是制度。" },
+    { n: "海神九考・第一考", d: "連續 9 天，每天專注滿 90 分鐘", u: "天", ok: "海神之光落在你身上。九考的第一考，過了。" },
+    { n: "大陸戰爭・守城", d: "累積專注 30 小時", u: "分鐘", ok: "城守住了。身後的人都看見了你沒有退。" },
+    { n: "雙神之戰", d: "連續 10 天，每天專注滿 2 小時", u: "天", ok: "三叉戟落下。這一戰，你贏的是過去那個會放棄的自己。" },
+    { n: "神位傳承", d: "累積專注 100 小時", u: "分鐘", ok: "百級，成神。這一路上的每一天，都算數。" }
+  ];
   const chapterOf = lv => { let i = 0; CH.forEach((c, j) => { if (lv >= c.lv) i = j; }); return i; };
   const TIER = [null, { n: "百年", c: "#f1c40f", d: "7 天內專注 300 分鐘" }, { n: "千年", c: "#9b59b6", d: "7 天內專注 600 分鐘＋2 個困難以上任務" }, { n: "萬年", c: "#2b2b2b", d: "10 天內專注 900 分鐘＋4 個困難任務＋5 天生活打卡" }, { n: "十萬年", c: "#e74c3c", d: "14 天內專注 1500 分鐘＋6 個困難任務＋7 天生活打卡" }];
   const SKILL = {
@@ -64,9 +78,14 @@
     D.err = error ? error.message : null;
     if (!error) {
       D.d = data;
+      try { document.dispatchEvent(new Event("douluo:change")); } catch (_) {}
+      try { const ev = await db.rpc("douluo_events"); if (!ev.error) D.ev = ev.data || []; } catch (_) {}
+      (D.ev || []).forEach(e => { if (e.new && lsGet("ev" + e.ch) !== "1") { lsSet("ev" + e.ch, "1"); D.evNew = e; } });
       if (data.state && data.state.hunt) { const r = await db.rpc("douluo_hunt_check"); if (!r.error && r.data) { if (r.data.status === "done") { celebrate(r.data); return load(true); } if (r.data.status === "failed") toast("獵魂挑戰時間到了，這次沒有成功。休息一下，再挑一次。"); } }
     }
-    if (D.on) { renderFloat(); if (D.open) renderPanel(); if (!quiet) daily(); }
+    if (D.on) { renderFloat(); if (D.open) renderPanel();
+      if (D.evNew) { const e = D.evNew; D.evNew = null; evDone(e); D.after = daily; return; }
+      if (!quiet) daily(); }
   }
 
   /* ===== 唐三的話 ===== */
@@ -145,6 +164,7 @@
 
   /* ===== 每天的對話 ===== */
   function daily() {
+    if (document.querySelector(".dl-bg")) { D.after = daily; return; }
     if (!D.d) return;
     const today = D.d.stats.today, h = new Date().getHours(), lv = D.d.level, ch = chapterOf(lv);
     if (ch > (D.d.state.seen_chapter || 0) || (D.d.state.seen_chapter === 0 && !lsGet("ch0"))) { lsSet("ch0", "1"); chapterIntro(ch); D.after = daily; return; }
@@ -173,6 +193,12 @@
       <p class="dl-meta">你現在是第 ${D.d.level} 級 ${title(D.d.level)}。</p><div class="dl-row"><button class="btn" data-dl-x>繼續修煉</button></div>`);
     if (hasDb()) db.rpc("douluo_seen", { p_ch: i }).then(() => { if (D.d) D.d.state.seen_chapter = i; });
   }
+  function evDone(e) {
+    const m = EV[e.ch];
+    modal(`<div class="dl-head"><b>✅ 章節事件完成・${esc(m.n)}</b><button class="dl-x" data-dl-x>✕</button></div>
+      <div class="dl-say">${pic("tangsan", 64)}<div><small>唐三</small><p>${esc(m.ok)}</p></div></div>
+      <p class="dl-meta">${esc(m.d)}，你做到了。獲得 🌿 仙草 1 株（獵魂時可以用）。</p><div class="dl-row"><button class="btn" data-dl-x>繼續修煉</button></div>`);
+  }
   function celebrate(r) {
     const T = TIER[r.tier], sk = SKILL[r.line][(D.d ? D.d.state.rings.filter(x => x.line === r.line).length : 0)] || "新魂技";
     modal(`<div class="dl-head"><b>✨ 魂環吸收成功</b><button class="dl-x" data-dl-x>✕</button></div><div class="dl-ring-big" style="--c:${T.c}"></div>
@@ -190,6 +216,12 @@
   }
 
   /* ===== 面板 ===== */
+  function evHtml(i, cur) {
+    const e = (D.ev || []).find(x => x.ch === i), m = EV[i]; if (!e || !m) return "";
+    const fmt = v => m.u === "分鐘" && e.target >= 120 ? `${Math.floor(v / 60)}/${Math.floor(e.target / 60)} 小時` : `${v}/${e.target} ${m.u}`;
+    return `<div class="dl-ev ${e.done ? "ok" : ""}"><b>${e.done ? "✅" : "🎯"} 章節事件・${esc(m.n)}</b><small>${esc(m.d)}${cur ? "（只算這章開始後的紀錄）" : ""}</small>
+      ${e.done ? `<p>${esc(m.ok)}</p><small>完成於 ${String(e.done).slice(5).replace("-", "/")}・🌿 仙草 +1</small>` : `<div class="dl-bar"><i style="width:${Math.round(e.prog / e.target * 100)}%"></i></div><small>${fmt(e.prog)}</small>`}</div>`;
+  }
   function openPanel() { D.open = true; renderPanel(); }
   function renderPanel() {
     if (!D.d) return;
@@ -226,7 +258,8 @@
       const s = d.stats;
       body += `<p class="dl-meta">把某一類練到一定程度，史萊克的夥伴就會加入你。</p><div class="dl-seven">${SEVEN.map(c => { const ok = c.need(s); return `<div class="${ok ? "on" : ""}">${ok ? pic(c.k, 48, c.ic) : `<span class="dl-emo lock">❔</span>`}<b>${ok ? c.n : "？？？"}</b><small>${ok ? c.buf : c.d}</small></div>`; }).join("")}</div>`;
     }
-    if (D.tab === "story") body += CH.map((c, i) => `<div class="dl-ch${i <= ch ? "" : " lock"}"><b>第 ${i + 1} 章・${i <= ch ? esc(c.n) : "？？？"}</b><small>${c.lv} 級${i <= ch ? "" : " 解鎖"}</small>${i <= ch ? `<p>${esc(c.t)}</p>` : ""}</div>`).join("");
+    if (D.tab === "story") body += CH.map((c, i) => `<div class="dl-ch${i <= ch ? "" : " lock"}"><b>第 ${i + 1} 章・${i <= ch ? esc(c.n) : "？？？"}</b><small>${c.lv} 級${i <= ch ? "" : " 解鎖"}</small>${i <= ch ? `<p>${esc(c.t)}</p>${evHtml(i)}` : ""}</div>`).join("");
+    if (D.tab === "train") body = body.replace('<div class="dl-lines">', `${evHtml(ch, true)}<div class="dl-lines">`);
     const bg = modal(`<div class="dl-head"><b>⚔️ 斗羅修煉</b><button class="dl-x" data-dl-x>✕</button></div><div class="dl-tabs">${tabs.map(([k, t]) => `<button class="${D.tab === k ? "on" : ""}" data-tab="${k}">${t}</button>`).join("")}</div>${body}<div class="dl-row"><button class="btn ghost" data-off>關閉斗羅模式</button></div>`);
     D.open = true;
     bg.addEventListener("click", async e => {
@@ -244,7 +277,7 @@
     D.on = v; try { localStorage.setItem("douluoOn", v ? "1" : "0"); } catch (_) {}
     if (hasDb()) { const { data } = await db.from("user_settings").select("features").eq("user_id", currentUser.id).maybeSingle(); const features = Object.assign({}, (data && data.features) || {}, { douluo_on: v });
       await db.from("user_settings").upsert({ user_id: currentUser.id, features, updated_at: new Date().toISOString() }, { onConflict: "user_id" }); }
-    addBtn(); if (v) { await load(true); renderFloat(); toast("⚔️ 斗羅模式開啟，唐三來了"); setTimeout(daily, 400); } else { renderFloat(); close(); toast("斗羅模式已關閉（魂力會繼續在背景累積）"); }
+    addBtn(); try { document.dispatchEvent(new Event("douluo:change")); } catch (_) {} if (v) { await load(true); renderFloat(); toast("⚔️ 斗羅模式開啟，唐三來了"); setTimeout(daily, 400); } else { renderFloat(); close(); toast("斗羅模式已關閉（魂力會繼續在背景累積）"); }
   }
   new MutationObserver(() => {
     const box = document.querySelector(".feat-box"); if (!box || box.querySelector(".dl-feat")) return;
@@ -263,6 +296,11 @@
   }
   setInterval(addBtn, 2000); setTimeout(addBtn, 1800);
 
+  const evSt = document.createElement("style");
+  evSt.textContent = `.dl-ev { margin: 8px 0; padding: 9px 11px; border-radius: 12px; border: 1px solid rgba(241,196,15,.35); background: rgba(241,196,15,.07); }
+    .dl-ev b { display: block; font-size: 13.5px; } .dl-ev small { display: block; font-size: 11.5px; opacity: .75; margin-top: 2px; } .dl-ev p { margin: 6px 0 2px; font-size: 13px; line-height: 1.6; }
+    .dl-ev.ok { border-color: rgba(63,185,80,.45); background: rgba(63,185,80,.08); } .dl-ev .dl-bar { margin-top: 6px; }`;
+  document.head.appendChild(evSt);
   /* ===== 樣式 ===== */
   const css = document.createElement("style");
   css.textContent = `
@@ -315,5 +353,5 @@
     setInterval(() => { if (!document.hidden && D.on) renderFloat(); }, 45 * 1000);
     document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
   })(0);
-  window.Douluo = { load, open: () => D.on && openPanel(), setOn };
+  window.Douluo = { load, open: () => D.on && openPanel(), setOn, isOn: () => D.on, level: () => (D.d ? D.d.level : 1) };
 })();
