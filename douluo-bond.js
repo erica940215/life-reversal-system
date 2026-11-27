@@ -80,7 +80,7 @@
     if (B.last !== t) { B.last = t; once("visit", () => { gain("tangsan", 1); gain("master", 1); }); }
     const c = X(), st = c.d.state;
     if ((st.master_follow || 0) > (B.mf || 0)) { gain("master", 2 * ((st.master_follow || 0) - (B.mf || 0))); B.mf = st.master_follow || 0; }
-    detectMilestones(); await checkChallenge(); anniversary(); save();
+    await loadChats(); detectMilestones(); await checkChallenge(); anniversary(); save();
   }
 
   /* ---------- ⑫ 里程碑 ---------- */
@@ -255,9 +255,35 @@
     let ans;
     try { const call = db.functions.invoke("kb", { body: { action: "master", who, q, ctx, call: callName(who), hist: ASK.hist.slice(0, -2).slice(-6) } });
       const { data, error } = await Promise.race([call, new Promise(r => setTimeout(() => r({ error: { message: "等太久了，再問一次試試" } }), 65000))]);
-      ans = error ? "（現在聯絡不上：" + error.message + "）" : data && data.error ? "（" + data.error + "）" : (data && data.text) || "（他沉默了一會兒，沒有回答。）"; }
+      ans = error ? "（現在聯絡不上：" + error.message + "）" : data && data.error ? "（" + data.error + "）" : (data && data.text) || "（他沉默了一會兒，沒有回答。）";
+      if (data && data.text && !error && !data.error) saveChat(who, q, data.text); }
     catch (e) { ans = "（現在聯絡不上）"; }
     ASK.hist[ASK.hist.length - 1].t = ans; ASK.busy = false; once("ask" + who, () => gain(who, 1)); rerender();
+  }
+  /* 聊天紀錄：存在 douluo_chats，一句一列 */
+  async function saveChat(who, q, a) {
+    if (!hasDb()) return; const now = Date.now();
+    const { error } = await db.from("douluo_chats").insert([{ who, role: "me", text: q, created_at: new Date(now).toISOString() }, { who, role: "them", text: a, created_at: new Date(now + 1000).toISOString() }]);
+    if (error) console.warn("chat save", error.message);
+    const A = ASKS[who], n = A.hist.length; if (n >= 2) { A.hist[n - 2].at = new Date(now).toISOString(); A.hist[n - 1].at = new Date(now + 1000).toISOString(); }
+  }
+  async function loadChats() {
+    if (!hasDb() || ASKS.loaded) return; ASKS.loaded = true;
+    const { data, error } = await db.from("douluo_chats").select("who, role, text, created_at").order("created_at", { ascending: false }).limit(400);
+    if (error) { ASKS.loaded = false; return; }
+    ["tangsan", "master"].forEach(w => { const nm = w === "tangsan" ? "唐三" : "大師";
+      const old = (data || []).filter(r => r.who === w).reverse().map(r => ({ who: r.role === "me" ? "你" : nm, t: r.text, at: r.created_at }));
+      ASKS[w].hist = [...old, ...ASKS[w].hist.filter(x => !x.at)]; });
+  }
+  function historyModal(who) {
+    const c = X(); if (!c) return; const nm = who === "tangsan" ? "唐三" : "大師", list = ASKS[who].hist.filter(x => x.at);
+    let last = "", body = "";
+    list.forEach(x => { const d = new Date(x.at).toLocaleDateString("sv-SE", { timeZone: "Asia/Taipei" }), tm = new Date(x.at).toLocaleTimeString("en-GB", { timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit" });
+      if (d !== last) { body += `<div class="dl-sub">📅 ${md(d)}</div>`; last = d; }
+      body += `<p class="${x.who === "你" ? "me" : ""}"><b>${esc(x.who)}・${tm}</b>${esc(x.t).replace(/\n/g, "<br>")}</p>`; });
+    c.modal(`<div class="dl-head"><b>📜 和${nm}的對話紀錄（${list.filter(x => x.who === "你").length} 則）</b><button class="dl-x" data-dl-x>✕</button></div>
+      <div class="dl-askbox dl-hist">${body || `<p class="dl-meta">還沒有對話紀錄。</p>`}</div><div class="dl-row"><button class="btn" data-bd="back">回到相處</button></div>`);
+    const h = document.querySelector(".dl-hist"); if (h) h.scrollTop = h.scrollHeight;
   }
   function rerender() { if (document.querySelector(".dl-bg .dl-tabs") && window.Douluo) window.Douluo.open(); }
 
@@ -276,6 +302,7 @@
     if (ch) h += `<div class="dl-sub">🎯 今天的挑戰</div><p class="dl-meta">${B.chal.done ? "✅" : "⏳"} ${esc(ch.t)}${B.chal.done ? "・完成了！" : "・做到會自動判定"}</p>`;
     /* 問大師 */
     const box = (who, title, ph) => { const A = ASKS[who]; return `<div class="dl-sub">${title}</div><div class="dl-askbox">${A.hist.slice(-6).map(x => `<p class="${x.who === "你" ? "me" : ""}"><b>${esc(x.who)}</b>${esc(x.t)}</p>`).join("")}
+      ${A.hist.some(x => x.at) ? `<div class="dl-row"><button type="button" class="btn ghost" data-bd="hist" data-who="${who}">📜 全部紀錄（${A.hist.filter(x => x.at && x.who === "你").length} 則）</button></div>` : ""}
       <div class="dl-row"><input type="text" class="dl-askq" data-who="${who}" maxlength="300" placeholder="${ph}"><button type="button" class="btn" data-bd="ask" data-who="${who}" ${A.busy ? "disabled" : ""}>${who === "tangsan" ? "說" : "問"}</button></div></div>`; };
     h += box("tangsan", "💬 跟唐三聊天", "例如：今天好累，不太想讀");
     h += box("master", "📜 問大師", "例如：浮點數一直搞不懂怎麼辦？");
@@ -297,6 +324,8 @@
     const b = e.target.closest("[data-bd]");
     if (b) { const a = b.dataset.bd;
       if (a === "spar") return sparStart();
+      if (a === "hist") return historyModal(b.dataset.who);
+      if (a === "back") return window.Douluo && window.Douluo.open();
       if (a === "ask") { const w = b.dataset.who, i = document.querySelector(`.dl-askq[data-who="${w}"]`), q = i && i.value.trim(); if (!q) return toast("先寫你想說的"); return askMaster(q, w); }
       if (a === "set") { const n = (document.getElementById("dl-name") || {}).value || "", bd = (document.getElementById("dl-bday") || {}).value || "";
         if (bd && !/^\d{2}-\d{2}$/.test(bd)) return toast("生日請寫成 MM-DD，例如 03-15"); B.name = n.trim(); B.bday = bd; save(); toast("記住了"); return rerender(); } }
@@ -329,6 +358,7 @@
     .dl-now { font-size: 12px; opacity: .8; padding: 6px 12px 0; line-height: 1.6; }
     .dl-bond { display: flex; gap: 10px; align-items: center; padding: 6px 0; } .dl-bond > div { flex: 1; } .dl-bond b { font-size: 13.5px; } .dl-bond small { display: block; font-size: 11.5px; opacity: .7; }
     .dl-memo { margin: 6px 0; padding: 6px 10px; border-radius: 10px; background: rgba(127,127,127,.08); } .dl-memo summary { cursor: pointer; font-size: 13px; } .dl-memo p { margin: 6px 0 2px; font-size: 13.5px; line-height: 1.7; }
+    .dl-hist { max-height: 60vh; overflow: auto; }
     .dl-askbox p { margin: 4px 0; font-size: 13.5px; line-height: 1.65; } .dl-askbox p b { margin-right: 6px; opacity: .7; font-size: 12px; } .dl-askbox p.me { opacity: .8; }
     .dl-askbox input, .dl-memo input { flex: 1; min-width: 0; padding: 7px 9px; border-radius: 8px; border: 1px solid rgba(127,127,127,.35); background: transparent; color: inherit; font: inherit; }
     .dl-sq { font-size: 15px; line-height: 1.6; margin: 6px 0 10px; } .dl-sans { font-size: 14px; color: #3fb950; }
