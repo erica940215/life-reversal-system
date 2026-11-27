@@ -93,6 +93,16 @@ async function explain(b: any) {
   return { text: await gemini(sys, [{ text: JSON.stringify({ 知識點: b.title, 重點: b.summary, 原本的比喻: b.analogy, 原始內容: String(b.excerpt || "").slice(0, 1500) }) }], undefined, 0.8) };
 }
 
+/* ---------- ⑤ 斗羅模式：問大師 ---------- */
+async function master(b: any) {
+  const sys = `你在一個個人自律網站裡扮演「大師」：一位博學、嚴肅但真心關心弟子的老師，說話簡潔有分量，偶爾一句很有力的話。
+用繁體中文回答弟子的問題，150～250 字，口語、不要 markdown 標題或條列符號太多。
+如果是課業問題（計概、MIS、資料庫、網路、資料結構等），要給正確、具體的解釋或讀法，可以用一個比喻。
+如果是讀書狀態、拖延、作息問題，根據提供的「弟子最近紀錄」給一個今天就能做的具體建議。
+不要編造弟子沒有的紀錄；不確定的知識要直說不確定。稱呼弟子為「${String(b.call || "你").slice(0, 10)}」。`;
+  return { text: await gemini(sys, [{ text: JSON.stringify({ 弟子的問題: String(b.q || "").slice(0, 800), 弟子最近紀錄: b.ctx || {}, 先前對話: (b.hist || []).slice(-6) }) }], undefined, 0.7) };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   try {
@@ -104,6 +114,7 @@ Deno.serve(async (req) => {
     if (b.action === "cards") return j(await cards(b));
     if (b.action === "grade") return j(await grade(b));
     if (b.action === "explain") return j(await explain(b));
+    if (b.action === "master") return j(await master(b));
     return j({ error: "unknown action" }, 400);
   } catch (e) { return j({ error: String((e as Error).message || e), quota: e instanceof AI.QuotaError }, 500); }
 });

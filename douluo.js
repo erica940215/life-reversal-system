@@ -206,6 +206,7 @@
     const a = masterAdvice(), m = kind === "morning";
     const bg = modal(`<div class="dl-head"><b>${m ? "☀️ 早安，今天要修煉什麼？" : "🌙 今天辛苦了"}</b><button class="dl-x" data-dl-x>✕</button></div>
       <div class="dl-say">${pic("tangsan", 64)}<div><small>唐三</small><p>${esc(tangLine(kind))}</p></div></div>
+      ${m && window.DouluoBond ? window.DouluoBond.morningHtml() : ""}
       ${m && window.DouluoLife ? window.DouluoLife.memoryHtml() : ""}
       <div class="dl-say m">${pic("master", 52)}<div><small>大師・今日指導</small><p>${esc(m ? a.say.slice(0, 2).join(" ") : eveningMaster())}</p></div></div>
       ${m && window.DouluoLife ? window.DouluoLife.askHtml() : ""}
@@ -254,7 +255,7 @@
     if (!D.d) return;
     const d = D.d, st = d.state, lv = d.level, xp = st.xp_blue + st.xp_hao, cap = (st.rings.length + 1) * 10, ch = chapterOf(lv);
     const capped = d.raw_level > lv; const pct = lv >= 100 || capped ? 100 : Math.min(100, Math.round((xp - xpAt(lv)) / (xpAt(lv + 1) - xpAt(lv)) * 100));
-    const tabs = [["train", "⚔️ 修煉"], ["master", "📜 大師"], ["seven", "🐰 七怪"], ["story", "📖 故事"]];
+    const tabs = [["train", "⚔️ 修煉"], ["bond", "💞 相處"], ["master", "📜 大師"], ["seven", "🐰 七怪"], ["story", "📖 故事"]];
     let body = "";
     if (D.tab === "train") {
       body += `<div class="dl-top">${pic("tangsan", 72)}<div><b>第 ${lv} 級・${title(lv)}</b><div class="dl-bar"><i style="width:${pct}%"></i></div><small>魂力 ${xp}${capped ? `（魂力其實夠到 ${d.raw_level} 級，吸收魂環後就會升上去）` : lv < 100 ? `／下一級 ${xpAt(lv + 1)}` : ""}・第 ${ch + 1} 章 ${esc(CH[ch].n)}</small></div></div>`;
@@ -288,9 +289,10 @@
       body += `<p class="dl-meta">把某一類練到一定程度，史萊克的夥伴就會加入你。</p><div class="dl-seven">${SEVEN.map(c => { const ok = c.need(s); return `<div class="${ok ? "on" : ""}">${ok ? pic(c.k, 48, c.ic) : `<span class="dl-emo lock">❔</span>`}<b>${ok ? c.n : "？？？"}</b><small>${ok ? c.buf : c.d}</small></div>`; }).join("")}</div>`;
     }
     if (D.tab === "story") body += CH.map((c, i) => `<div class="dl-ch${i <= ch ? "" : " lock"}"><b>第 ${i + 1} 章・${i <= ch ? esc(c.n) : "？？？"}</b><small>${c.lv} 級${i <= ch ? "" : " 解鎖"}</small>${i <= ch ? `<p>${esc(c.t)}</p>${evHtml(i)}` : ""}</div>`).join("");
+    if (D.tab === "bond") body += window.DouluoBond ? window.DouluoBond.tabHtml() : "";
     if (D.tab === "train") body = body.replace('<div class="dl-lines">', `${evHtml(ch, true)}<div class="dl-lines">`);
-    const bg = modal(`<div class="dl-head"><b>⚔️ 斗羅修煉</b><button class="dl-x" data-dl-x>✕</button></div><div class="dl-tabs">${tabs.map(([k, t]) => `<button class="${D.tab === k ? "on" : ""}" data-tab="${k}">${t}</button>`).join("")}</div>${body}<div class="dl-row"><button class="btn ghost" data-off>關閉斗羅模式</button></div>`);
-    D.open = true;
+    const bg = modal(`${window.DouluoBond ? window.DouluoBond.nowHtml() : ""}<div class="dl-head"><b>⚔️ 斗羅修煉</b><button class="dl-x" data-dl-x>✕</button></div><div class="dl-tabs">${tabs.map(([k, t]) => `<button class="${D.tab === k ? "on" : ""}" data-tab="${k}">${t}</button>`).join("")}</div>${body}<div class="dl-row"><button class="btn ghost" data-off>關閉斗羅模式</button></div>`);
+    D.open = true; bg.querySelector(".dl-box").classList.add("dl-scene", "dl-sc" + ch);
     bg.addEventListener("click", async e => {
       const t = e.target.closest("[data-tab]"); if (t) { D.tab = t.dataset.tab; return renderPanel(); }
       const td = e.target.closest("[data-td]"); if (td) { await addTodo(masterAdvice().todo[Number(td.dataset.td)]); td.disabled = true; td.textContent = "已加入"; return; }
