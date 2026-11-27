@@ -29,13 +29,13 @@ function msToReset() {
 export function resetText() { const m = Math.round(msToReset() / 60000); return m > 90 ? `約 ${Math.round(m / 60)} 小時後` : `約 ${m} 分鐘後`; }
 
 /* 依序試每個模型：makeBody(model) 產生 request；回傳 { json, model } */
-export async function call(models: string[], makeBody: (m: string) => unknown, budgetMs = 135000) {
+export async function call(models: string[], makeBody: (m: string) => unknown, budgetMs = 135000, perTryMs = 110000) {
   const t0 = Date.now(), bl = await blocked(); let last = "";
   for (const m of models) {
     if ((bl[m] || 0) > Date.now()) continue;
     const left = budgetMs - (Date.now() - t0); if (left < 8000) break;
     for (let k = 0; k < 2; k++) {
-      const ac = new AbortController(), tm = setTimeout(() => ac.abort(), Math.min(left - 2000, 110000));
+      const ac = new AbortController(), tm = setTimeout(() => ac.abort(), Math.min(left - 2000, perTryMs));
       let r: Response;
       try { r = await fetch(`${G}/models/${m}:generateContent`, { method: "POST", signal: ac.signal, headers: { "Content-Type": "application/json", "x-goog-api-key": KEY() }, body: JSON.stringify(makeBody(m)) }); }
       catch (_) { clearTimeout(tm); last = `${m} 逾時`; break; }
@@ -58,13 +58,13 @@ const parseJSON = (t: string) => {
   throw new Error("AI 回傳的格式不對，再試一次");
 };
 /* 文字（可附 PDF／圖片）。Gemma 不支援系統指令和 JSON 結構，改成寫在題目裡再自己解析 */
-export async function text(sys: string, parts: unknown[], schema?: unknown, temp = 0.5, models = TEXT_MODELS()) {
+export async function text(sys: string, parts: unknown[], schema?: unknown, temp = 0.5, models = TEXT_MODELS(), budgetMs = 135000, perTryMs = 110000) {
   const { json } = await call(models, m => {
     const gemma = m.startsWith("gemma");
     if (!gemma) return { systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: "user", parts }], generationConfig: schema ? { responseMimeType: "application/json", responseSchema: schema, temperature: temp } : { temperature: temp } };
     const extra = schema ? `\n\n只輸出一個 JSON 物件（不要任何說明文字、不要 markdown），格式必須符合這個 JSON Schema：${JSON.stringify(schema)}` : "";
     return { contents: [{ role: "user", parts: [{ text: `【指示】\n${sys}${extra}\n\n【內容】` }, ...parts] }], generationConfig: { temperature: temp } };
-  });
+  }, budgetMs, perTryMs);
   const t = (json.candidates[0].content.parts ?? []).filter((x: any) => !x.thought).map((x: any) => x.text ?? "").join("");
   return schema ? parseJSON(t) : t;
 }

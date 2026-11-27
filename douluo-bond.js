@@ -250,9 +250,10 @@
     const s = c.d.stats, R = c.real || {};
     const ctx = { 等級: c.d.level, 這週各科專注分鐘: s.subj7, 今天專注分鐘: s.focus_today, 昨天專注分鐘: s.focus_yday, 今天完成任務: `${s.done_today}/${s.tasks_today}`, 連續天數: s.streak,
       推甄進度落後: R.late ? `${R.late.n} 項，最早「${R.late.first}」` : "沒有", 拖很久的任務: (R.stuck || []).slice(0, 3).map(x => `${x.t}（${x.d} 天）`), 考試: R.exam ? `${R.exam.name} 剩 ${R.exam.days} 天` : "未設定" };
-    ASK.hist.push({ who: "你", t: q }); ASK.hist.push({ who: "大師", t: "……" }); rerender();
+    ASK.hist.push({ who: "你", t: q }); ASK.hist.push({ who: "大師", t: "（思考中……通常 10～40 秒）" }); rerender();
     let ans;
-    try { const { data, error } = await db.functions.invoke("kb", { body: { action: "master", q, ctx, call: callName("master"), hist: ASK.hist.slice(0, -2).slice(-6) } });
+    try { const call = db.functions.invoke("kb", { body: { action: "master", q, ctx, call: callName("master"), hist: ASK.hist.slice(0, -2).slice(-6) } });
+      const { data, error } = await Promise.race([call, new Promise(r => setTimeout(() => r({ error: { message: "等太久了，再問一次試試" } }), 65000))]);
       ans = error ? "（大師現在聯絡不上：" + error.message + "）" : data && data.error ? "（" + data.error + "）" : (data && data.text) || "（大師沉默了一會兒，沒有回答。）"; }
     catch (e) { ans = "（大師現在聯絡不上）"; }
     ASK.hist[ASK.hist.length - 1].t = ans; ASK.busy = false; once("ask", () => gain("master", 1)); rerender();

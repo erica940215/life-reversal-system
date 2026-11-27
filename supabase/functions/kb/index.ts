@@ -100,7 +100,9 @@ async function master(b: any) {
 如果是課業問題（計概、MIS、資料庫、網路、資料結構等），要給正確、具體的解釋或讀法，可以用一個比喻。
 如果是讀書狀態、拖延、作息問題，根據提供的「弟子最近紀錄」給一個今天就能做的具體建議。
 不要編造弟子沒有的紀錄；不確定的知識要直說不確定。稱呼弟子為「${String(b.call || "你").slice(0, 10)}」。`;
-  return { text: await gemini(sys, [{ text: JSON.stringify({ 弟子的問題: String(b.q || "").slice(0, 800), 弟子最近紀錄: b.ctx || {}, 先前對話: (b.hist || []).slice(-6) }) }], undefined, 0.7) };
+  /* 聊天要快：輕量模型先上，每個模型最多等 18 秒，整體 50 秒內 */
+  const fast = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", ...AI.TEXT_MODELS().filter(m => !/lite/.test(m))];
+  return { text: await AI.text(sys, [{ text: JSON.stringify({ 弟子的問題: String(b.q || "").slice(0, 800), 弟子最近紀錄: b.ctx || {}, 先前對話: (b.hist || []).slice(-6) }) }], undefined, 0.7, fast, 50000, 18000) };
 }
 
 Deno.serve(async (req) => {
