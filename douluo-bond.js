@@ -244,19 +244,20 @@
   }
 
   /* ---------- ⑥ 問大師 ---------- */
-  const ASK = { hist: [], busy: false };
-  async function askMaster(q) {
+  const ASKS = { master: { hist: [], busy: false }, tangsan: { hist: [], busy: false } };
+  async function askMaster(q, who) {
+    who = who === "tangsan" ? "tangsan" : "master"; const ASK = ASKS[who], nm = who === "tangsan" ? "唐三" : "大師";
     const c = X(); if (!c || ASK.busy) return; ASK.busy = true;
     const s = c.d.stats, R = c.real || {};
     const ctx = { 等級: c.d.level, 這週各科專注分鐘: s.subj7, 今天專注分鐘: s.focus_today, 昨天專注分鐘: s.focus_yday, 今天完成任務: `${s.done_today}/${s.tasks_today}`, 連續天數: s.streak,
       推甄進度落後: R.late ? `${R.late.n} 項，最早「${R.late.first}」` : "沒有", 拖很久的任務: (R.stuck || []).slice(0, 3).map(x => `${x.t}（${x.d} 天）`), 考試: R.exam ? `${R.exam.name} 剩 ${R.exam.days} 天` : "未設定" };
-    ASK.hist.push({ who: "你", t: q }); ASK.hist.push({ who: "大師", t: "（思考中……通常 10～40 秒）" }); rerender();
+    ASK.hist.push({ who: "你", t: q }); ASK.hist.push({ who: nm, t: "（思考中……通常 10～40 秒）" }); rerender();
     let ans;
-    try { const call = db.functions.invoke("kb", { body: { action: "master", q, ctx, call: callName("master"), hist: ASK.hist.slice(0, -2).slice(-6) } });
+    try { const call = db.functions.invoke("kb", { body: { action: "master", who, q, ctx, call: callName(who), hist: ASK.hist.slice(0, -2).slice(-6) } });
       const { data, error } = await Promise.race([call, new Promise(r => setTimeout(() => r({ error: { message: "等太久了，再問一次試試" } }), 65000))]);
-      ans = error ? "（大師現在聯絡不上：" + error.message + "）" : data && data.error ? "（" + data.error + "）" : (data && data.text) || "（大師沉默了一會兒，沒有回答。）"; }
-    catch (e) { ans = "（大師現在聯絡不上）"; }
-    ASK.hist[ASK.hist.length - 1].t = ans; ASK.busy = false; once("ask", () => gain("master", 1)); rerender();
+      ans = error ? "（現在聯絡不上：" + error.message + "）" : data && data.error ? "（" + data.error + "）" : (data && data.text) || "（他沉默了一會兒，沒有回答。）"; }
+    catch (e) { ans = "（現在聯絡不上）"; }
+    ASK.hist[ASK.hist.length - 1].t = ans; ASK.busy = false; once("ask" + who, () => gain(who, 1)); rerender();
   }
   function rerender() { if (document.querySelector(".dl-bg .dl-tabs") && window.Douluo) window.Douluo.open(); }
 
@@ -274,8 +275,10 @@
     const ch = B.chal && B.chal.day === t ? CHAL.find(x => x.id === B.chal.id) : null;
     if (ch) h += `<div class="dl-sub">🎯 今天的挑戰</div><p class="dl-meta">${B.chal.done ? "✅" : "⏳"} ${esc(ch.t)}${B.chal.done ? "・完成了！" : "・做到會自動判定"}</p>`;
     /* 問大師 */
-    h += `<div class="dl-sub">📜 問大師</div><div class="dl-askbox">${ASK.hist.slice(-6).map(x => `<p class="${x.who === "你" ? "me" : ""}"><b>${esc(x.who)}</b>${esc(x.t)}</p>`).join("")}
-      <div class="dl-row"><input type="text" id="dl-askq" maxlength="300" placeholder="例如：浮點數一直搞不懂怎麼辦？"><button type="button" class="btn" data-bd="ask" ${ASK.busy ? "disabled" : ""}>問</button></div></div>`;
+    const box = (who, title, ph) => { const A = ASKS[who]; return `<div class="dl-sub">${title}</div><div class="dl-askbox">${A.hist.slice(-6).map(x => `<p class="${x.who === "你" ? "me" : ""}"><b>${esc(x.who)}</b>${esc(x.t)}</p>`).join("")}
+      <div class="dl-row"><input type="text" class="dl-askq" data-who="${who}" maxlength="300" placeholder="${ph}"><button type="button" class="btn" data-bd="ask" data-who="${who}" ${A.busy ? "disabled" : ""}>${who === "tangsan" ? "說" : "問"}</button></div></div>`; };
+    h += box("tangsan", "💬 跟唐三聊天", "例如：今天好累，不太想讀");
+    h += box("master", "📜 問大師", "例如：浮點數一直搞不懂怎麼辦？");
     /* 回憶冊 */
     const mem = []; cs.forEach(k => { const l = blv(B.pts[k] || 0); (MEMO[k] || []).slice(0, l).forEach((m, i) => mem.push([k, i, m])); });
     h += `<div class="dl-sub">📖 回憶冊（${mem.length}）</div>${mem.length ? mem.map(([k, i, m]) => `<details class="dl-memo"><summary>${CH[k][1]} ${esc(CH[k][0])}・${BL[i + 1][1]}</summary><p>${esc(m)}</p></details>`).join("") : `<p class="dl-meta">羈絆變成「熟悉」時，他們會開始跟你說自己的事。</p>`}`;
@@ -294,7 +297,7 @@
     const b = e.target.closest("[data-bd]");
     if (b) { const a = b.dataset.bd;
       if (a === "spar") return sparStart();
-      if (a === "ask") { const i = document.getElementById("dl-askq"), q = i && i.value.trim(); if (!q) return toast("先寫你想問的"); return askMaster(q); }
+      if (a === "ask") { const w = b.dataset.who, i = document.querySelector(`.dl-askq[data-who="${w}"]`), q = i && i.value.trim(); if (!q) return toast("先寫你想說的"); return askMaster(q, w); }
       if (a === "set") { const n = (document.getElementById("dl-name") || {}).value || "", bd = (document.getElementById("dl-bday") || {}).value || "";
         if (bd && !/^\d{2}-\d{2}$/.test(bd)) return toast("生日請寫成 MM-DD，例如 03-15"); B.name = n.trim(); B.bday = bd; save(); toast("記住了"); return rerender(); } }
     const s = e.target.closest("[data-sp]");
@@ -304,7 +307,7 @@
     const sf = e.target.closest("[data-spself]"); if (sf) { SP.self = Number(sf.dataset.spself); if (SP.self === 1) SP.ok++; return sparDraw(); }
     if (e.target.closest("[data-dlq]")) once("reply", () => gain("tangsan", 1));
   });
-  document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target && e.target.id === "dl-askq") { const q = e.target.value.trim(); if (q) askMaster(q); } });
+  document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target && e.target.classList && e.target.classList.contains("dl-askq")) { const q = e.target.value.trim(); if (q) askMaster(q, e.target.dataset.who); } });
   /* 營火：在場的人羈絆 +1（一天一次）；七怪來訪：那個人 +1 */
   function wrapLife() {
     const L = window.DouluoLife; if (!L || L.__bond) { if (!L) setTimeout(wrapLife, 1000); return; }

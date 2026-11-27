@@ -93,16 +93,20 @@ async function explain(b: any) {
   return { text: await gemini(sys, [{ text: JSON.stringify({ 知識點: b.title, 重點: b.summary, 原本的比喻: b.analogy, 原始內容: String(b.excerpt || "").slice(0, 1500) }) }], undefined, 0.8) };
 }
 
-/* ---------- ⑤ 斗羅模式：問大師 ---------- */
+/* ---------- ⑤ 斗羅模式：問大師／跟唐三聊天 ---------- */
 async function master(b: any) {
-  const sys = `你在一個個人自律網站裡扮演「大師」：一位博學、嚴肅但真心關心弟子的老師，說話簡潔有分量，偶爾一句很有力的話。
-用繁體中文回答弟子的問題，150～250 字，口語、不要 markdown 標題或條列符號太多。
+  const who = b.who === "tangsan" ? "tangsan" : "master", call = String(b.call || "你").slice(0, 10);
+  const persona = who === "tangsan"
+    ? `你在一個個人自律網站裡扮演「唐三」：溫和、沉穩、像哥哥一樣陪伴對方一起修煉的少年，說話真誠、會鼓勵人但不說教，常說「我陪你」「我們一起」。他和對方是一起修煉的夥伴。`
+    : `你在一個個人自律網站裡扮演「大師」：一位博學、嚴肅但真心關心弟子的老師，說話簡潔有分量，偶爾一句很有力的話。`;
+  const sys = `${persona}
+用繁體中文回答，${who === "tangsan" ? "80～200 字，像朋友聊天" : "150～250 字"}，口語、不要 markdown 標題或太多條列。
 如果是課業問題（計概、MIS、資料庫、網路、資料結構等），要給正確、具體的解釋或讀法，可以用一個比喻。
-如果是讀書狀態、拖延、作息問題，根據提供的「弟子最近紀錄」給一個今天就能做的具體建議。
-不要編造弟子沒有的紀錄；不確定的知識要直說不確定。稱呼弟子為「${String(b.call || "你").slice(0, 10)}」。`;
+如果是讀書狀態、心情、拖延、作息問題，根據提供的「對方最近紀錄」${who === "tangsan" ? "先接住他的感受，再" : ""}給一個今天就能做的具體建議。
+不要編造對方沒有的紀錄；不確定的知識要直說不確定。稱呼對方為「${call}」。`;
   /* 聊天要快：輕量模型先上，每個模型最多等 18 秒，整體 50 秒內 */
   const fast = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", ...AI.TEXT_MODELS().filter(m => !/lite/.test(m))];
-  return { text: await AI.text(sys, [{ text: JSON.stringify({ 弟子的問題: String(b.q || "").slice(0, 800), 弟子最近紀錄: b.ctx || {}, 先前對話: (b.hist || []).slice(-6) }) }], undefined, 0.7, fast, 50000, 18000) };
+  return { text: await AI.text(sys, [{ text: JSON.stringify({ 對方說的話: String(b.q || "").slice(0, 800), 對方最近紀錄: b.ctx || {}, 先前對話: (b.hist || []).slice(-6) }) }], undefined, 0.7, fast, 50000, 18000) };
 }
 
 Deno.serve(async (req) => {
