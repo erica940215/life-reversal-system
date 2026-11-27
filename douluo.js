@@ -224,13 +224,14 @@
       body += `<p class="dl-meta">把某一類練到一定程度，史萊克的夥伴就會加入你。</p><div class="dl-seven">${SEVEN.map(c => { const ok = c.need(s); return `<div class="${ok ? "on" : ""}">${ok ? pic(c.k, 48, c.ic) : `<span class="dl-emo lock">❔</span>`}<b>${ok ? c.n : "？？？"}</b><small>${ok ? c.buf : c.d}</small></div>`; }).join("")}</div>`;
     }
     if (D.tab === "story") body += CH.map((c, i) => `<div class="dl-ch${i <= ch ? "" : " lock"}"><b>第 ${i + 1} 章・${i <= ch ? esc(c.n) : "？？？"}</b><small>${c.lv} 級${i <= ch ? "" : " 解鎖"}</small>${i <= ch ? `<p>${esc(c.t)}</p>` : ""}</div>`).join("");
-    const bg = modal(`<div class="dl-head"><b>⚔️ 斗羅修煉</b><button class="dl-x" data-dl-x>✕</button></div><div class="dl-tabs">${tabs.map(([k, t]) => `<button class="${D.tab === k ? "on" : ""}" data-tab="${k}">${t}</button>`).join("")}</div>${body}`);
+    const bg = modal(`<div class="dl-head"><b>⚔️ 斗羅修煉</b><button class="dl-x" data-dl-x>✕</button></div><div class="dl-tabs">${tabs.map(([k, t]) => `<button class="${D.tab === k ? "on" : ""}" data-tab="${k}">${t}</button>`).join("")}</div>${body}<div class="dl-row"><button class="btn ghost" data-off>關閉斗羅模式</button></div>`);
     D.open = true;
     bg.addEventListener("click", async e => {
       const t = e.target.closest("[data-tab]"); if (t) { D.tab = t.dataset.tab; return renderPanel(); }
       const td = e.target.closest("[data-td]"); if (td) { await addTodo(masterAdvice().todo[Number(td.dataset.td)]); td.disabled = true; td.textContent = "已加入"; return; }
       const tr = e.target.closest("[data-tier]"); if (tr) { const line = (bg.querySelector("[name=dl-line]:checked") || {}).value || "hao", herb = !!(bg.querySelector("#dl-herb") || {}).checked;
         const { error } = await db.rpc("douluo_hunt_start", { p_tier: Number(tr.dataset.tier), p_line: line, p_herb: herb }); if (error) return toast(error.message); toast("🏹 獵魂開始！"); return load(true); }
+      if (e.target.closest("[data-off]")) { close(); return setOn(false); }
       if (e.target.closest("[data-hcancel]")) { if (!confirm("確定放棄這次獵魂？")) return; await db.rpc("douluo_hunt_cancel"); return load(true); }
     });
   }
@@ -240,15 +241,24 @@
     D.on = v; try { localStorage.setItem("douluoOn", v ? "1" : "0"); } catch (_) {}
     if (hasDb()) { const { data } = await db.from("user_settings").select("features").eq("user_id", currentUser.id).maybeSingle(); const features = Object.assign({}, (data && data.features) || {}, { douluo_on: v });
       await db.from("user_settings").upsert({ user_id: currentUser.id, features, updated_at: new Date().toISOString() }, { onConflict: "user_id" }); }
-    if (v) { await load(true); renderFloat(); toast("⚔️ 斗羅模式開啟，唐三來了"); setTimeout(daily, 400); } else { renderFloat(); close(); toast("斗羅模式已關閉（魂力會繼續在背景累積）"); }
+    addBtn(); if (v) { await load(true); renderFloat(); toast("⚔️ 斗羅模式開啟，唐三來了"); setTimeout(daily, 400); } else { renderFloat(); close(); toast("斗羅模式已關閉（魂力會繼續在背景累積）"); }
   }
   new MutationObserver(() => {
     const box = document.querySelector(".feat-box"); if (!box || box.querySelector(".dl-feat")) return;
     const row = document.createElement("div"); row.className = "feat-row dl-feat";
     row.innerHTML = `<span>⚔️ 斗羅模式<small style="display:block;opacity:.7;font-size:12px">唐三陪你修煉、大師每天指導</small></span><button class="feat-sw${D.on ? " on" : ""}" aria-label="斗羅模式"></button>`;
     row.querySelector("button").addEventListener("click", async ev => { const b = ev.currentTarget; await setOn(!D.on); b.classList.toggle("on", D.on); });
-    const h = box.querySelector("h3"); h ? h.after(row) : box.prepend(row);
+    const n = box.querySelector(".small-note"); n ? n.after(row) : box.prepend(row);
   }).observe(document.body, { childList: true, subtree: true });
+
+  // 首頁「🧩 功能開關」旁邊也放一顆
+  function addBtn() {
+    const bar = document.querySelector(".game-mode-bar"); if (!bar) return;
+    let b = document.getElementById("dl-open");
+    if (!b) { b = document.createElement("button"); b.id = "dl-open"; b.type = "button"; b.className = "game-mode-toggle"; b.addEventListener("click", async () => { if (!D.on) await setOn(true); else openPanel(); }); const f = document.getElementById("feat-open"); f ? f.after(b) : bar.insertBefore(b, bar.firstChild); }
+    b.textContent = D.on ? "⚔️ 斗羅修煉" : "⚔️ 開啟斗羅模式";
+  }
+  setInterval(addBtn, 2000); setTimeout(addBtn, 1800);
 
   /* ===== 樣式 ===== */
   const css = document.createElement("style");
