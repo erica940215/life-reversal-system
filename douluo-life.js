@@ -121,13 +121,13 @@
     const f = document.getElementById("dl-float"); let tm = null;
     try { tm = focusTimer; } catch (_) {}
     const bub = f && f.querySelector(".dl-bub");
-    if (tm && bub) {
+    if (tm) {
       const ms = focusElapsedMs(tm), mm = Math.floor(ms / 60000), ss = Math.floor(ms / 1000) % 60;
-      bub.textContent = `唐三・修煉中 ${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`; bub.classList.add("dl-sync");
+      /* 頭像旁的對話框保留唐三原本說的話（不改成計時） */
       const step = Math.floor(mm / 25), k = "wh" + (tm.startedAt || tm.start || "") ;
       if (step >= 1 && ls(k) !== String(step)) { ls(k, String(step)); const c = X(); bubble("tangsan", undefined, "唐三・一起修煉中", pick(WHISPER)); }
       if (mm >= 90 && ls("v90" + today()) !== "1") { ls("v90" + today(), "1"); visit(); }
-    } else if (bub && bub.classList.contains("dl-sync")) bub.classList.remove("dl-sync");
+    }
   }, 1000);
   setInterval(() => { if (on()) visit(); }, 5 * 60 * 1000);
 
