@@ -321,6 +321,7 @@
   const IC = ["🏘️", "🏫", "🌳", "❄️🔥", "🏟️", "🩸", "🏯", "🔱", "⚔️", "✨", "👑"];
   const st = document.createElement("style");
   st.textContent = `
+    body:has(.dl-bg) .ft, body:has(.dl-bg) .ft-mini { display: none !important; }
     .dl-now { font-size: 12px; opacity: .8; padding: 6px 12px 0; line-height: 1.6; }
     .dl-bond { display: flex; gap: 10px; align-items: center; padding: 6px 0; } .dl-bond > div { flex: 1; } .dl-bond b { font-size: 13.5px; } .dl-bond small { display: block; font-size: 11.5px; opacity: .7; }
     .dl-memo { margin: 6px 0; padding: 6px 10px; border-radius: 10px; background: rgba(127,127,127,.08); } .dl-memo summary { cursor: pointer; font-size: 13px; } .dl-memo p { margin: 6px 0 2px; font-size: 13.5px; line-height: 1.7; }
@@ -331,7 +332,7 @@
     .dl-special { border: 1px solid rgba(241,196,15,.4); border-radius: 12px; padding: 6px; } .dl-chal { border: 1px dashed rgba(255,150,200,.5); border-radius: 12px; padding: 6px; }
     .dl-box.dl-scene { position: relative; }
     .dl-box.dl-scene::after { position: absolute; right: 14px; top: 46px; font-size: 54px; opacity: .08; pointer-events: none; }
-    ${SC.map((g, i) => `.dl-box.dl-sc${i} { background-image: linear-gradient(160deg, ${g.split(",")[0]}33, ${g.split(",")[1]}22 60%, transparent); } .dl-box.dl-sc${i}::after { content: "${IC[i]}"; }`).join("\n    ")}`;
+    ${SC.map((g, i) => `.dl-box.dl-sc${i} { background: linear-gradient(160deg, ${g.split(",")[0]}55, ${g.split(",")[1]}33 60%, rgba(0,0,0,0)), linear-gradient(180deg, #1b2140, #151a30); background-color: #151a30; } .dl-box.dl-sc${i}::after { content: "${IC[i]}"; }`).join("\n    ")}`;
   document.head.appendChild(st);
   window.DouluoBond = { load, tabHtml, nowHtml, morningHtml, callName, STYLE, gain: (k, n) => gain(k, n) };
 })();

@@ -339,13 +339,13 @@
     #dl-float .dl-fbody{position:relative;width:56px;height:56px;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px #5b8cff,0 0 16px rgba(91,140,255,.7);background:#1b2140;flex:none;animation:dlbreath 4s ease-in-out infinite}
     #dl-float .dl-fbody.hot{box-shadow:0 0 0 2px #ffd54a,0 0 20px #ffd54a}
     #dl-float .dl-fwrap{position:relative;flex:none}#dl-float .dl-lv{position:absolute;right:-4px;bottom:-2px;background:#5b8cff;color:#fff;font-size:11px;font-weight:800;border-radius:8px;padding:0 4px}
-    #dl-float .dl-bub{background:rgba(20,24,44,.88);color:#eef;font-size:12.5px;padding:7px 10px;border-radius:12px 12px 12px 2px;line-height:1.4}
+    #dl-float .dl-bub{background:#141a33;color:#eef;font-size:12.5px;padding:7px 10px;border-radius:12px 12px 12px 2px;line-height:1.4}
     #dl-float .dl-fx{position:absolute;left:-4px;top:-4px;width:18px;height:18px;border-radius:50%;border:0;background:rgba(20,24,44,.8);color:#eef;font-size:12px;display:none}
     #dl-float:hover .dl-fx{display:block}#dl-float.min .dl-bub{display:none}
     @keyframes dlbreath{50%{box-shadow:0 0 0 2px #5b8cff,0 0 26px rgba(120,170,255,.95)}}
     .dl-pic{object-fit:cover;border-radius:50%;flex:none}.dl-emo{display:inline-grid;place-items:center;border-radius:50%;background:radial-gradient(circle,#3a4a8a,#1b2140);flex:none}.dl-emo.lock{width:48px;height:48px;font-size:22px;opacity:.5}
-    .dl-bg{position:fixed;inset:0;background:rgba(6,8,20,.6);z-index:9990;display:flex;align-items:flex-end;justify-content:center}
-    .dl-box{width:min(540px,100%);max-height:88vh;overflow:auto;background:linear-gradient(180deg,#1b2140,#151a30);color:#eef;border-radius:18px 18px 0 0;padding:16px 16px 22px;box-shadow:0 -10px 40px rgba(60,90,200,.35)}
+    .dl-bg{position:fixed;inset:0;background:rgba(6,8,20,.82);z-index:9990;display:flex;align-items:flex-end;justify-content:center}
+    .dl-box{width:min(540px,100%);max-height:88vh;overflow:auto;background-color:#151a30;background:linear-gradient(180deg,#1b2140,#151a30);color:#eef;border-radius:18px 18px 0 0;padding:16px 16px 22px;box-shadow:0 -10px 40px rgba(60,90,200,.35)}
     @media(min-width:640px){.dl-bg{align-items:center}.dl-box{border-radius:18px}}
     .dl-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.dl-head b{font-size:17px}
     .dl-x{border:0;background:rgba(255,255,255,.1);color:#eef;width:30px;height:30px;border-radius:50%;font-size:14px;cursor:pointer}
