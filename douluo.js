@@ -97,6 +97,7 @@
     if (!error) {
       D.d = data;
       try { document.dispatchEvent(new Event("douluo:change")); } catch (_) {}
+      try { await loadReal(); } catch (_) {}
       try { const ev = await db.rpc("douluo_events"); if (!ev.error) D.ev = ev.data || []; } catch (_) {}
       (D.ev || []).forEach(e => { if (e.new && lsGet("ev" + e.ch) !== "1") { lsSet("ev" + e.ch, "1"); D.evNew = e; } });
       if (data.state && data.state.hunt) { const r = await db.rpc("douluo_hunt_check"); if (!r.error && r.data) { if (r.data.status === "done") { celebrate(r.data); return load(true); } if (r.data.status === "failed") toast("獵魂挑戰時間到了，這次沒有成功。休息一下，再挑一次。"); } }
@@ -120,6 +121,7 @@
       if (s.streak >= 7) L.push(`已經連續 ${s.streak} 天了。小舞說，堅持本身就是一種武魂。`);
       if (raw >= cap && !st.hunt) L.push(`你的魂力已經到 ${cap} 級的瓶頸了。去大師那裡選一個獵魂挑戰吧，我陪你。`);
       if (st.hunt) L.push("我們還在獵魂中，今天也往目標再靠近一點。");
+      if (D.real && D.real.exam && D.real.exam.days > 0) L.push(`魂師大賽還有 ${D.real.exam.days} 天。我們一起，一天一天練上去。`);
       L.push(raw > lv ? `魂力已經存到 ${raw} 級的量了，等吸收魂環就會升上去。` : `離下一級還差 ${Math.max(0, nxt)} 點魂力。`);
       return pick(L.slice(0, -1)) + " " + L[L.length - 1];
     }
@@ -155,6 +157,11 @@
     else if (D.d.raw_level >= (st.rings.length + 1) * 10) out.say.push(advHunt());
     if (s.done_yday === 0 && s.tasks_yday > 0) out.say.push(`昨天排了 ${s.tasks_yday} 件，一件都沒完成。不是你不行，是排太多。今天少排一點。`);
     else if (s.tasks_yday && s.done_yday / s.tasks_yday >= 0.8) out.say.push(`昨天完成率 ${Math.round(s.done_yday / s.tasks_yday * 100)}%，很好。理論再好，也要這樣一天天練出來。`);
+    const R = D.real || {};
+    if (R.exam) out.say.unshift(R.exam.days > 0 ? `距離魂師大賽（${R.exam.name}）還有 ${R.exam.days} 天。${R.exam.days <= 14 ? "現在每一天都是決賽前的訓練。" : "時間夠，但不會多。"}` : `今天就是魂師大賽（${R.exam.name}）。平常怎麼練，今天就怎麼打。`);
+    if (R.late && R.late.n >= 3) { out.say.push(`推甄進度落後 ${R.late.n} 項，最早的「${R.late.first}」已經過了預計日期。落後不可怕，假裝沒看到才可怕。`); out.todo.unshift({ t: `${R.late.subject} ${R.late.first}`, d: "normal", c: "study", why: `推甄進度落後最久的一項（預計 ${R.late.date}）` }); }
+    else if (R.late && R.late.n) out.say.push(`推甄進度有 ${R.late.n} 項過了預計日期：「${R.late.first}」。今天補上它。`);
+    if (R.stuck && R.stuck.length) out.say.push(`「${R.stuck[0].t}」已經拖了 ${R.stuck[0].d} 天。三天以上不動的事，要嘛拆小，要嘛放下，不要讓它一直壓著你。`);
     if (!out.say.length) out.say.push(pick(["沒有明顯的弱點，今天照計畫走就好。", "穩定，就是最好的天賦。", "魂力的累積沒有捷徑，今天也一樣。"]));
     out.todo = out.todo.slice(0, 3);
     return out;
@@ -372,5 +379,92 @@
     setInterval(() => { if (!document.hidden && D.on) renderFloat(); }, 45 * 1000);
     document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
   })(0);
+
+  /* ===== 真實狀況：魂師大賽（考試倒數）、推甄進度落後、拖很久的任務 ===== */
+  async function loadReal() {
+    const t = D.d.stats.today, R = {};
+    const [ex, si, tk] = await Promise.all([
+      db.from("exams").select("name, exam_date").gte("exam_date", t).order("exam_date").limit(1),
+      db.from("study_items").select("subject, title, plan_date").eq("done", false).lt("plan_date", t).order("plan_date").limit(200),
+      db.from("tasks").select("title, original_date, task_date").eq("task_date", t).eq("completed", false).not("original_date", "is", null).limit(50)]);
+    const e = ex.data && ex.data[0]; if (e) R.exam = { name: e.name, days: Math.round((new Date(e.exam_date) - new Date(t)) / 864e5) };
+    if (si.data && si.data.length) { const f = si.data[0]; R.late = { n: si.data.length, first: f.title, subject: f.subject, date: `${Number(f.plan_date.slice(5, 7))}/${Number(f.plan_date.slice(8))}` }; }
+    if (tk.data) R.stuck = tk.data.map(x => ({ t: x.title, d: Math.round((new Date(t) - new Date(x.original_date)) / 864e5) })).filter(x => x.d >= 3).sort((a, b) => b.d - a.d);
+    D.real = R;
+  }
+
+  /* ===== 修煉回饋：專注開始／結束、完成任務 ===== */
+  const haoBonus = () => 1 + 0.03 * ((D.d && D.d.state.rings.filter(r => r.line === "hao").length) || 0);
+  function bubble(text) {
+    document.querySelector(".dl-bubble")?.remove();
+    const b = document.createElement("div"); b.className = "dl-bubble";
+    b.innerHTML = `${pic("tangsan", 40)}<p>${esc(text)}</p>`;
+    document.body.appendChild(b); setTimeout(() => b.classList.add("out"), 4200); setTimeout(() => b.remove(), 4800);
+    b.addEventListener("click", () => b.remove());
+  }
+  function burst(kind, gain, label) {
+    const w = document.createElement("div"); w.className = `dl-burst ${kind}`;
+    w.innerHTML = `<div class="dl-fx">${kind === "hao" ? "🔨" : "🌿"}</div><b>魂力 +${gain}</b><small>${esc(label)}</small>`;
+    document.body.appendChild(w); setTimeout(() => w.remove(), 1900);
+  }
+  const TASK_XP = { easy: 15, normal: 30, hard: 50, epic: 80 };
+  function hookFocus(n) {
+    if (typeof window.startFocus !== "function" || typeof window.finishFocus !== "function") { if (n < 40) setTimeout(() => hookFocus(n + 1), 500); return; }
+    if (window.finishFocus.__dl) return;
+    const s0 = window.startFocus, f0 = window.finishFocus;
+    window.startFocus = function () {
+      let before = null; try { before = focusTimer; } catch (_) {}
+      const r = s0.apply(this, arguments);
+      try { if (D.on && !before && focusTimer) { const subj = focusTimer.subject || ""; bubble(pick([`我陪你一起修煉。${subj ? `今天練${subj}。` : ""}`, "閉上眼，感受魂力流動。這段時間只屬於修煉。", `開始吧。${subj ? subj + "，" : ""}一分鐘一點魂力，我幫你數著。`, "大師說過：專注的那一刻，武魂才真正醒著。"])); } } catch (_) {}
+      return r;
+    };
+    window.finishFocus = async function (reason) {
+      let secs = 0, subj = "", minS = 60;
+      try { if (focusTimer) { secs = Math.round(focusElapsedMs(focusTimer) / 1000); if (focusTimer.mode === "down") secs = Math.min(secs, focusTimer.plannedMinutes * 60); subj = focusTimer.subject || ""; } minS = typeof FOCUS_MIN_SECONDS !== "undefined" ? FOCUS_MIN_SECONDS : 60; } catch (_) {}
+      const r = await f0.apply(this, arguments);
+      if (D.on && secs >= minS) {
+        const min = Math.floor(secs / 60), gain = Math.round(min * haoBonus());
+        setTimeout(() => {
+          const hum = min >= 90 ? "昊天錘發出低沉的轟鳴" : min >= 45 ? "昊天錘震了一下" : "昊天錘微微發熱";
+          modal(`<div class="dl-head"><b>⚔️ 修煉結束</b><button class="dl-x" data-dl-x>✕</button></div>
+            <div class="dl-burst-in"><div class="dl-fx">🔨</div><b>魂力 +${gain}</b><small>${hum}・${subj ? esc(subj) + " " : ""}${min} 分鐘</small></div>
+            <div class="dl-say">${pic("tangsan", 56)}<div><small>唐三</small><p>${esc(pick(min >= 90 ? ["這一段很深。你感覺到了嗎？魂力在往下沉。", "九十分鐘不分心，連大師都會點頭。"] : min >= 45 ? ["很穩。休息一下，喝口水，等等再來一輪。", "這一輪的魂力，扎扎實實。"] : ["短也沒關係，有開始就有魂力。", "熱身完了。下一輪，試著再久一點。"]))}</p></div></div>
+            <div class="dl-row"><button class="btn" data-dl-x>收功</button></div>`);
+          load(true);
+        }, 600);
+      }
+      return r;
+    };
+    Object.keys(f0).forEach(k => { window.finishFocus[k] = f0[k]; }); Object.keys(s0).forEach(k => { window.startFocus[k] = s0[k]; });
+    window.finishFocus.__dl = true;
+  }
+  function hookTask(n) {
+    if (typeof window.toggleTask !== "function") { if (n < 40) setTimeout(() => hookTask(n + 1), 500); return; }
+    if (window.toggleTask.__dl) return;
+    const base = window.toggleTask;
+    const w = async function (taskId, completed) {
+      const r = await base.apply(this, arguments);
+      if (D.on && completed) { try { const { data } = await db.from("tasks").select("title, difficulty, completed").eq("id", Number(taskId)).maybeSingle();
+        if (data && data.completed) burst("hao", Math.round((TASK_XP[data.difficulty] || 30) * haoBonus()), data.title); } catch (_) {} }
+      return r;
+    };
+    Object.keys(base).forEach(k => { w[k] = base[k]; }); w.__dl = true; window.toggleTask = w;
+  }
+  setTimeout(() => { hookFocus(0); hookTask(0); }, 2500);
+  const fxSt = document.createElement("style");
+  fxSt.textContent = `
+    .dl-bubble { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); z-index: 9990; display: flex; gap: 10px; align-items: center; max-width: min(92vw, 420px);
+      padding: 10px 14px; border-radius: 16px; background: rgba(16,24,48,.95); color: #e8f0ff; border: 1px solid rgba(120,170,255,.4); box-shadow: 0 8px 30px rgba(0,0,0,.35); animation: dlIn .35s ease; transition: opacity .5s; }
+    .dl-bubble p { margin: 0; font-size: 14px; line-height: 1.5; } .dl-bubble.out { opacity: 0; }
+    .dl-burst { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); z-index: 9995; text-align: center; pointer-events: none; animation: dlPop 1.9s ease forwards; }
+    .dl-burst b, .dl-burst-in b { display: block; font-size: 22px; color: #f1c40f; text-shadow: 0 2px 10px rgba(0,0,0,.6); } .dl-burst small, .dl-burst-in small { display: block; font-size: 12.5px; color: #fff; opacity: .85; text-shadow: 0 1px 6px rgba(0,0,0,.7); max-width: 260px; }
+    .dl-fx { font-size: 64px; filter: drop-shadow(0 0 14px rgba(241,196,15,.7)); animation: dlSlam .55s cubic-bezier(.3,1.6,.5,1); }
+    .dl-burst.blue .dl-fx { filter: drop-shadow(0 0 14px rgba(80,180,255,.8)); animation: dlGrow .7s ease; }
+    .dl-burst-in { text-align: center; margin: 6px 0 10px; } .dl-burst-in small { color: inherit; text-shadow: none; max-width: none; }
+    @keyframes dlIn { from { opacity: 0; transform: translate(-50%, 12px); } }
+    @keyframes dlPop { 0% { opacity: 0; transform: translate(-50%, -40%) scale(.7); } 15% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); } 75% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -70%); } }
+    @keyframes dlSlam { 0% { transform: translateY(-50px) rotate(-35deg); } 60% { transform: translateY(4px) rotate(8deg); } 100% { transform: none; } }
+    @keyframes dlGrow { 0% { transform: scale(.2) rotate(-20deg); } 100% { transform: none; } }`;
+  document.head.appendChild(fxSt);
   window.Douluo = { load, open: () => D.on && openPanel(), setOn, isOn: () => D.on, level: () => (D.d ? D.d.level : 1) };
 })();
