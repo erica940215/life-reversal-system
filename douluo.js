@@ -1,7 +1,7 @@
 /* ⚔️ 斗羅模式：唐三陪你修煉、大師每天指導
    魂力全部來自你真實完成的事（資料在 sql/2026-11-27_斗羅模式.sql）
    開關：🧩 功能列表最上面「⚔️ 斗羅模式」，預設關閉；關掉時魂力照樣在背景累積
-   圖片：img/douluo/tangsan.jpg（唐三）、img/douluo/master.jpg（大師）、img/douluo/<七怪代號>.jpg，沒有就用圖示 */
+   圖片：img/douluo/tangsan.jpg（唐三）、tangsan_god.jpg（71 級海神島以後的唐三）、img/douluo/master.jpg（大師）、img/douluo/<七怪代號>.jpg，沒有就用圖示 */
 (function () {
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const toast = m => (typeof showToast === "function" ? showToast(m) : console.log(m));
@@ -52,7 +52,10 @@
 
   /* ===== 圖片 ===== */
   const PIC = { tangsan: "⚔️", master: "📜" };
-  const pic = (k, size, emo) => `<img class="dl-pic" src="img/douluo/${k}.jpg" alt="" style="width:${size}px;height:${size}px" onerror="this.outerHTML='<span class=&quot;dl-emo&quot; style=&quot;width:${size}px;height:${size}px;font-size:${Math.round(size * 0.55)}px&quot;>${emo || PIC[k] || "✨"}</span>'">`;
+  const pic = (k, size, emo) => {
+    const god = k === "tangsan" && D.d && D.d.level >= 71, fb = `this.outerHTML='<span class=&quot;dl-emo&quot; style=&quot;width:${size}px;height:${size}px;font-size:${Math.round(size * 0.55)}px&quot;>${emo || PIC[k] || "✨"}</span>'`;
+    return `<img class="dl-pic" src="img/douluo/${god ? "tangsan_god" : k}.jpg" alt="" style="width:${size}px;height:${size}px" onerror="${god ? `if(!this.dataset.f){this.dataset.f=1;this.src='img/douluo/tangsan.jpg'}else{${fb}}` : fb}">`;
+  };
 
   /* ===== 資料 ===== */
   async function load(quiet) {
