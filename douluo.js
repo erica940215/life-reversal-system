@@ -16,7 +16,25 @@
   /* ===== 設定資料 ===== */
   const TITLES = [[1, "魂士"], [11, "魂師"], [21, "大魂師"], [31, "魂尊"], [41, "魂宗"], [51, "魂王"], [61, "魂帝"], [71, "魂聖"], [81, "魂鬥羅"], [91, "封號鬥羅"], [95, "超級鬥羅"], [99, "絕世鬥羅"], [100, "神"]];
   const title = lv => { let t = TITLES[0][1]; for (const [l, n] of TITLES) if (lv >= l) t = n; return t; };
-  const xpAt = L => 2 * (L - 1) * (L - 1) + 40 * (L - 1);
+  /* 升級曲線：0.7 ×（2L²+40L）→ 平均每天專注 3～4 小時約 45 天到 90 級（要和 SQL douluo_level 一致） */
+  const CURVE = 0.7, xpAt = L => Math.ceil(CURVE * (2 * (L - 1) * (L - 1) + 40 * (L - 1)));
+  /* 📅 到 90 級的預估：每天記一次總魂力，用最近 7 天的增加量算速度；資料不到 3 天就先用這週專注分鐘估 */
+  function eta(d) {
+    const xp = d.state.xp_blue + d.state.xp_hao, today = d.stats.today, goal = xpAt(90);
+    let snaps = {}; try { snaps = JSON.parse(lsGet("xpsnap") || "{}") || {}; } catch (_) {}
+    snaps[today] = xp; const keys = Object.keys(snaps).sort().slice(-15); const keep = {}; keys.forEach(k => { keep[k] = snaps[k]; }); lsSet("xpsnap", JSON.stringify(keep));
+    const back = keys.filter(k => k <= today).slice(-8), first = back[0], days = first ? Math.round((new Date(today) - new Date(first)) / 864e5) : 0;
+    let rate, how;
+    if (days >= 3) { rate = (xp - keep[first]) / days; how = `最近 ${days} 天平均`; }
+    else { rate = Object.values(d.stats.subj7 || {}).reduce((a, b) => a + b, 0) / 7; how = "這週專注估算（還沒算任務，實際會更快）"; }
+    const start = String(d.state.created_at || today).slice(0, 10), target = new Date(new Date(start).getTime() + 45 * 864e5).toISOString().slice(0, 10);
+    const md = x => `${Number(x.slice(5, 7))}/${Number(x.slice(8, 10))}`;
+    if (xp >= goal) return `<p class="dl-meta">📅 魂力已經夠 90 級了（目標 ${md(target)}）。</p>`;
+    if (rate < 1) return `<p class="dl-meta">📅 目標 ${md(target)} 到 90 級。這週還沒有足夠的紀錄可以預估。</p>`;
+    const left = Math.ceil((goal - xp) / rate), at = new Date(new Date(today).getTime() + left * 864e5).toISOString().slice(0, 10);
+    const need = Math.ceil((goal - xp) / Math.max(1, Math.round((new Date(target) - new Date(today)) / 864e5)));
+    return `<div class="dl-ev ${at <= target ? "ok" : ""}"><b>📅 照現在的速度，預計 ${md(at)} 到 90 級</b><small>目標 ${md(target)}・${how}每天約 ${Math.round(rate)} 魂力${at > target ? `・要準時，每天需要約 ${need} 魂力（專注 1 分鐘 = 1）` : "・跟得上 👍"}</small></div>`;
+  }
   const CH = [
     { lv: 1, n: "聖魂村・武魂覺醒", t: "一切從最普通的日子開始。我六歲那年覺醒武魂，什麼都還不會，但從那天起每天都練。你也一樣，今天就是你的覺醒日。" },
     { lv: 11, n: "史萊克學院", t: "第一個魂環到手了。接下來的路不能只靠一個人，史萊克教會我的是：怪物也需要夥伴，也需要被逼著成長。" },
@@ -243,6 +261,7 @@
           <div class="dl-line-pick"><label><input type="radio" name="dl-line" value="blue"${rec === "blue" ? " checked" : ""}> 🌿 藍銀草</label><label><input type="radio" name="dl-line" value="hao"${rec === "hao" ? " checked" : ""}> 🔨 昊天錘</label>${st.herbs ? `<label><input type="checkbox" id="dl-herb"> 🌿 用一株仙草（目標 -30%，有 ${st.herbs} 株）</label>` : ""}</div>
           ${[1, 2, 3, 4].map(t => `<button class="dl-tier" data-tier="${t}" style="--c:${TIER[t].c}"><b>${TIER[t].n}魂環</b><small>${TIER[t].d}</small></button>`).join("")}`;
       } else body += `<p class="dl-meta">再升到 ${cap} 級就會遇到瓶頸，到時要獵魂。</p>`;
+      body += eta(d);
       body += `<p class="dl-meta">🌿 仙草 ${st.herbs} 株（某天專注滿 3 小時就會得到）・連續 ${d.stats.streak} 天</p>`;
     }
     if (D.tab === "master") {
