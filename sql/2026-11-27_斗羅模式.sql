@@ -5,7 +5,7 @@
 --     🌿 藍銀草（規律線）：生活打卡（睡眠／保養／運動／飲食／生活／每週）每項 5、每日簽到 5
 --     🔨 昊天錘（突破線）：專注每分鐘 1、任務 簡單15/普通30/困難50/史詩80、
 --                          專案步驟 5、學到什麼 10、單字 1、多益 2、複習 2
---   等級：累積魂力 4L²+80L；每 10 級是瓶頸，要完成「獵魂挑戰」吸收魂環才能繼續升
+--   等級：累積魂力 2L²+40L（每天讀 5 小時約一個半月到 90 級）；每 10 級是瓶頸，要完成「獵魂挑戰」吸收魂環才能繼續升
 --   仙草：某天專注滿 180 分鐘 → 1 株，可在獵魂時使用（目標 -30%）
 -- =========================================================
 
@@ -29,7 +29,7 @@ create policy douluo_state_own on public.douluo_state for select using (user_id 
 
 create or replace function public.douluo_level(p_xp bigint, p_rings integer)
 returns integer language sql immutable as $$
-  select least(greatest(1, least(100, floor((-80 + sqrt(6400 + 16.0 * greatest(p_xp, 0))) / 8)::int + 1)), (p_rings + 1) * 10)
+  select least(greatest(1, least(100, floor((-40 + sqrt(1600 + 8.0 * greatest(p_xp, 0))) / 4)::int + 1)), (p_rings + 1) * 10)
 $$;
 
 -- 這段時間內的各項成果（獵魂、統計共用）
