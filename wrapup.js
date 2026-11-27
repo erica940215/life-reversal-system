@@ -15,6 +15,7 @@
   async function open() {
     if (!hasDb()) return;
     const d = today();
+    try { if (window.Douluo && window.Douluo.isOn && window.Douluo.isOn()) window.Douluo.load(true); } catch (_) {}
     const S = { step: 0, tasks: [], act: {}, items: [], refl: {}, dirty: false, busy: false };
     const [tk, rf] = await Promise.all([
       db.from("tasks").select("id, title, completed, skipped").eq("task_date", d).limit(200),
@@ -44,7 +45,8 @@
           <label class="tw-lab">📘 今天學到什麼<textarea data-wr="learned" rows="2" maxlength="500" placeholder="一句話也可以">${esc(S.refl.learned)}</textarea></label>`;
       const moved = Object.values(S.act).filter(a => a === "move").length;
       return `<p class="vg-note">最後一步：把明天要做的事列好，明天早上打開就能直接開始。${moved ? `<br>（剛剛延到明天的 ${moved} 件已經在明天的清單裡了）` : ""}</p>
-        <button type="button" class="btn btn-primary" data-wu="tomorrow" style="width:100%">🌙 列明天的任務</button>`;
+        <button type="button" class="btn btn-primary" data-wu="tomorrow" style="width:100%">🌙 列明天的任務</button>
+        ${window.DouluoLife ? window.DouluoLife.campfireHtml() : ""}`;
     }
     function draw() {
       const last = S.step === STEPS.length - 1;

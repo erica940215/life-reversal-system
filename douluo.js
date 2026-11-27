@@ -201,12 +201,14 @@
     bg.addEventListener("click", e => { if (e.target === bg || e.target.closest("[data-dl-x]")) close(); });
     document.body.appendChild(bg); return bg;
   }
-  function close() { const had = document.querySelector(".dl-bg"); document.querySelectorAll(".dl-bg").forEach(x => x.remove()); D.open = false; if (had && D.after) { const f = D.after; D.after = null; setTimeout(f, 300); } }
+  function close() { const had = document.querySelector(".dl-bg"); document.querySelectorAll(".dl-bg").forEach(x => x.remove()); D.open = false; if (had) { let f = D.q && D.q.length ? D.q.shift() : null; if (!f && D.after) { f = D.after; D.after = null; } if (f) setTimeout(f, 300); } }
   function talk(kind) {
     const a = masterAdvice(), m = kind === "morning";
     const bg = modal(`<div class="dl-head"><b>${m ? "☀️ 早安，今天要修煉什麼？" : "🌙 今天辛苦了"}</b><button class="dl-x" data-dl-x>✕</button></div>
       <div class="dl-say">${pic("tangsan", 64)}<div><small>唐三</small><p>${esc(tangLine(kind))}</p></div></div>
+      ${m && window.DouluoLife ? window.DouluoLife.memoryHtml() : ""}
       <div class="dl-say m">${pic("master", 52)}<div><small>大師・今日指導</small><p>${esc(m ? a.say.slice(0, 2).join(" ") : eveningMaster())}</p></div></div>
+      ${m && window.DouluoLife ? window.DouluoLife.askHtml() : ""}
       ${m && a.todo.length ? `<div class="dl-sub">大師建議今天先做</div>${a.todo.map((t, i) => `<div class="dl-todo"><div><b>${esc(t.t)}</b><small>${esc(t.why)}</small></div><button class="btn" data-td="${i}">＋ 加入</button></div>`).join("")}` : ""}
       <div class="dl-row">${m && window.DayPlan ? `<button class="btn" data-plan>📝 排今天的任務</button>` : ""}<button class="btn ghost" data-dl-x>${m ? "開始修煉" : "晚安"}</button></div>`);
     bg.addEventListener("click", e => { const b = e.target.closest("[data-td]"); if (b) { addTodo(a.todo[Number(b.dataset.td)]); b.disabled = true; b.textContent = "已加入"; } if (e.target.closest("[data-plan]")) { close(); window.DayPlan.open(); } });
@@ -278,6 +280,7 @@
       body += a.todo.length ? `<div class="dl-sub">建議今天先做</div>${a.todo.map((t, i) => `<div class="dl-todo"><div><b>${esc(t.t)}</b><small>${esc(t.why)}</small></div><button class="btn" data-td="${i}">＋ 加入</button></div>`).join("")}` : "";
       const s7 = Object.entries(d.stats.subj7).sort((x, y) => y[1] - x[1]);
       body += `<div class="dl-sub">這週各科專注</div>${s7.length ? s7.map(([k, m]) => `<div class="dl-hp"><span>${esc(k)}</span><div class="dl-bar"><i style="width:${Math.min(100, m / Math.max(...s7.map(x => x[1])) * 100)}%"></i></div><small>${m} 分</small></div>`).join("") : "<small>這週還沒有專注紀錄</small>"}`;
+      if (window.DouluoLife) body += window.DouluoLife.masterHtml();
       if (st.master_follow >= 15) body += `<p class="dl-meta">📜 入室弟子以上：大師會把你這週最弱的科目放在每天建議的第一個。</p>`;
     }
     if (D.tab === "seven") {
@@ -424,14 +427,14 @@
       const r = await f0.apply(this, arguments);
       if (D.on && secs >= minS) {
         const min = Math.floor(secs / 60), gain = Math.round(min * haoBonus());
-        setTimeout(() => {
+        const show = () => {
           const hum = min >= 90 ? "昊天錘發出低沉的轟鳴" : min >= 45 ? "昊天錘震了一下" : "昊天錘微微發熱";
           modal(`<div class="dl-head"><b>⚔️ 修煉結束</b><button class="dl-x" data-dl-x>✕</button></div>
             <div class="dl-burst-in"><div class="dl-fx">🔨</div><b>魂力 +${gain}</b><small>${hum}・${subj ? esc(subj) + " " : ""}${min} 分鐘</small></div>
             <div class="dl-say">${pic("tangsan", 56)}<div><small>唐三</small><p>${esc(pick(min >= 90 ? ["這一段很深。你感覺到了嗎？魂力在往下沉。", "九十分鐘不分心，連大師都會點頭。"] : min >= 45 ? ["很穩。休息一下，喝口水，等等再來一輪。", "這一輪的魂力，扎扎實實。"] : ["短也沒關係，有開始就有魂力。", "熱身完了。下一輪，試著再久一點。"]))}</p></div></div>
             <div class="dl-row"><button class="btn" data-dl-x>收功</button></div>`);
-          load(true);
-        }, 600);
+        };
+        setTimeout(async () => { await load(true); if (document.querySelector(".dl-bg")) (D.q = D.q || []).push(show); else show(); }, 600);
       }
       return r;
     };
@@ -466,5 +469,5 @@
     @keyframes dlSlam { 0% { transform: translateY(-50px) rotate(-35deg); } 60% { transform: translateY(4px) rotate(8deg); } 100% { transform: none; } }
     @keyframes dlGrow { 0% { transform: scale(.2) rotate(-20deg); } 100% { transform: none; } }`;
   document.head.appendChild(fxSt);
-  window.Douluo = { load, open: () => D.on && openPanel(), setOn, isOn: () => D.on, level: () => (D.d ? D.d.level : 1) };
+  window.Douluo = { ctx: () => ({ d: D.d, real: D.real, on: D.on, pic, modal, close, esc, pick, SEVEN, bubble, lsGet, lsSet, openPanel }), load, open: () => D.on && openPanel(), setOn, isOn: () => D.on, level: () => (D.d ? D.d.level : 1) };
 })();
